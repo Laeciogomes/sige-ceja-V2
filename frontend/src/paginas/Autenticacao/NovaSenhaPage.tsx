@@ -1,5 +1,5 @@
 // src/paginas/Autenticacao/NovaSenhaPage.tsx
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import {
   Box,
   Button,
@@ -34,6 +34,11 @@ const NovaSenhaPage: React.FC = () => {
   const [mostrarSenha1, setMostrarSenha1] = useState(false)
   const [mostrarSenha2, setMostrarSenha2] = useState(false)
   const [loading, setLoading] = useState(false)
+
+  // DEBUG: saber se a página realmente montou
+  useEffect(() => {
+    console.log('NovaSenhaPage montada – rota /nova-senha ativa')
+  }, [])
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -85,7 +90,6 @@ const NovaSenhaPage: React.FC = () => {
       }
 
       sucesso('Senha atualizada com sucesso.', 'Senha redefinida', 5000)
-
       navigate('/login', { replace: true })
     } catch (e) {
       console.error('Exceção ao atualizar senha:', e)
