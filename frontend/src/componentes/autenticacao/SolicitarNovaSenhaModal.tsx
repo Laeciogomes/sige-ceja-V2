@@ -80,8 +80,8 @@ const SolicitarNovaSenhaModal: React.FC<SolicitarNovaSenhaModalProps> = ({
     setLoading(true)
 
     try {
-      // BrowserRouter: rota real /nova-senha
-      const redirectTo = `${window.location.origin}/nova-senha`
+      // HashRouter: rota /#/nova-senha
+      const redirectTo = `${window.location.origin}/#/nova-senha`
 
       const { error } = await supabase.auth.resetPasswordForEmail(emailTrim, {
         redirectTo,
