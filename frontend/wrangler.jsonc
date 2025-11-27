@@ -1,9 +1,9 @@
 {
   "name": "sige-ceja",
+  "main": "worker.js",
   "compatibility_date": "2025-11-27",
-
-  // Diz para o Cloudflare publicar tudo o que está em ./dist
   "assets": {
-    "directory": "./dist"
+    "directory": "./dist",
+    "binding": "ASSETS"
   }
 }
