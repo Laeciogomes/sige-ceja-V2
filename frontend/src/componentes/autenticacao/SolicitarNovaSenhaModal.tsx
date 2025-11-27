@@ -32,7 +32,6 @@ const SolicitarNovaSenhaModal: React.FC<SolicitarNovaSenhaModalProps> = ({
   const [email, setEmail] = useState(emailInicial ?? '')
   const [loading, setLoading] = useState(false)
 
-  // Sincroniza o e-mail inicial quando o modal abre
   useEffect(() => {
     if (open) {
       setEmail(emailInicial ?? '')
@@ -44,7 +43,6 @@ const SolicitarNovaSenhaModal: React.FC<SolicitarNovaSenhaModalProps> = ({
     onClose()
   }
 
-  // Impede fechar clicando fora ou com ESC
   const handleDialogClose = (
     _event: object,
     reason: 'backdropClick' | 'escapeKeyDown',
@@ -82,8 +80,8 @@ const SolicitarNovaSenhaModal: React.FC<SolicitarNovaSenhaModalProps> = ({
     setLoading(true)
 
     try {
-      // Usa HashRouter: nova-senha fica em /#/nova-senha
-      const redirectTo = `${window.location.origin}/#/nova-senha`
+      // BrowserRouter: rota real /nova-senha
+      const redirectTo = `${window.location.origin}/nova-senha`
 
       const { error } = await supabase.auth.resetPasswordForEmail(emailTrim, {
         redirectTo,
