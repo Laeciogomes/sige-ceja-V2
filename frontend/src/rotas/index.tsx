@@ -1,11 +1,13 @@
+// src/rotas/index.tsx
 import React from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
+
 import { RootLayout } from '../layouts/RootLayout'
 import { LoginPage } from '../paginas/Autenticacao/LoginPage'
+import { NovaSenhaPage } from '../paginas/Autenticacao/NovaSenhaPage'
 import { DashboardPage } from '../paginas/Dashboard/DashboardPage'
 import { PaginaSimples } from '../paginas/PaginaSimples'
 import { useAuth } from '../contextos/AuthContext'
-import { NovaSenhaPage } from '../paginas/Autenticacao/NovaSenhaPage'
 
 export const AppRoutes: React.FC = () => {
   const { usuario } = useAuth()
@@ -21,7 +23,7 @@ export const AppRoutes: React.FC = () => {
         }
       />
 
-      {/* ROTA PÚBLICA PARA REDEFINIÇÃO DE SENHA */}
+      {/* ROTA DE REDEFINIÇÃO DE SENHA (pública) */}
       <Route
         path="/nova-senha"
         element={<NovaSenhaPage />}
