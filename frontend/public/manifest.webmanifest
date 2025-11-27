@@ -1,0 +1,23 @@
+{
+  "name": "SIGE-CEJA",
+  "short_name": "SIGE-CEJA",
+  "description": "Sistema Integrado de Gestão Escolar do CEJA Frei José Ademir de Almeida.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#FFF8F0",
+  "theme_color": "#F57C00",
+  "icons": [
+    {
+      "src": "/pwa-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/pwa-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
