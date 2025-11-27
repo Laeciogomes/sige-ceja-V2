@@ -32,7 +32,7 @@ const mapUserToUsuario = (user: User | null): UsuarioAutenticado | null => {
   if (!user) return null
   return {
     id: user.id,
-    email: user.email ?? null, // <- garante string | null
+    email: user.email ?? null,
   }
 }
 
@@ -54,11 +54,35 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     const carregarUsuario = async () => {
       try {
         const { data, error } = await supabase.auth.getUser()
+
         if (error) {
-          console.error('Erro ao obter usuário inicial:', error)
+          // Ignora o caso "sem sessão" (erro esperado quando ninguém está logado)
+          const nome = (error as any).name || ''
+          const status = (error as any).status || (error as any).statusCode
+
+          const ehSessaoAusente =
+            nome === 'AuthSessionMissingError' ||
+            status === 400 ||
+            status === 401
+
+          if (!ehSessaoAusente) {
+            console.error('Erro ao obter usuário inicial:', error)
+          }
+
+          if (!cancelado) {
+            setUsuario(null)
+          }
+          return
         }
+
         if (!cancelado) {
           setUsuario(mapUserToUsuario(data?.user ?? null))
+        }
+      } catch (e) {
+        // Qualquer outra exceção real a gente loga
+        console.error('Exceção ao obter usuário inicial:', e)
+        if (!cancelado) {
+          setUsuario(null)
         }
       } finally {
         if (!cancelado) {
@@ -93,7 +117,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password: senha,
-      // opções extras (captcha etc.) podem ser adicionadas aqui se precisar
     })
 
     if (error) {
