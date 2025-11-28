@@ -1,6 +1,6 @@
 // src/paginas/Dashboard/DashboardPage.tsx
 import React from 'react'
-import { Box, Grid, Paper, Typography } from '@mui/material'
+import { Box, Paper, Typography } from '@mui/material'
 import InsightsIcon from '@mui/icons-material/Insights'
 import PeopleAltIcon from '@mui/icons-material/PeopleAlt'
 import AssignmentTurnedInIcon from '@mui/icons-material/AssignmentTurnedIn'
@@ -54,95 +54,97 @@ const DashboardPage: React.FC = () => {
       </Box>
 
       {/* Cards/resumo iniciais – depois vamos ligar aos dados reais */}
-      <Grid container spacing={2}>
-        <Grid item xs={12} sm={6} md={3}>
-          <Paper
-            elevation={2}
-            sx={{
-              p: 2,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 1.5,
-            }}
-          >
-            <InsightsIcon color="primary" />
-            <Box>
-              <Typography variant="subtitle2" color="text.secondary">
-                Indicadores
-              </Typography>
-              <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                Em breve
-              </Typography>
-            </Box>
-          </Paper>
-        </Grid>
+      <Box
+        sx={{
+          display: 'grid',
+          gridTemplateColumns: {
+            xs: '1fr',
+            sm: 'repeat(2, 1fr)',
+            md: 'repeat(4, 1fr)',
+          },
+          gap: 2,
+        }}
+      >
+        <Paper
+          elevation={2}
+          sx={{
+            p: 2,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 1.5,
+          }}
+        >
+          <InsightsIcon color="primary" />
+          <Box>
+            <Typography variant="subtitle2" color="text.secondary">
+              Indicadores
+            </Typography>
+            <Typography variant="h6" sx={{ fontWeight: 600 }}>
+              Em breve
+            </Typography>
+          </Box>
+        </Paper>
 
-        <Grid item xs={12} sm={6} md={3}>
-          <Paper
-            elevation={2}
-            sx={{
-              p: 2,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 1.5,
-            }}
-          >
-            <PeopleAltIcon color="primary" />
-            <Box>
-              <Typography variant="subtitle2" color="text.secondary">
-                Atendimentos
-              </Typography>
-              <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                Em breve
-              </Typography>
-            </Box>
-          </Paper>
-        </Grid>
+        <Paper
+          elevation={2}
+          sx={{
+            p: 2,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 1.5,
+          }}
+        >
+          <PeopleAltIcon color="primary" />
+          <Box>
+            <Typography variant="subtitle2" color="text.secondary">
+              Atendimentos
+            </Typography>
+            <Typography variant="h6" sx={{ fontWeight: 600 }}>
+              Em breve
+            </Typography>
+          </Box>
+        </Paper>
 
-        <Grid item xs={12} sm={6} md={3}>
-          <Paper
-            elevation={2}
-            sx={{
-              p: 2,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 1.5,
-            }}
-          >
-            <AssignmentTurnedInIcon color="primary" />
-            <Box>
-              <Typography variant="subtitle2" color="text.secondary">
-                Protocolos
-              </Typography>
-              <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                Em breve
-              </Typography>
-            </Box>
-          </Paper>
-        </Grid>
+        <Paper
+          elevation={2}
+          sx={{
+            p: 2,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 1.5,
+          }}
+        >
+          <AssignmentTurnedInIcon color="primary" />
+          <Box>
+            <Typography variant="subtitle2" color="text.secondary">
+              Protocolos
+            </Typography>
+            <Typography variant="h6" sx={{ fontWeight: 600 }}>
+              Em breve
+            </Typography>
+          </Box>
+        </Paper>
 
-        <Grid item xs={12} sm={6} md={3}>
-          <Paper
-            elevation={2}
-            sx={{
-              p: 2,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 1.5,
-            }}
-          >
-            <SchoolIcon color="primary" />
-            <Box>
-              <Typography variant="subtitle2" color="text.secondary">
-                Alunos
-              </Typography>
-              <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                Em breve
-              </Typography>
-            </Box>
-          </Paper>
-        </Grid>
-      </Grid>
+        <Paper
+          elevation={2}
+          sx={{
+            p: 2,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 1.5,
+          }}
+        >
+          <SchoolIcon color="primary" />
+          <Box>
+            <Typography variant="subtitle2" color="text.secondary">
+              Alunos
+            </Typography>
+            <Typography variant="h6" sx={{ fontWeight: 600 }}>
+              Em breve
+            </Typography>
+          </Box>
+        </Paper>
+      </Box>
     </Box>
   )
 }
