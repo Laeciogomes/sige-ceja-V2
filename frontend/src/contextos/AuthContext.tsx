@@ -38,54 +38,75 @@ type AuthProviderProps = {
   children: ReactNode
 }
 
-// Normaliza o valor vindo do Supabase (string ou número) para nosso enum PapelUsuario
-const normalizarPapel = (valor: unknown): PapelUsuario | undefined => {
-  if (!valor) return undefined
+/**
+ * Mapeia o id_tipo_usuario (inteiro) vindo da tabela public.usuarios
+ * para o enum interno PapelUsuario.
+ *
+ * Tabela antiga:
+ * 1 = Diretor
+ * 2 = Professor
+ * 3 = Coordenador
+ * 4 = Secretario
+ * 5 = Aluno
+ * 6 = Administrador
+ */
+const normalizarPapelPorId = (
+  idTipoUsuario: number | null | undefined,
+): PapelUsuario | undefined => {
+  if (idTipoUsuario == null) return undefined
 
-  if (typeof valor === 'string') {
-    const v = valor.toLowerCase()
-    if (v.includes('admin')) return 'ADMIN'
-    if (v.includes('diretor')) return 'DIRETOR'
-    if (v.includes('coord')) return 'COORDENACAO'
-    if (v.includes('secret')) return 'SECRETARIA'
-    if (v.includes('prof')) return 'PROFESSOR'
-    if (v.includes('aluno')) return 'ALUNO'
-    return undefined
+  switch (idTipoUsuario) {
+    case 6:
+      return 'ADMIN'
+    case 1:
+      return 'DIRETOR'
+    case 3:
+      return 'COORDENACAO'
+    case 4:
+      return 'SECRETARIA'
+    case 2:
+      return 'PROFESSOR'
+    case 5:
+      return 'ALUNO'
+    default:
+      return undefined
   }
-
-  if (typeof valor === 'number') {
-    // mapeamento baseado na tabela tipos_usuario do banco antigo
-    // 1=Diretor, 2=Professor, 3=Coordenador, 4=Secretario, 5=Aluno, 6=Administrador
-    switch (valor) {
-      case 6:
-        return 'ADMIN'
-      case 1:
-        return 'DIRETOR'
-      case 3:
-        return 'COORDENACAO'
-      case 4:
-        return 'SECRETARIA'
-      case 2:
-        return 'PROFESSOR'
-      case 5:
-        return 'ALUNO'
-      default:
-        return undefined
-    }
-  }
-
-  return undefined
 }
 
-const mapUserToUsuario = (user: User | null): UsuarioAutenticado | null => {
+type PerfilUsuarioRow = {
+  id_tipo_usuario: number | null
+}
+
+/**
+ * Lê o perfil em public.usuarios para descobrir o id_tipo_usuario
+ */
+const carregarPerfilUsuario = async (
+  supabase: ReturnType<typeof useSupabase>['supabase'],
+  userId: string,
+): Promise<number | null> => {
+  if (!supabase) return null
+
+  const { data, error } = await supabase
+    .from('usuarios')
+    .select('id_tipo_usuario')
+    .eq('id', userId)
+    .maybeSingle<PerfilUsuarioRow>()
+
+  if (error) {
+    console.error('Erro ao carregar perfil em public.usuarios:', error)
+    return null
+  }
+
+  return data?.id_tipo_usuario ?? null
+}
+
+const construirUsuario = (
+  user: User | null,
+  idTipoUsuario: number | null,
+): UsuarioAutenticado | null => {
   if (!user) return null
 
-  const metadata = (user.user_metadata || {}) as any
-
-  const papel =
-    normalizarPapel(metadata.papel) ??
-    normalizarPapel(metadata.tipo_usuario) ??
-    normalizarPapel(metadata.id_tipo_usuario)
+  const papel = normalizarPapelPorId(idTipoUsuario)
 
   return {
     id: user.id,
@@ -100,6 +121,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [carregando, setCarregando] = useState(true)
   const navigate = useNavigate()
 
+  // Carrega usuário inicial + perfil
   useEffect(() => {
     if (!supabase) {
       console.error('Supabase não inicializado no AuthProvider')
@@ -109,7 +131,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
     let cancelado = false
 
-    const carregarUsuario = async () => {
+    const carregarUsuarioInicial = async () => {
       try {
         const { data, error } = await supabase.auth.getUser()
 
@@ -132,8 +154,16 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           return
         }
 
+        const user = data.user
+        if (!user) {
+          if (!cancelado) setUsuario(null)
+          return
+        }
+
+        const idTipoUsuario = await carregarPerfilUsuario(supabase, user.id)
+
         if (!cancelado) {
-          setUsuario(mapUserToUsuario(data.user))
+          setUsuario(construirUsuario(user, idTipoUsuario))
         }
       } catch (e) {
         console.error('Exceção ao obter usuário inicial:', e)
@@ -147,13 +177,20 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       }
     }
 
-    carregarUsuario()
+    carregarUsuarioInicial()
 
     const { data: subscription } = supabase.auth.onAuthStateChange(
-      (event, session) => {
+      async (event, session) => {
         const user = session?.user ?? null
-        setUsuario(mapUserToUsuario(user))
 
+        if (!user) {
+          setUsuario(null)
+        } else {
+          const idTipoUsuario = await carregarPerfilUsuario(supabase, user.id)
+          setUsuario(construirUsuario(user, idTipoUsuario))
+        }
+
+        // Fluxo de recuperação de senha: força ir para /nova-senha
         if (event === 'PASSWORD_RECOVERY') {
           navigate('/nova-senha', { replace: true })
         }
@@ -187,7 +224,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         throw error
       }
 
-      setUsuario(mapUserToUsuario(data.user))
+      const user = data.user
+      if (!user) {
+        setUsuario(null)
+        return
+      }
+
+      const idTipoUsuario = await carregarPerfilUsuario(supabase, user.id)
+      setUsuario(construirUsuario(user, idTipoUsuario))
     } catch (e) {
       console.error('Erro ao realizar login:', e)
       setUsuario(null)
