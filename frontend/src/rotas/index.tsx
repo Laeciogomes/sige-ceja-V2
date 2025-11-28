@@ -1,7 +1,6 @@
 // src/rotas/index.tsx
 import React from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
-
 import { RootLayout } from '../layouts/RootLayout'
 import { LoginPage } from '../paginas/Autenticacao/LoginPage'
 import { NovaSenhaPage } from '../paginas/Autenticacao/NovaSenhaPage'
@@ -15,21 +14,14 @@ export const AppRoutes: React.FC = () => {
 
   return (
     <Routes>
-      {/* Login separado do layout principal */}
       <Route
         path="/login"
-        element={
-          autenticado ? <Navigate to="/" replace /> : <LoginPage />
-        }
+        element={autenticado ? <Navigate to="/" replace /> : <LoginPage />}
       />
 
-      {/* ROTA DE REDEFINIÇÃO DE SENHA (pública) */}
-      <Route
-        path="/nova-senha"
-        element={<NovaSenhaPage />}
-      />
+      {/* Rota pública para redefinição de senha */}
+      <Route path="/nova-senha" element={<NovaSenhaPage />} />
 
-      {/* Rotas protegidas pelo layout principal */}
       <Route
         path="/"
         element={
@@ -37,7 +29,6 @@ export const AppRoutes: React.FC = () => {
         }
       >
         <Route index element={<DashboardPage />} />
-
         <Route path="secretaria" element={<PaginaSimples titulo="Secretaria" />} />
         <Route path="professores" element={<PaginaSimples titulo="Professores" />} />
         <Route path="coordenacao" element={<PaginaSimples titulo="Coordenação" />} />
@@ -50,7 +41,6 @@ export const AppRoutes: React.FC = () => {
         <Route path="config" element={<PaginaSimples titulo="Configurações" />} />
       </Route>
 
-      {/* Rota desconhecida */}
       <Route
         path="*"
         element={

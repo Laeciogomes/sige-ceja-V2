@@ -29,14 +29,3 @@ ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
     </BrowserRouter>
   </React.StrictMode>,
 )
-
-// Registro do Service Worker para PWA (instalável em PC/celular/tablet)
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker
-      .register('/sw.js')
-      .catch((err) => {
-        console.error('Falha ao registrar o service worker:', err)
-      })
-  })
-}
