@@ -42,7 +42,10 @@ import { useTema } from '../contextos/TemaContext'
 import { useAuth } from '../contextos/AuthContext'
 import { useSupabase } from '../contextos/SupabaseContext'
 
+import logoCeja from '../assets/logo-ceja.png'
+
 const drawerWidth = 260
+const drawerWidthCollapsed = 72
 
 type MenuItemConfig = {
   label: string
@@ -138,7 +141,9 @@ export const RootLayout: React.FC = () => {
     return location.pathname.startsWith(path)
   }
 
-  const nomeUsuario = perfil?.name || usuario?.email || 'Usuário'
+  const nomeUsuario =
+    perfil?.name || usuario?.email || 'Usuário'
+
   const inicialUsuario = nomeUsuario.charAt(0).toUpperCase()
 
   return (
@@ -151,6 +156,7 @@ export const RootLayout: React.FC = () => {
         elevation={1}
         sx={{
           zIndex: theme.zIndex.drawer + 1,
+          borderRadius: 0,
           background:
             theme.palette.mode === 'light'
               ? 'linear-gradient(90deg, #F7941D 0%, #4CAF50 50%, #2e7d32 100%)'
@@ -166,7 +172,7 @@ export const RootLayout: React.FC = () => {
             justifyContent: 'space-between',
           }}
         >
-          {/* LADO ESQUERDO: Hambúrguer + “logo” + nome do sistema */}
+          {/* LADO ESQUERDO: Hambúrguer + logo + nome do sistema */}
           <Box
             sx={{
               display: 'flex',
@@ -190,20 +196,20 @@ export const RootLayout: React.FC = () => {
                 gap: 1,
               }}
             >
-              {/* “Logo” sintética com Avatar CEJA */}
-              <Avatar
+              {/* Logo CEJA */}
+              <Box
+                component="img"
+                src={logoCeja}
+                alt="Logo CEJA"
                 sx={{
-                  width: 36,
-                  height: 36,
-                  bgcolor: 'rgba(255,255,255,0.95)',
-                  color: theme.palette.primary.main,
-                  fontSize: 16,
-                  fontWeight: 700,
+                  width: 40,
+                  height: 40,
+                  borderRadius: '50%',
+                  bgcolor: 'rgba(255,255,255,0.9)',
                   boxShadow: 2,
+                  objectFit: 'cover',
                 }}
-              >
-                CE
-              </Avatar>
+              />
               <Box>
                 <Typography
                   variant="subtitle1"
@@ -218,7 +224,7 @@ export const RootLayout: React.FC = () => {
                 <Typography
                   variant="caption"
                   sx={{
-                    color: 'rgba(255,255,255,0.8)',
+                    color: 'rgba(255,255,255,0.85)',
                     letterSpacing: 0.3,
                   }}
                 >
@@ -269,7 +275,7 @@ export const RootLayout: React.FC = () => {
                   variant="body2"
                   sx={{
                     display: { xs: 'none', sm: 'block' },
-                    maxWidth: 160,
+                    maxWidth: 200,
                     whiteSpace: 'nowrap',
                     textOverflow: 'ellipsis',
                     overflow: 'hidden',
@@ -332,46 +338,92 @@ export const RootLayout: React.FC = () => {
         </Toolbar>
       </AppBar>
 
-      {/* DRAWER LATERAL */}
+      {/* DRAWER LATERAL COM MODO COMPACTO */}
       <Drawer
         variant="persistent"
         anchor="left"
         open={drawerOpen}
         sx={{
-          width: drawerWidth,
+          width: drawerOpen ? drawerWidth : drawerWidthCollapsed,
           flexShrink: 0,
           '& .MuiDrawer-paper': {
-            width: drawerWidth,
+            width: drawerOpen ? drawerWidth : drawerWidthCollapsed,
             boxSizing: 'border-box',
             borderRight: `1px solid ${theme.palette.divider}`,
+            transition: theme.transitions.create('width', {
+              easing: theme.transitions.easing.sharp,
+              duration: theme.transitions.duration.shortest,
+            }),
           },
         }}
       >
-        <Toolbar /> {/* espaço para não ficar embaixo do AppBar */}
+        <Toolbar />
         <Divider />
         <List sx={{ py: 1 }}>
-          {menuItens.map(item => (
-            <ListItemButton
-              key={item.path}
-              selected={isRouteActive(item.path)}
-              onClick={() => navigate(item.path)}
-              sx={{
-                px: 2.5,
-                '&.Mui-selected': {
-                  bgcolor: theme.palette.action.selected,
-                  '&:hover': {
-                    bgcolor: theme.palette.action.selected,
-                  },
-                },
-              }}
-            >
-              <ListItemIcon sx={{ minWidth: 36 }}>{item.icon}</ListItemIcon>
-              <ListItemText
-                primary={item.label}
-                primaryTypographyProps={{ variant: 'body2' }}
-              />
-            </ListItemButton>
-          ))}
+          {menuItens.map(item => {
+            const ativo = isRouteActive(item.path)
+            return (
+              <Tooltip
+                key={item.path}
+                title={!drawerOpen ? item.label : ''}
+                placement="right"
+                arrow
+              >
+                <ListItemButton
+                  selected={ativo}
+                  onClick={() => navigate(item.path)}
+                  sx={{
+                    px: drawerOpen ? 2.5 : 1,
+                    justifyContent: drawerOpen ? 'flex-start' : 'center',
+                    borderRadius: 2,
+                    mx: drawerOpen ? 1 : 0.5,
+                    my: 0.25,
+                    transition: theme.transitions.create(
+                      ['background-color', 'transform', 'box-shadow'],
+                      {
+                        duration: theme.transitions.duration.shortest,
+                      },
+                    ),
+                    '&:hover': {
+                      bgcolor: theme.palette.action.hover,
+                      transform: 'translateX(2px)',
+                      boxShadow: 1,
+                    },
+                    '&.Mui-selected': {
+                      bgcolor: theme.palette.action.selected,
+                      '&:hover': {
+                        bgcolor: theme.palette.action.selected,
+                      },
+                      borderLeft: `3px solid ${theme.palette.primary.main}`,
+                    },
+                  }}
+                >
+                  <ListItemIcon
+                    sx={{
+                      minWidth: drawerOpen ? 36 : 'auto',
+                      mr: drawerOpen ? 1.5 : 0,
+                      justifyContent: 'center',
+                      color: ativo
+                        ? theme.palette.primary.main
+                        : theme.palette.text.secondary,
+                    }}
+                  >
+                    {item.icon}
+                  </ListItemIcon>
+                  <ListItemText
+                    primary={item.label}
+                    primaryTypographyProps={{ variant: 'body2' }}
+                    sx={{
+                      opacity: drawerOpen ? 1 : 0,
+                      transition: theme.transitions.create('opacity', {
+                        duration: theme.transitions.duration.shortest,
+                      }),
+                    }}
+                  />
+                </ListItemButton>
+              </Tooltip>
+            )
+          })}
         </List>
       </Drawer>
 
@@ -382,14 +434,14 @@ export const RootLayout: React.FC = () => {
           flexGrow: 1,
           minHeight: '100vh',
           bgcolor: theme.palette.background.default,
-          ml: drawerOpen ? `${drawerWidth}px` : 0,
+          ml: drawerOpen ? `${drawerWidth}px` : `${drawerWidthCollapsed}px`,
           transition: theme.transitions.create(['margin-left'], {
             easing: theme.transitions.easing.sharp,
-            duration: theme.transitions.duration.leavingScreen,
+            duration: theme.transitions.duration.shortest,
           }),
         }}
       >
-        <Toolbar /> {/* espaço abaixo do AppBar */}
+        <Toolbar />
         <Box sx={{ p: 2.5, pb: 4 }}>
           <Outlet />
         </Box>
