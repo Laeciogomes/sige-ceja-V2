@@ -85,24 +85,47 @@ const LoginPage: React.FC = () => {
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+
+    if (loading) return
+
     setErro(null)
     setLoading(true)
 
     try {
-      await login(email.trim(), senha, rememberMe)
+      const emailTrim = email.trim()
+
+      if (!emailTrim || !senha) {
+        const msg = 'Informe e-mail e senha para continuar.'
+        setErro(msg)
+        toastErro(msg, 'Campos obrigatórios', 5000)
+        return
+      }
+
+      // Timeout de segurança: se algo der muito errado na rede, não deixamos o botão travado
+      const loginPromise = login(emailTrim, senha, rememberMe)
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(
+          () => reject(new Error('Tempo limite ao conectar ao servidor de autenticação.')),
+          10000,
+        ),
+      )
+
+      await Promise.race([loginPromise, timeoutPromise])
 
       toastSucesso('Login realizado com sucesso.', 'Bem-vindo(a) ao SIGE-CEJA', 3000)
-
       navigate('/', { replace: true })
     } catch (e: any) {
       const msg =
         (e && typeof e === 'object' && 'message' in e && (e as any).message) ||
-        'E-mail ou senha incorretos. Verifique suas credenciais.'
+        'Não foi possível realizar o login. Verifique suas credenciais ou tente novamente.'
 
       const mensagem = String(msg)
       setErro(mensagem)
+      toastErro(mensagem, 'Falha no login', 6000)
 
-      toastErro(mensagem, 'Falha no login', 5000)
+      // Log mais detalhado no console para debug em produção
+      // eslint-disable-next-line no-console
+      console.error('[LoginPage] Erro ao efetuar login:', e)
     } finally {
       setLoading(false)
     }
@@ -125,7 +148,7 @@ const LoginPage: React.FC = () => {
         <Box
           sx={{
             textAlign: 'center',
-            mt: { xs: 0.5, md: 1.5 }, // empurra um pouco para baixo para não “encostar” no topo
+            mt: { xs: 0.5, md: 1.5 },
             mb: 2.5,
           }}
         >
@@ -145,7 +168,7 @@ const LoginPage: React.FC = () => {
                 bgcolor: 'primary.main',
                 color: 'primary.contrastText',
                 boxShadow: 4,
-                border: theme => `4px solid ${theme.palette.background.paper}`, // borda para não parecer cortado
+                border: theme => `4px solid ${theme.palette.background.paper}`,
               }}
               src={rememberedUserImageUrl || undefined}
             >
@@ -286,7 +309,7 @@ const LoginPage: React.FC = () => {
             />
 
             <Link
-              href="#"
+              href="#" // abre modal de recuperação
               variant="body2"
               sx={{ fontSize: 13 }}
               onClick={e => {
