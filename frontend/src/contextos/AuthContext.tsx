@@ -8,6 +8,7 @@ import React, {
   type ReactNode,
 } from 'react'
 import type { User } from '@supabase/supabase-js'
+import { useNavigate } from 'react-router-dom'
 import { useSupabase } from './SupabaseContext'
 
 type UsuarioAutenticado = {
@@ -40,6 +41,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const { supabase } = useSupabase()
   const [usuario, setUsuario] = useState<UsuarioAutenticado | null>(null)
   const [carregando, setCarregando] = useState(true)
+  const navigate = useNavigate()
 
   // Carrega usuário inicial e registra listener de auth
   useEffect(() => {
@@ -76,10 +78,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         }
 
         if (!cancelado) {
-          setUsuario(mapUserToUsuario(data?.user ?? null))
+          setUsuario(mapUserToUsuario(data.user))
         }
       } catch (e) {
-        // Qualquer outra exceção real a gente loga
         console.error('Exceção ao obter usuário inicial:', e)
         if (!cancelado) {
           setUsuario(null)
@@ -93,16 +94,23 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
     carregarUsuario()
 
-    const { data } = supabase.auth.onAuthStateChange((_event, session) => {
-      const user = session?.user ?? null
-      setUsuario(mapUserToUsuario(user))
-    })
+    const { data: subscription } = supabase.auth.onAuthStateChange(
+      (event, session) => {
+        const user = session?.user ?? null
+        setUsuario(mapUserToUsuario(user))
+
+        // 👇 FORÇA A NAVEGAR PARA /nova-senha NO FLUXO DE RECUPERAÇÃO
+        if (event === 'PASSWORD_RECOVERY') {
+          navigate('/nova-senha', { replace: true })
+        }
+      },
+    )
 
     return () => {
       cancelado = true
-      data.subscription.unsubscribe()
+      subscription.subscription.unsubscribe()
     }
-  }, [supabase])
+  }, [supabase, navigate])
 
   const login = async (
     email: string,
@@ -110,35 +118,54 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     _rememberMe: boolean,
   ) => {
     if (!supabase) {
-      console.error('Supabase não inicializado em login')
-      throw new Error('Falha interna ao inicializar autenticação.')
+      throw new Error('Supabase não inicializado no AuthProvider')
     }
 
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password: senha,
-    })
+    setCarregando(true)
 
-    if (error) {
-      throw error
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password: senha,
+      })
+
+      if (error) {
+        throw error
+      }
+
+      setUsuario(mapUserToUsuario(data.user))
+    } catch (e) {
+      console.error('Erro ao realizar login:', e)
+      setUsuario(null)
+      throw e
+    } finally {
+      setCarregando(false)
     }
-
-    setUsuario(mapUserToUsuario(data.user ?? null))
   }
 
   const logout = async () => {
     if (!supabase) {
-      console.error('Supabase não inicializado em logout')
+      console.error('Supabase não inicializado no AuthProvider')
+      setUsuario(null)
       return
     }
-    const { error } = await supabase.auth.signOut()
-    if (error) {
-      console.error('Erro ao fazer logout:', error)
+
+    setCarregando(true)
+
+    try {
+      const { error } = await supabase.auth.signOut()
+      if (error) {
+        throw error
+      }
+      setUsuario(null)
+    } catch (e) {
+      console.error('Erro ao realizar logout:', e)
+    } finally {
+      setCarregando(false)
     }
-    setUsuario(null)
   }
 
-  const valor = useMemo(
+  const valor: AuthContextTipo = useMemo(
     () => ({
       usuario,
       carregando,
