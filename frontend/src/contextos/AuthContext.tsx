@@ -11,9 +11,18 @@ import type { User } from '@supabase/supabase-js'
 import { useNavigate } from 'react-router-dom'
 import { useSupabase } from './SupabaseContext'
 
+export type PapelUsuario =
+  | 'ADMIN'
+  | 'DIRETOR'
+  | 'COORDENACAO'
+  | 'SECRETARIA'
+  | 'PROFESSOR'
+  | 'ALUNO'
+
 type UsuarioAutenticado = {
   id: string
   email: string | null
+  papel?: PapelUsuario
 }
 
 type AuthContextTipo = {
@@ -29,11 +38,59 @@ type AuthProviderProps = {
   children: ReactNode
 }
 
+// Normaliza o valor vindo do Supabase (string ou número) para nosso enum PapelUsuario
+const normalizarPapel = (valor: unknown): PapelUsuario | undefined => {
+  if (!valor) return undefined
+
+  if (typeof valor === 'string') {
+    const v = valor.toLowerCase()
+    if (v.includes('admin')) return 'ADMIN'
+    if (v.includes('diretor')) return 'DIRETOR'
+    if (v.includes('coord')) return 'COORDENACAO'
+    if (v.includes('secret')) return 'SECRETARIA'
+    if (v.includes('prof')) return 'PROFESSOR'
+    if (v.includes('aluno')) return 'ALUNO'
+    return undefined
+  }
+
+  if (typeof valor === 'number') {
+    // mapeamento baseado na tabela tipos_usuario do banco antigo
+    // 1=Diretor, 2=Professor, 3=Coordenador, 4=Secretario, 5=Aluno, 6=Administrador
+    switch (valor) {
+      case 6:
+        return 'ADMIN'
+      case 1:
+        return 'DIRETOR'
+      case 3:
+        return 'COORDENACAO'
+      case 4:
+        return 'SECRETARIA'
+      case 2:
+        return 'PROFESSOR'
+      case 5:
+        return 'ALUNO'
+      default:
+        return undefined
+    }
+  }
+
+  return undefined
+}
+
 const mapUserToUsuario = (user: User | null): UsuarioAutenticado | null => {
   if (!user) return null
+
+  const metadata = (user.user_metadata || {}) as any
+
+  const papel =
+    normalizarPapel(metadata.papel) ??
+    normalizarPapel(metadata.tipo_usuario) ??
+    normalizarPapel(metadata.id_tipo_usuario)
+
   return {
     id: user.id,
     email: user.email ?? null,
+    papel,
   }
 }
 
@@ -43,7 +100,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [carregando, setCarregando] = useState(true)
   const navigate = useNavigate()
 
-  // Carrega usuário inicial e registra listener de auth
   useEffect(() => {
     if (!supabase) {
       console.error('Supabase não inicializado no AuthProvider')
@@ -58,7 +114,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         const { data, error } = await supabase.auth.getUser()
 
         if (error) {
-          // Ignora o caso "sem sessão" (erro esperado quando ninguém está logado)
           const nome = (error as any).name || ''
           const status = (error as any).status || (error as any).statusCode
 
@@ -99,7 +154,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         const user = session?.user ?? null
         setUsuario(mapUserToUsuario(user))
 
-        // 👇 FORÇA A NAVEGAR PARA /nova-senha NO FLUXO DE RECUPERAÇÃO
         if (event === 'PASSWORD_RECOVERY') {
           navigate('/nova-senha', { replace: true })
         }
