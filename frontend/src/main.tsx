@@ -10,7 +10,16 @@ import { AuthProvider } from './contextos/AuthContext'
 import { TemaProvider } from './contextos/TemaContext'
 import { NotificacaoProvider } from './contextos/NotificacaoContext'
 
-const queryClient = new QueryClient()
+import './index.css'
+
+// Configuração global do React Query
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      refetchOnWindowFocus: false,
+    },
+  },
+})
 
 ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
   <React.StrictMode>

@@ -47,6 +47,7 @@ const SolicitarNovaSenhaModal: React.FC<SolicitarNovaSenhaModalProps> = ({
     _event: object,
     reason: 'backdropClick' | 'escapeKeyDown',
   ) => {
+    // Não permitimos fechar por clique no fundo ou ESC
     if (reason === 'backdropClick' || reason === 'escapeKeyDown') {
       return
     }
@@ -56,10 +57,16 @@ const SolicitarNovaSenhaModal: React.FC<SolicitarNovaSenhaModalProps> = ({
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
 
+    if (loading) return
+
     const emailTrim = email.trim()
 
     if (!emailTrim) {
-      erro('Informe o e-mail cadastrado para continuar.', 'E-mail obrigatório', 5000)
+      erro(
+        'Informe o e-mail cadastrado para continuar.',
+        'E-mail obrigatório',
+        5000,
+      )
       return
     }
 
@@ -80,7 +87,8 @@ const SolicitarNovaSenhaModal: React.FC<SolicitarNovaSenhaModalProps> = ({
     setLoading(true)
 
     try {
-      // BrowserRouter: rota real /nova-senha
+      // A URL base sempre será a origem atual (produção ou localhost),
+      // e a rota /nova-senha precisa existir nas rotas públicas do app.
       const redirectTo = `${window.location.origin}/nova-senha`
 
       const { error } = await supabase.auth.resetPasswordForEmail(emailTrim, {
@@ -124,11 +132,7 @@ const SolicitarNovaSenhaModal: React.FC<SolicitarNovaSenhaModalProps> = ({
       maxWidth="xs"
       disableEscapeKeyDown
     >
-      <Box
-        component="form"
-        onSubmit={handleSubmit}
-        noValidate
-      >
+      <Box component="form" onSubmit={handleSubmit} noValidate>
         <DialogTitle sx={{ fontWeight: 600 }}>
           Recuperar acesso
         </DialogTitle>
@@ -153,10 +157,7 @@ const SolicitarNovaSenhaModal: React.FC<SolicitarNovaSenhaModalProps> = ({
         </DialogContent>
 
         <DialogActions sx={{ px: 3, py: 2 }}>
-          <Button
-            onClick={fecharPeloUsuario}
-            disabled={loading}
-          >
+          <Button onClick={fecharPeloUsuario} disabled={loading}>
             Cancelar
           </Button>
 

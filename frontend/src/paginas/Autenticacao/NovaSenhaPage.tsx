@@ -130,6 +130,9 @@ const NovaSenhaPage: React.FC = () => {
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
 
+    // Evita submit enquanto ainda valida o link ou já está processando
+    if (checandoSessao || loading) return
+
     const s1 = senha.trim()
     const s2 = confirmacao.trim()
 
@@ -264,7 +267,7 @@ const NovaSenhaPage: React.FC = () => {
           </Typography>
         </Box>
 
-        {/* Se ainda está validando o link, mostra um “carregando” mais explícito */}
+        {/* Validação do link de redefinição */}
         {checandoSessao ? (
           <Box
             sx={{
