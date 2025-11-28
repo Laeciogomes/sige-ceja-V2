@@ -11,12 +11,12 @@ import { PaginaSimples } from '../paginas/PaginaSimples'
 import { useAuth } from '../contextos/AuthContext'
 
 export const AppRoutes: React.FC = () => {
-  const { usuario, inicializado } = useAuth()
+  const { usuario, carregando } = useAuth()
   const autenticado = !!usuario
 
   // Enquanto o AuthContext está validando a sessão com o Supabase,
-  // exibimos apenas um loading full-screen.
-  if (!inicializado) {
+  // exibimos um loading full-screen para evitar redirecionamentos prematuros.
+  if (carregando) {
     return (
       <Box
         sx={{
