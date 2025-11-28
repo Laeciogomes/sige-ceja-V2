@@ -101,16 +101,7 @@ const LoginPage: React.FC = () => {
         return
       }
 
-      // Timeout de segurança: se algo der muito errado na rede, não deixamos o botão travado
-      const loginPromise = login(emailTrim, senha, rememberMe)
-      const timeoutPromise = new Promise<never>((_, reject) =>
-        setTimeout(
-          () => reject(new Error('Tempo limite ao conectar ao servidor de autenticação.')),
-          10000,
-        ),
-      )
-
-      await Promise.race([loginPromise, timeoutPromise])
+      await login(emailTrim, senha, rememberMe)
 
       toastSucesso('Login realizado com sucesso.', 'Bem-vindo(a) ao SIGE-CEJA', 3000)
       navigate('/', { replace: true })
@@ -123,7 +114,7 @@ const LoginPage: React.FC = () => {
       setErro(mensagem)
       toastErro(mensagem, 'Falha no login', 6000)
 
-      // Log mais detalhado no console para debug em produção
+      // Log detalhado no console para debug
       // eslint-disable-next-line no-console
       console.error('[LoginPage] Erro ao efetuar login:', e)
     } finally {
@@ -309,7 +300,7 @@ const LoginPage: React.FC = () => {
             />
 
             <Link
-              href="#" // abre modal de recuperação
+              href="#"
               variant="body2"
               sx={{ fontSize: 13 }}
               onClick={e => {
