@@ -42,8 +42,6 @@ import { useTema } from '../contextos/TemaContext'
 import { useAuth } from '../contextos/AuthContext'
 import { useSupabase } from '../contextos/SupabaseContext'
 
-import logoCeja from '../assets/logo-ceja.png'
-
 const drawerWidth = 260
 
 type MenuItemConfig = {
@@ -140,9 +138,7 @@ export const RootLayout: React.FC = () => {
     return location.pathname.startsWith(path)
   }
 
-  const nomeUsuario =
-    perfil?.name || usuario?.email || 'Usuário'
-
+  const nomeUsuario = perfil?.name || usuario?.email || 'Usuário'
   const inicialUsuario = nomeUsuario.charAt(0).toUpperCase()
 
   return (
@@ -170,7 +166,7 @@ export const RootLayout: React.FC = () => {
             justifyContent: 'space-between',
           }}
         >
-          {/* LADO ESQUERDO: Hambúrguer + logo + nome do sistema */}
+          {/* LADO ESQUERDO: Hambúrguer + “logo” + nome do sistema */}
           <Box
             sx={{
               display: 'flex',
@@ -194,19 +190,20 @@ export const RootLayout: React.FC = () => {
                 gap: 1,
               }}
             >
-              <Box
-                component="img"
-                src={logoCeja}
-                alt="Logo CEJA"
+              {/* “Logo” sintética com Avatar CEJA */}
+              <Avatar
                 sx={{
                   width: 36,
                   height: 36,
-                  borderRadius: '50%',
-                  bgcolor: 'background.paper',
-                  boxShadow: 1,
-                  objectFit: 'cover',
+                  bgcolor: 'rgba(255,255,255,0.95)',
+                  color: theme.palette.primary.main,
+                  fontSize: 16,
+                  fontWeight: 700,
+                  boxShadow: 2,
                 }}
-              />
+              >
+                CE
+              </Avatar>
               <Box>
                 <Typography
                   variant="subtitle1"
