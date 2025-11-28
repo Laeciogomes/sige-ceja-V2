@@ -1,7 +1,6 @@
 // src/rotas/index.tsx
 import React from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
-import { Box, CircularProgress } from '@mui/material'
 
 import { RootLayout } from '../layouts/RootLayout'
 import { LoginPage } from '../paginas/Autenticacao/LoginPage'
@@ -11,25 +10,8 @@ import { PaginaSimples } from '../paginas/PaginaSimples'
 import { useAuth } from '../contextos/AuthContext'
 
 export const AppRoutes: React.FC = () => {
-  const { usuario, carregando } = useAuth()
+  const { usuario } = useAuth()
   const autenticado = !!usuario
-
-  // Enquanto o AuthContext está validando a sessão com o Supabase,
-  // exibimos um loading full-screen para evitar redirecionamentos prematuros.
-  if (carregando) {
-    return (
-      <Box
-        sx={{
-          minHeight: '100vh',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}
-      >
-        <CircularProgress />
-      </Box>
-    )
-  }
 
   return (
     <Routes>
@@ -39,7 +21,7 @@ export const AppRoutes: React.FC = () => {
         element={autenticado ? <Navigate to="/" replace /> : <LoginPage />}
       />
 
-      {/* ROTA PÚBLICA PARA REDEFINIR SENHA (vinda do e-mail do Supabase) */}
+      {/* ROTA PÚBLICA PARA REDEFINIÇÃO DE SENHA (link do e-mail do Supabase) */}
       <Route path="/nova-senha" element={<NovaSenhaPage />} />
 
       {/* ROTAS PROTEGIDAS (PRECISAM DE USUÁRIO AUTENTICADO) */}
