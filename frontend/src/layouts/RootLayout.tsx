@@ -42,8 +42,6 @@ import { useTema } from '../contextos/TemaContext'
 import { useAuth } from '../contextos/AuthContext'
 import { useSupabase } from '../contextos/SupabaseContext'
 
-import logoCeja from '../assets/logo-ceja.png'
-
 const drawerWidth = 260
 const drawerWidthCollapsed = 72
 
@@ -196,10 +194,10 @@ export const RootLayout: React.FC = () => {
                 gap: 1,
               }}
             >
-              {/* Logo CEJA */}
+              {/* Logo CEJA da pasta public */}
               <Box
                 component="img"
-                src={logoCeja}
+                src="/logo-ceja.png"
                 alt="Logo CEJA"
                 sx={{
                   width: 40,
