@@ -78,7 +78,8 @@ type PerfilUsuarioRow = {
 }
 
 /**
- * Lê o perfil em public.usuarios para descobrir o id_tipo_usuario
+ * Lê o perfil em public.usuarios para descobrir o id_tipo_usuario.
+ * Não deve ser usada para bloquear o login; rode em background.
  */
 const carregarPerfilUsuario = async (
   supabase: ReturnType<typeof useSupabase>['supabase'],
@@ -115,13 +116,19 @@ const construirUsuario = (
   }
 }
 
+/**
+ * Constrói um usuário básico só com id/email (sem papel).
+ */
+const construirUsuarioBasico = (user: User | null): UsuarioAutenticado | null =>
+  construirUsuario(user, null)
+
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const { supabase } = useSupabase()
   const [usuario, setUsuario] = useState<UsuarioAutenticado | null>(null)
   const [carregando, setCarregando] = useState(true)
   const navigate = useNavigate()
 
-  // Carrega usuário inicial + perfil
+  // Carrega usuário inicial + dispara carregamento de perfil em background
   useEffect(() => {
     if (!supabase) {
       console.error('Supabase não inicializado no AuthProvider')
@@ -160,11 +167,20 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           return
         }
 
-        const idTipoUsuario = await carregarPerfilUsuario(supabase, user.id)
-
+        // Primeiro, define usuário básico (sem papel), para não travar UI
         if (!cancelado) {
-          setUsuario(construirUsuario(user, idTipoUsuario))
+          setUsuario(construirUsuarioBasico(user))
         }
+
+        // Depois, em background, tenta preencher o papel
+        carregarPerfilUsuario(supabase, user.id)
+          .then(idTipoUsuario => {
+            if (cancelado) return
+            setUsuario(construirUsuario(user, idTipoUsuario))
+          })
+          .catch(e => {
+            console.error('Erro ao atualizar papel do usuário inicial:', e)
+          })
       } catch (e) {
         console.error('Exceção ao obter usuário inicial:', e)
         if (!cancelado) {
@@ -180,14 +196,23 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     carregarUsuarioInicial()
 
     const { data: subscription } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
+      (event, session) => {
         const user = session?.user ?? null
 
         if (!user) {
           setUsuario(null)
         } else {
-          const idTipoUsuario = await carregarPerfilUsuario(supabase, user.id)
-          setUsuario(construirUsuario(user, idTipoUsuario))
+          // Atualiza primeiro com usuário básico
+          setUsuario(construirUsuarioBasico(user))
+
+          // Depois, em background, tenta preencher papel
+          carregarPerfilUsuario(supabase, user.id)
+            .then(idTipoUsuario => {
+              setUsuario(construirUsuario(user, idTipoUsuario))
+            })
+            .catch(e => {
+              console.error('Erro ao atualizar papel no onAuthStateChange:', e)
+            })
         }
 
         // Fluxo de recuperação de senha: força ir para /nova-senha
@@ -227,11 +252,20 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       const user = data.user
       if (!user) {
         setUsuario(null)
-        return
+        throw new Error('Login realizado, mas usuário não encontrado na sessão.')
       }
 
-      const idTipoUsuario = await carregarPerfilUsuario(supabase, user.id)
-      setUsuario(construirUsuario(user, idTipoUsuario))
+      // Define usuário básico imediatamente
+      setUsuario(construirUsuarioBasico(user))
+
+      // Em background, tenta carregar o papel
+      carregarPerfilUsuario(supabase, user.id)
+        .then(idTipoUsuario => {
+          setUsuario(construirUsuario(user, idTipoUsuario))
+        })
+        .catch(e => {
+          console.error('Erro ao carregar papel após login:', e)
+        })
     } catch (e) {
       console.error('Erro ao realizar login:', e)
       setUsuario(null)
