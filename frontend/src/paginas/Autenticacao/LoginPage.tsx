@@ -125,25 +125,27 @@ const LoginPage: React.FC = () => {
         <Box
           sx={{
             textAlign: 'center',
+            mt: { xs: 0.5, md: 1.5 }, // empurra um pouco para baixo para não “encostar” no topo
             mb: 2.5,
           }}
         >
           <Box
             sx={{
-              mb: 1.25,
+              mb: 1.5,
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
-              gap: 0.5,
+              gap: 0.75,
             }}
           >
             <Avatar
               sx={{
-                width: 80,
-                height: 80,
+                width: 76,
+                height: 76,
                 bgcolor: 'primary.main',
                 color: 'primary.contrastText',
-                boxShadow: 3,
+                boxShadow: 4,
+                border: theme => `4px solid ${theme.palette.background.paper}`, // borda para não parecer cortado
               }}
               src={rememberedUserImageUrl || undefined}
             >

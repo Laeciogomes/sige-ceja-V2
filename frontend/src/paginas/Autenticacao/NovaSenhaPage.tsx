@@ -176,6 +176,7 @@ const NovaSenhaPage: React.FC = () => {
     setLoading(true)
 
     try {
+      // 1) Atualiza a senha
       const { error } = await supabase.auth.updateUser({ password: s1 })
 
       if (error) {
@@ -188,7 +189,15 @@ const NovaSenhaPage: React.FC = () => {
         return
       }
 
-      sucesso('Senha atualizada com sucesso.', 'Senha redefinida', 5000)
+      // 2) Faz logout para evitar cair direto no dashboard
+      await supabase.auth.signOut()
+
+      // 3) Feedback e redirecionamento para login
+      sucesso(
+        'Senha atualizada com sucesso. Faça login novamente com sua nova senha.',
+        'Senha redefinida',
+        5000,
+      )
       navigate('/login', { replace: true })
     } catch (e) {
       console.error('Exceção ao atualizar senha:', e)
