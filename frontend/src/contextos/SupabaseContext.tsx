@@ -1,58 +1,66 @@
-import React, { createContext, useContext, useMemo } from 'react'
-import { createClient, SupabaseClient } from '@supabase/supabase-js'
+// src/contextos/SupabaseContext.tsx
+import React, {
+  createContext,
+  useContext,
+  type ReactNode,
+  useMemo,
+} from 'react'
+import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 
-type SupabaseContextType = {
+type SupabaseContextTipo = {
   supabase: SupabaseClient | null
 }
 
-const SupabaseContext = createContext<SupabaseContextType | undefined>(undefined)
+const SupabaseContext = createContext<SupabaseContextTipo | undefined>(
+  undefined,
+)
 
-// Lidos do .env (Vite)
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined
-
-let supabase: SupabaseClient | null = null
-
-if (!supabaseUrl || !supabaseAnonKey) {
-  // Ainda não configurado: não quebra a aplicação, só avisa no console.
-  console.warn(
-    'Supabase não está configurado. Defina VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY no seu arquivo .env.local.',
-  )
-} else {
-  // Cliente único, criado uma vez só para toda a aplicação
-  supabase = createClient(supabaseUrl, supabaseAnonKey)
+type SupabaseProviderProps = {
+  children: ReactNode
 }
 
-export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const value = useMemo<SupabaseContextType>(
-    () => ({ supabase }),
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
+
+let supabaseClient: SupabaseClient | null = null
+
+if (!supabaseUrl || !supabaseAnonKey) {
+  // Isso vai aparecer no console do navegador em produção se vc esquecer de setar as envs no Pages
+  console.error(
+    '[SupabaseContext] Variáveis de ambiente do Supabase ausentes. ' +
+      'Defina VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY nas variáveis de ambiente do build.',
+  )
+  supabaseClient = null
+} else {
+  supabaseClient = createClient(supabaseUrl, supabaseAnonKey, {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+    },
+  })
+}
+
+export const SupabaseProvider: React.FC<SupabaseProviderProps> = ({
+  children,
+}) => {
+  const valor = useMemo<SupabaseContextTipo>(
+    () => ({
+      supabase: supabaseClient,
+    }),
     [],
   )
 
   return (
-    <SupabaseContext.Provider value={value}>
+    <SupabaseContext.Provider value={valor}>
       {children}
     </SupabaseContext.Provider>
   )
 }
 
-/**
- * Hook para acessar o cliente Supabase.
- * Uso típico:
- *   const { supabase } = useSupabase()
- */
-export function useSupabase() {
+export const useSupabase = (): SupabaseContextTipo => {
   const ctx = useContext(SupabaseContext)
-
   if (!ctx) {
-    throw new Error('useSupabase deve ser usado dentro de SupabaseProvider')
+    throw new Error('useSupabase deve ser usado dentro de <SupabaseProvider>')
   }
-
-  if (!ctx.supabase) {
-    throw new Error(
-      'Supabase não está configurado. Verifique VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY no .env.local.',
-    )
-  }
-
   return ctx
 }
