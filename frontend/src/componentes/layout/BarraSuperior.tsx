@@ -29,6 +29,9 @@ import { useSupabase } from '../../contextos/SupabaseContext'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 
+// LOGO: caminho dentro de src
+import logoCeja from '../../assets/imagens/logo-ceja.png'
+
 type BarraSuperiorProps = {
   alternarMenuLateral: () => void
 }
@@ -45,9 +48,7 @@ const BarraSuperior: React.FC<BarraSuperiorProps> = ({ alternarMenuLateral }) =>
   const { supabase } = useSupabase()
   const navigate = useNavigate()
 
-  const [anchorAvatar, setAnchorAvatar] = React.useState<null | HTMLElement>(
-    null
-  )
+  const [anchorAvatar, setAnchorAvatar] = React.useState<null | HTMLElement>(null)
 
   const ehDark = modo === 'dark'
 
@@ -72,6 +73,7 @@ const BarraSuperior: React.FC<BarraSuperiorProps> = ({ alternarMenuLateral }) =>
     },
   })
 
+  // Sempre exibe o NOME; se não existir, mostra "Usuário" (não mostra e-mail).
   const nomeUsuario = perfil?.name || 'Usuário'
   const inicialUsuario = nomeUsuario.charAt(0).toUpperCase()
 
@@ -106,6 +108,8 @@ const BarraSuperior: React.FC<BarraSuperiorProps> = ({ alternarMenuLateral }) =>
         elevation={1}
         sx={{
           zIndex: theme.zIndex.drawer + 1,
+          // sem bordas arredondadas no topo
+          borderRadius: 0,
           background:
             theme.palette.mode === 'light'
               ? 'linear-gradient(90deg, #F7941D 0%, #4CAF50 50%, #2e7d32 100%)'
@@ -121,7 +125,7 @@ const BarraSuperior: React.FC<BarraSuperiorProps> = ({ alternarMenuLateral }) =>
             justifyContent: 'space-between',
           }}
         >
-          {/* Lado esquerdo */}
+          {/* Lado esquerdo: botão de menu + logo + título */}
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
             <IconButton
               color="inherit"
@@ -133,19 +137,18 @@ const BarraSuperior: React.FC<BarraSuperiorProps> = ({ alternarMenuLateral }) =>
             </IconButton>
 
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <Avatar
-                src="/logo-ceja.png"
+              {/* LOGO SEM BORDA ARREDONDADA */}
+              <Box
+                component="img"
+                src={logoCeja}
                 alt="Logo CEJA"
                 sx={{
-                  width: 40,
-                  height: 40,
-                  borderRadius: '50%',
-                  bgcolor: 'rgba(255,255,255,0.9)',
-                  boxShadow: 2,
+                  width: 44,
+                  height: 44,
+                  objectFit: 'contain',
+                  display: 'block',
                 }}
-              >
-                LOGO
-              </Avatar>
+              />
 
               <Box>
                 <Typography
@@ -184,15 +187,9 @@ const BarraSuperior: React.FC<BarraSuperiorProps> = ({ alternarMenuLateral }) =>
                 }}
               >
                 {ehDark ? (
-                  <LightModeRoundedIcon
-                    fontSize="small"
-                    sx={{ color: '#FFEB3B' }}
-                  />
+                  <LightModeRoundedIcon fontSize="small" sx={{ color: '#FFEB3B' }} />
                 ) : (
-                  <DarkModeRoundedIcon
-                    fontSize="small"
-                    sx={{ color: 'white' }}
-                  />
+                  <DarkModeRoundedIcon fontSize="small" sx={{ color: 'white' }} />
                 )}
               </IconButton>
             </Tooltip>
@@ -207,7 +204,7 @@ const BarraSuperior: React.FC<BarraSuperiorProps> = ({ alternarMenuLateral }) =>
                 }}
                 onClick={aoClicarAvatar}
               >
-                {/* Primeiro a foto */}
+                {/* Primeiro a FOTO */}
                 <Avatar
                   src={perfil?.foto_url || undefined}
                   sx={{
