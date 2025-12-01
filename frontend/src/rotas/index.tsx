@@ -2,7 +2,7 @@
 import React from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 
-import RootLayout from '../layouts/RootLayout'
+import { RootLayout } from '../layouts/RootLayout'
 import { LoginPage } from '../paginas/Autenticacao/LoginPage'
 import { NovaSenhaPage } from '../paginas/Autenticacao/NovaSenhaPage'
 import { DashboardPage } from '../paginas/Dashboard/DashboardPage'

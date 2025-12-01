@@ -20,8 +20,9 @@ import {
   TextField,
   Typography,
   useTheme,
-  Grid,
+  GridLegacy as Grid,
 } from '@mui/material'
+
 import {
   Image as ImageIcon,
   PhotoCamera,
@@ -30,8 +31,9 @@ import {
   Person as PersonIcon,
   Home as HomeIcon,
   Security as SecurityIcon,
-  PhotoCameraFront as PhotoIcon
+  PhotoCameraFront as PhotoIcon,
 } from '@mui/icons-material'
+
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 
 import { useAuth } from '../../contextos/AuthContext'
@@ -136,7 +138,7 @@ const PerfilPage: React.FC = () => {
   const [loadingSenha, setLoadingSenha] = useState(false)
 
   // Query Data
-  const { data: perfil, isLoading, isError, error } = useQuery({
+  const { data: perfil, isLoading, isError } = useQuery({
     queryKey: ['perfil-usuario-editar', usuario?.id],
     enabled: !!usuario && !!supabase,
     queryFn: async (): Promise<UsuarioPerfil | null> => {
