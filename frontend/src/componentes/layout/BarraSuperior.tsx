@@ -1,5 +1,5 @@
 // frontend/src/componentes/layout/BarraSuperior.tsx
-import React from 'react'
+import React, { useState } from 'react'
 import {
   AppBar,
   Avatar,
@@ -14,24 +14,33 @@ import {
   Tooltip,
   Typography,
   useTheme,
+  Skeleton,
+  Badge,
+  Fade,
+  Chip
 } from '@mui/material'
 
+// Ícones
 import MenuIcon from '@mui/icons-material/Menu'
 import DarkModeRoundedIcon from '@mui/icons-material/DarkModeRounded'
 import LightModeRoundedIcon from '@mui/icons-material/LightModeRounded'
 import SettingsIcon from '@mui/icons-material/Settings'
 import LogoutIcon from '@mui/icons-material/Logout'
 import ManageAccountsIcon from '@mui/icons-material/ManageAccounts'
+import NotificationsNoneRoundedIcon from '@mui/icons-material/NotificationsNoneRounded'
+import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown'
 
+// Contextos e Hooks
 import { useTema } from '../../contextos/TemaContext'
 import { useAuth } from '../../contextos/AuthContext'
 import { useSupabase } from '../../contextos/SupabaseContext'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 
-// LOGO: caminho dentro de src
+// Assets
 import logoCeja from '../../assets/imagens/logo-ceja.png'
 
+// --- Tipagens ---
 type BarraSuperiorProps = {
   alternarMenuLateral: () => void
 }
@@ -41,237 +50,318 @@ type PerfilUsuario = {
   foto_url: string | null
 }
 
-const BarraSuperior: React.FC<BarraSuperiorProps> = ({ alternarMenuLateral }) => {
-  const theme = useTheme()
-  const { modo, alternarModo } = useTema()
-  const { usuario, logout } = useAuth()
-  const { supabase } = useSupabase()
-  const navigate = useNavigate()
-
-  const [anchorAvatar, setAnchorAvatar] = React.useState<null | HTMLElement>(null)
-
-  const ehDark = modo === 'dark'
-
-  const { data: perfil } = useQuery({
+// --- Hook Personalizado para Dados (Separação de lógica) ---
+const usePerfilUsuario = (usuario: any, supabase: any) => {
+  return useQuery({
     queryKey: ['perfil-usuario', usuario?.id],
     enabled: !!usuario && !!supabase,
+    staleTime: 1000 * 60 * 5, // Cache por 5 minutos
     queryFn: async () => {
       if (!usuario || !supabase) return null
-
       const { data, error } = await supabase
         .from('usuarios')
         .select('name, foto_url')
         .eq('id', usuario.id)
-        .maybeSingle<PerfilUsuario>()
+        .maybeSingle()
 
       if (error) {
-        console.error('Erro ao carregar perfil de usuário:', error)
+        console.error('Erro ao carregar perfil:', error)
         return null
       }
-
-      return data
+      return data as PerfilUsuario
     },
   })
+}
 
-  // Sempre exibe o NOME; se não existir, mostra "Usuário" (não mostra e-mail).
-  const nomeUsuario = perfil?.name || 'Usuário'
-  const inicialUsuario = nomeUsuario.charAt(0).toUpperCase()
+const BarraSuperior: React.FC<BarraSuperiorProps> = ({ alternarMenuLateral }) => {
+  const theme = useTheme()
+  const navigate = useNavigate()
+  
+  // Contextos
+  const { modo, alternarModo } = useTema()
+  const { usuario, logout } = useAuth()
+  const { supabase } = useSupabase()
 
-  const aoClicarAvatar = (event: React.MouseEvent<HTMLElement>) => {
-    setAnchorAvatar(event.currentTarget)
-  }
+  // Estados locais
+  const [anchorAvatar, setAnchorAvatar] = useState<null | HTMLElement>(null)
+  
+  // Dados
+  const { data: perfil, isLoading } = usePerfilUsuario(usuario, supabase)
 
-  const fecharMenuUsuario = () => {
-    setAnchorAvatar(null)
-  }
+  const ehDark = modo === 'dark'
+  const menuAberto = Boolean(anchorAvatar)
 
-  const sair = async () => {
-    fecharMenuUsuario()
+  // Lógica de exibição do nome
+  const nomeExibicao = perfil?.name?.split(' ')[0] || 'Usuário' // Pega só o primeiro nome
+  const inicialUsuario = nomeExibicao.charAt(0).toUpperCase()
+
+  // Handlers
+  const handleMenuOpen = (event: React.MouseEvent<HTMLElement>) => setAnchorAvatar(event.currentTarget)
+  const handleMenuClose = () => setAnchorAvatar(null)
+
+  const handleLogout = async () => {
+    handleMenuClose()
     await logout()
     navigate('/login', { replace: true })
   }
 
-  const irParaPerfil = () => {
-    fecharMenuUsuario()
-    navigate('/perfil')
-  }
-
-  const irParaConfiguracoes = () => {
-    fecharMenuUsuario()
-    navigate('/config')
+  const handleNavigate = (path: string) => {
+    handleMenuClose()
+    navigate(path)
   }
 
   return (
     <>
       <AppBar
         position="fixed"
-        elevation={1}
+        elevation={0} // Remove sombra padrão para usar backdrop-filter
         sx={{
           zIndex: theme.zIndex.drawer + 1,
-          // sem bordas arredondadas no topo
-          borderRadius: 0,
-          background:
-            theme.palette.mode === 'light'
-              ? 'linear-gradient(90deg, #F7941D 0%, #4CAF50 50%, #2e7d32 100%)'
-              : 'linear-gradient(90deg, #263238 0%, #37474f 50%, #1b5e20 100%)',
+          borderBottom: `1px solid ${theme.palette.divider}`,
+          // EFEITO GLASSMORPHISM
+          bgcolor: ehDark 
+            ? 'rgba(20, 20, 20, 0.85)' 
+            : 'rgba(255, 255, 255, 0.9)',
+          backdropFilter: 'blur(12px)',
+          color: theme.palette.text.primary,
+          transition: 'all 0.3s ease',
         }}
       >
-        <Toolbar
-          sx={{
-            minHeight: 64,
-            px: { xs: 1.5, sm: 3 },
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-          }}
-        >
-          {/* Lado esquerdo: botão de menu + logo + título */}
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+        <Toolbar sx={{ justifyContent: 'space-between', height: 70 }}>
+          
+          {/* --- ESQUERDA: Menu Hambúrguer + Marca --- */}
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
             <IconButton
-              color="inherit"
-              edge="start"
               onClick={alternarMenuLateral}
-              sx={{ mr: 0.5 }}
+              edge="start"
+              sx={{ 
+                color: theme.palette.primary.main,
+                bgcolor: ehDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)',
+                '&:hover': { bgcolor: theme.palette.action.hover }
+              }}
             >
               <MenuIcon />
             </IconButton>
 
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              {/* LOGO SEM BORDA ARREDONDADA */}
+            <Box 
+              sx={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                gap: 1.5,
+                cursor: 'pointer',
+                userSelect: 'none'
+              }}
+              onClick={() => navigate('/')}
+            >
               <Box
                 component="img"
                 src={logoCeja}
                 alt="Logo CEJA"
                 sx={{
-                  width: 44,
-                  height: 44,
-                  objectFit: 'contain',
-                  display: 'block',
+                  height: 42,
+                  width: 'auto',
+                  filter: ehDark ? 'drop-shadow(0 0 4px rgba(255,255,255,0.2))' : 'none',
+                  transition: 'transform 0.2s',
+                  '&:hover': { transform: 'scale(1.05)' }
                 }}
               />
-
-              <Box>
-                <Typography
-                  variant="subtitle1"
-                  sx={{
-                    fontWeight: 700,
-                    lineHeight: 1.1,
-                    color: 'common.white',
+              <Box sx={{ display: { xs: 'none', md: 'block' } }}>
+                <Typography 
+                  variant="h6" 
+                  component="div"
+                  sx={{ 
+                    fontWeight: 800, 
+                    lineHeight: 1,
+                    letterSpacing: '-0.5px',
+                    background: ehDark 
+                      ? 'linear-gradient(45deg, #4CAF50, #81c784)' 
+                      : 'linear-gradient(45deg, #2e7d32, #F7941D)',
+                    backgroundClip: 'text',
+                    WebkitBackgroundClip: 'text',
+                    color: 'transparent', // Texto gradiente
                   }}
                 >
                   SIGE-CEJA
                 </Typography>
-                <Typography
-                  variant="caption"
-                  sx={{
-                    color: 'rgba(255,255,255,0.85)',
-                    letterSpacing: 0.3,
-                  }}
-                >
-                  Sistema de Gestão Escolar
+                <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 500 }}>
+                  Gestão Escolar Inteligente
                 </Typography>
               </Box>
             </Box>
           </Box>
 
-          {/* Lado direito: tema + FOTO + NOME */}
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-            <Tooltip title={ehDark ? 'Tema claro' : 'Tema escuro'}>
-              <IconButton
-                onClick={alternarModo}
-                sx={{
-                  bgcolor: 'rgba(255,255,255,0.15)',
-                  '&:hover': {
-                    bgcolor: 'rgba(255,255,255,0.25)',
-                  },
+          {/* --- DIREITA: Ações + Perfil --- */}
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            
+            {/* Toggle Tema Animado */}
+            <Tooltip title={`Mudar para tema ${ehDark ? 'claro' : 'escuro'}`}>
+              <IconButton 
+                onClick={alternarModo} 
+                color="inherit"
+                sx={{ 
+                  transition: 'transform 0.5s cubic-bezier(0.4, 0, 0.2, 1)',
+                  transform: ehDark ? 'rotate(180deg)' : 'rotate(0deg)'
                 }}
               >
-                {ehDark ? (
-                  <LightModeRoundedIcon fontSize="small" sx={{ color: '#FFEB3B' }} />
-                ) : (
-                  <DarkModeRoundedIcon fontSize="small" sx={{ color: 'white' }} />
-                )}
+                {ehDark ? <LightModeRoundedIcon sx={{ color: '#FDD835' }} /> : <DarkModeRoundedIcon sx={{ color: '#546E7A' }} />}
               </IconButton>
             </Tooltip>
 
-            <Tooltip title="Conta do usuário">
+            {/* Notificações (Mock visual) */}
+            <Tooltip title="Notificações">
+              <IconButton color="inherit">
+                <Badge variant="dot" color="error">
+                  <NotificationsNoneRoundedIcon />
+                </Badge>
+              </IconButton>
+            </Tooltip>
+            
+            <Divider orientation="vertical" flexItem variant="middle" sx={{ mx: 1, height: 24, alignSelf: 'center' }} />
+
+            {/* Área do Usuário */}
+            <Tooltip title="Gerenciar conta">
               <Box
+                onClick={handleMenuOpen}
                 sx={{
                   display: 'flex',
                   alignItems: 'center',
-                  gap: 1,
+                  gap: 1.5,
+                  p: 0.5,
+                  pl: 1.5,
+                  pr: 1,
+                  borderRadius: 50,
                   cursor: 'pointer',
+                  border: `1px solid ${theme.palette.divider}`,
+                  transition: 'all 0.2s',
+                  '&:hover': {
+                    bgcolor: theme.palette.action.hover,
+                    borderColor: theme.palette.primary.light
+                  }
                 }}
-                onClick={aoClicarAvatar}
               >
-                {/* Primeiro a FOTO */}
-                <Avatar
-                  src={perfil?.foto_url || undefined}
-                  sx={{
-                    width: 36,
-                    height: 36,
-                    bgcolor: 'background.paper',
-                    color: theme.palette.primary.main,
-                    fontWeight: 600,
-                    boxShadow: 2,
-                  }}
-                >
-                  {perfil?.foto_url ? null : inicialUsuario}
-                </Avatar>
+                {/* Texto com Skeleton Loading */}
+                <Box sx={{ display: { xs: 'none', sm: 'flex' }, flexDirection: 'column', alignItems: 'flex-end' }}>
+                  {isLoading ? (
+                    <>
+                      <Skeleton width={80} height={20} variant="text" />
+                      <Skeleton width={50} height={15} variant="text" />
+                    </>
+                  ) : (
+                    <>
+                      <Typography variant="subtitle2" sx={{ fontWeight: 600, lineHeight: 1.2 }}>
+                        {nomeExibicao}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary" sx={{ lineHeight: 1 }}>
+                        Admin
+                      </Typography>
+                    </>
+                  )}
+                </Box>
 
-                {/* Depois apenas o NOME (sem e-mail) */}
-                <Typography
-                  variant="body2"
-                  sx={{
-                    display: { xs: 'none', sm: 'block' },
-                    maxWidth: 200,
-                    whiteSpace: 'nowrap',
-                    textOverflow: 'ellipsis',
-                    overflow: 'hidden',
-                    color: 'common.white',
-                    fontWeight: 500,
+                {/* Avatar com Status Online */}
+                <Badge
+                  overlap="circular"
+                  anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+                  variant="dot"
+                  sx={{ 
+                    '& .MuiBadge-badge': { 
+                      backgroundColor: '#44b700',
+                      color: '#44b700',
+                      boxShadow: `0 0 0 2px ${theme.palette.background.paper}`,
+                      '&::after': {
+                        position: 'absolute',
+                        top: 0,
+                        left: 0,
+                        width: '100%',
+                        height: '100%',
+                        borderRadius: '50%',
+                        animation: 'ripple 1.2s infinite ease-in-out',
+                        border: '1px solid currentColor',
+                        content: '""',
+                      },
+                    },
+                    '@keyframes ripple': {
+                      '0%': { transform: 'scale(.8)', opacity: 1 },
+                      '100%': { transform: 'scale(2.4)', opacity: 0 },
+                    },
                   }}
                 >
-                  {nomeUsuario}
-                </Typography>
+                  <Avatar
+                    src={perfil?.foto_url || undefined}
+                    alt={nomeExibicao}
+                    sx={{ width: 38, height: 38, border: `2px solid ${theme.palette.background.paper}` }}
+                  >
+                    {inicialUsuario}
+                  </Avatar>
+                </Badge>
+                
+                <KeyboardArrowDownIcon 
+                  fontSize="small" 
+                  color="action" 
+                  sx={{ 
+                    transition: 'transform 0.2s',
+                    transform: menuAberto ? 'rotate(180deg)' : 'rotate(0deg)'
+                  }} 
+                />
               </Box>
             </Tooltip>
           </Box>
         </Toolbar>
       </AppBar>
 
-      {/* Menu do usuário */}
+      {/* Menu Dropdown Estilizado */}
       <Menu
         anchorEl={anchorAvatar}
-        open={Boolean(anchorAvatar)}
-        onClose={fecharMenuUsuario}
-        anchorOrigin={{
-          vertical: 'bottom',
-          horizontal: 'right',
+        open={menuAberto}
+        onClose={handleMenuClose}
+        onClick={handleMenuClose}
+        TransitionComponent={Fade}
+        PaperProps={{
+          elevation: 0,
+          sx: {
+            overflow: 'visible',
+            filter: 'drop-shadow(0px 2px 8px rgba(0,0,0,0.15))',
+            mt: 1.5,
+            minWidth: 200,
+            borderRadius: 2,
+            '&:before': {
+              content: '""',
+              display: 'block',
+              position: 'absolute',
+              top: 0,
+              right: 24,
+              width: 10,
+              height: 10,
+              bgcolor: 'background.paper',
+              transform: 'translateY(-50%) rotate(45deg)',
+              zIndex: 0,
+            },
+          },
         }}
-        transformOrigin={{
-          vertical: 'top',
-          horizontal: 'right',
-        }}
+        transformOrigin={{ horizontal: 'right', vertical: 'top' }}
+        anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
       >
-        <MenuItem onClick={irParaPerfil}>
-          <ListItemIcon>
-            <ManageAccountsIcon fontSize="small" />
-          </ListItemIcon>
-          <ListItemText primary="Editar perfil" />
+        <Box sx={{ px: 2, py: 1.5 }}>
+           <Typography variant="subtitle2" noWrap>
+             Logado como
+           </Typography>
+           <Typography variant="body2" color="text.secondary" noWrap>
+             {perfil?.name || 'Usuário'}
+           </Typography>
+        </Box>
+        <Divider />
+        <MenuItem onClick={() => handleNavigate('/perfil')} sx={{ py: 1.5 }}>
+          <ListItemIcon><ManageAccountsIcon fontSize="small" /></ListItemIcon>
+          Editar Perfil
         </MenuItem>
-        <MenuItem onClick={irParaConfiguracoes}>
-          <ListItemIcon>
-            <SettingsIcon fontSize="small" />
-          </ListItemIcon>
-          <ListItemText primary="Configurações" />
+        <MenuItem onClick={() => handleNavigate('/config')} sx={{ py: 1.5 }}>
+          <ListItemIcon><SettingsIcon fontSize="small" /></ListItemIcon>
+          Configurações
         </MenuItem>
         <Divider />
-        <MenuItem onClick={sair}>
-          <ListItemIcon>
-            <LogoutIcon fontSize="small" />
-          </ListItemIcon>
-          <ListItemText primary="Sair" />
+        <MenuItem onClick={handleLogout} sx={{ py: 1.5, color: 'error.main' }}>
+          <ListItemIcon><LogoutIcon fontSize="small" color="error" /></ListItemIcon>
+          <ListItemText primary="Sair do Sistema" />
         </MenuItem>
       </Menu>
     </>
