@@ -5,7 +5,6 @@ import {
   Card,
   CardContent,
   Typography,
-  Grid,
   Stack,
   IconButton,
   Button,
@@ -13,7 +12,6 @@ import {
   Chip,
   useTheme,
   alpha,
-  Divider,
   Paper
 } from '@mui/material'
 
@@ -93,8 +91,8 @@ const StatCard: React.FC<StatCardProps> = ({ titulo, valor, tendencia, cor, icon
                 height: 20, 
                 fontSize: '0.7rem', 
                 bgcolor: alpha(cor, 0.1), 
-                color: cor,
-                fontWeight: 700
+                color: cor, 
+                fontWeight: 700 
               }} 
             />
           )}
@@ -107,7 +105,9 @@ const StatCard: React.FC<StatCardProps> = ({ titulo, valor, tendencia, cor, icon
 const DashboardPage: React.FC = () => {
   const { usuario } = useAuth()
   const theme = useTheme()
-  const papel = usuario?.papel || 'VISITANTE'
+  
+  // Casting para evitar erro de tipagem caso a interface do usuário esteja incompleta
+  const papel = (usuario as any)?.papel || 'VISITANTE'
 
   // Dados Dinâmicos (Mock) baseados no papel
   const getConteudoPorPapel = () => {
@@ -145,8 +145,9 @@ const DashboardPage: React.FC = () => {
     year: 'numeric' 
   })
 
-  // Primeiro nome para saudação
-  const primeiroNome = usuario?.name?.split(' ')[0] || 'Usuário'
+  // Nome do usuário com fallback
+  const nomeCompleto = (usuario as any)?.name || 'Usuário'
+  const primeiroNome = nomeCompleto.split(' ')[0]
 
   return (
     <Box sx={{ maxWidth: 1600, mx: 'auto', p: { xs: 0, md: 1 } }}>
@@ -198,22 +199,32 @@ const DashboardPage: React.FC = () => {
         </Box>
       </Box>
 
-      {/* 2. Grid de Cards Estatísticos */}
-      <Grid container spacing={3} sx={{ mb: 4 }}>
+      {/* 2. Área de Cards Estatísticos (Usando CSS Grid via Box) */}
+      <Box 
+        sx={{ 
+          display: 'grid', 
+          gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', md: 'repeat(4, 1fr)' }, 
+          gap: 3,
+          mb: 4 
+        }}
+      >
         {conteudo.stats.map((stat, index) => (
-          <Grid item xs={12} sm={6} md={3} key={index}>
-            <StatCard {...stat} />
-          </Grid>
+          <StatCard key={index} {...stat} />
         ))}
-      </Grid>
+      </Box>
 
       {/* 3. Seção Principal (Conteúdo Dividido) */}
-      <Grid container spacing={3}>
+      <Box 
+        sx={{ 
+          display: 'grid', 
+          gridTemplateColumns: { xs: '1fr', md: '2fr 1fr' }, 
+          gap: 3 
+        }}
+      >
         
-        {/* Lado Esquerdo: Acesso Rápido + Banner */}
-        <Grid item xs={12} md={8}>
-          
-          {/* Banner de Status (Exemplo) */}
+        {/* Lado Esquerdo: Banner + Acesso Rápido */}
+        <Box>
+          {/* Banner de Status */}
           <Paper
             elevation={0}
             sx={{
@@ -261,14 +272,20 @@ const DashboardPage: React.FC = () => {
             </Box>
           </Paper>
 
-          {/* Acesso Rápido */}
+          {/* Acesso Rápido (Grid Interno) */}
           <Typography variant="h6" fontWeight={700} sx={{ mb: 2 }}>
             Acesso Rápido
           </Typography>
-          <Grid container spacing={2}>
+          <Box 
+            sx={{ 
+              display: 'grid', 
+              gridTemplateColumns: { xs: '1fr 1fr', sm: '1fr 1fr 1fr' }, 
+              gap: 2 
+            }}
+          >
              {['Cadastrar Aluno', 'Gerar Boletim', 'Consultar Turma', 'Agendar Reunião', 'Relatório Mensal', 'Configurações'].map((acao, i) => (
-               <Grid item xs={6} sm={4} key={i}>
                  <Paper
+                    key={i}
                     elevation={0}
                     sx={{
                       p: 2,
@@ -288,13 +305,12 @@ const DashboardPage: React.FC = () => {
                       {acao}
                     </Typography>
                  </Paper>
-               </Grid>
              ))}
-          </Grid>
-        </Grid>
+          </Box>
+        </Box>
 
-        {/* Lado Direito: Atividades Recentes (Timeline simples) */}
-        <Grid item xs={12} md={4}>
+        {/* Lado Direito: Atividades Recentes */}
+        <Box>
            <Paper 
              elevation={0} 
              sx={{ 
@@ -353,9 +369,9 @@ const DashboardPage: React.FC = () => {
                 </Button>
               </Box>
            </Paper>
-        </Grid>
+        </Box>
 
-      </Grid>
+      </Box>
     </Box>
   )
 }
