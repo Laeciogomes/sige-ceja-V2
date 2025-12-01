@@ -82,11 +82,12 @@ const opcoesRaca = [
   { value: 'Outro', label: 'Outro' },
 ]
 
-const normalizarCaminhoNome = (nome: string): string => {
-  return nome
+// Deixa o texto seguro para usar em caminho de arquivo do Storage
+const normalizarCaminhoNome = (texto: string): string => {
+  return texto
     .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-zA-Z0-9-_]/g, '_')
+    .replace(/[\u0300-\u036f]/g, '') // remove acentos
+    .replace(/[^a-zA-Z0-9._-]/g, '_') // só letras, números, ponto, underline e hífen
 }
 
 const PerfilPage: React.FC = () => {
@@ -143,7 +144,7 @@ const PerfilPage: React.FC = () => {
           ].join(','),
         )
         .eq('id', usuario.id)
-        .maybeSingle<any>() // relação aninhada
+        .maybeSingle<any>()
 
       if (err) {
         console.error('Erro ao carregar perfil:', err)
@@ -299,8 +300,23 @@ const PerfilPage: React.FC = () => {
     setUploadingFoto(true)
 
     try {
-      const nomeBase = form?.name ? normalizarCaminhoNome(form.name) : usuario.id
-      const caminho = `${nomeBase}/${Date.now()}_${arquivo.name}`
+      const nomeBase =
+        form?.name && form.name.trim().length > 0
+          ? normalizarCaminhoNome(form.name)
+          : normalizarCaminhoNome(usuario.email ?? usuario.id)
+
+      const nomeArquivoOriginal = arquivo.name
+      const indicePonto = nomeArquivoOriginal.lastIndexOf('.')
+      const extensao =
+        indicePonto !== -1 ? nomeArquivoOriginal.substring(indicePonto) : ''
+      const nomeSemExtensao =
+        indicePonto !== -1
+          ? nomeArquivoOriginal.substring(0, indicePonto)
+          : nomeArquivoOriginal
+
+      const nomeArquivoLimpo = normalizarCaminhoNome(nomeSemExtensao)
+
+      const caminho = `${nomeBase}/${Date.now()}_${nomeArquivoLimpo}${extensao}`
 
       const { error: uploadError } = await supabase.storage
         .from('avatars') // bucket precisa existir no Supabase
@@ -320,7 +336,6 @@ const PerfilPage: React.FC = () => {
 
       const novaUrl = publicData.publicUrl
 
-      // Atualiza banco só com a foto
       const { error: updateError } = await supabase
         .from('usuarios')
         .update({
