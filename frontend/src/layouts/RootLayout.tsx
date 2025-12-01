@@ -6,56 +6,102 @@ import {
   Toolbar, 
   useTheme, 
   useMediaQuery, 
-  CssBaseline 
+  CssBaseline,
+  Drawer
 } from '@mui/material'
 
 import BarraSuperior from '../componentes/layout/BarraSuperior'
 import BarraLateral from '../componentes/layout/BarraLateral'
 
-// Define a largura do menu para cálculo do layout
-const LARGURA_DRAWER = 280 
+// Larguras do menu
+const LARGURA_ABERTO = 260
+const LARGURA_FECHADO = 72
 
-const RootLayout: React.FC = () => {
+export const RootLayout: React.FC = () => {
   const theme = useTheme()
-  // Detecta se a tela é menor que 'md' (tablet/celular)
   const isMobile = useMediaQuery(theme.breakpoints.down('md'))
   
-  // Estado para controlar se o menu mobile está aberto
+  // Mobile começa fechado (false), Desktop começa aberto (true)
   const [mobileOpen, setMobileOpen] = useState(false)
+  const [desktopOpen, setDesktopOpen] = useState(true)
 
   const handleDrawerToggle = () => {
-    setMobileOpen(!mobileOpen)
+    if (isMobile) {
+      setMobileOpen(!mobileOpen)
+    } else {
+      setDesktopOpen(!desktopOpen)
+    }
   }
+
+  // Calcula a largura atual para empurrar o conteúdo principal
+  const larguraAtual = isMobile 
+    ? 0 
+    : (desktopOpen ? LARGURA_ABERTO : LARGURA_FECHADO)
 
   return (
     <Box sx={{ display: 'flex', minHeight: '100vh' }}>
       <CssBaseline />
       
       {/* Barra Superior */}
-      {/* Passamos a função de toggle para o botão de hambúrguer funcionar */}
       <BarraSuperior alternarMenuLateral={handleDrawerToggle} />
 
-      {/* Área de Navegação (Barra Lateral) 
-        - No Desktop: Ocupa espaço físico (box)
-        - No Mobile: É zero (overlay)
-      */}
+      {/* Navegação (Nav) */}
       <Box
         component="nav"
-        sx={{ width: { md: LARGURA_DRAWER }, flexShrink: { md: 0 } }}
+        sx={{ 
+          width: { md: larguraAtual }, 
+          flexShrink: { md: 0 },
+          transition: theme.transitions.create('width', {
+            easing: theme.transitions.easing.sharp,
+            duration: theme.transitions.duration.enteringScreen,
+          }),
+        }}
       >
-        <BarraLateral
-          // Lógica inteligente:
-          // Se for mobile -> variant="temporary" (abre por cima)
-          // Se for desktop -> variant="permanent" (sempre fixo na lateral)
-          variante={isMobile ? 'temporary' : 'permanent'}
-          
-          // Se for mobile, obedece o estado 'mobileOpen'. 
-          // Se for desktop, é sempre 'true' (aberto).
-          aberto={isMobile ? mobileOpen : true}
-          
-          fechar={handleDrawerToggle}
-          largura={LARGURA_DRAWER}
-        />
+        {/* Drawer Mobile (Temporário - abre por cima) */}
+        {isMobile && (
+          <Drawer
+            variant="temporary"
+            open={mobileOpen}
+            onClose={handleDrawerToggle}
+            ModalProps={{ keepMounted: true }} // Melhor desempenho mobile
+            sx={{
+              display: { xs: 'block', md: 'none' },
+              '& .MuiDrawer-paper': { 
+                boxSizing: 'border-box', 
+                width: LARGURA_ABERTO // No mobile é sempre largura total quando abre
+              },
+            }}
+          >
+            <Toolbar /> 
+            {/* No mobile, o menu está sempre "aberto" visualmente dentro do drawer */}
+            <BarraLateral aberta={true} />
+          </Drawer>
+        )}
+
+        {/* Drawer Desktop (Permanente - encolhe/estica) */}
+        {!isMobile && (
+          <Drawer
+            variant="permanent"
+            open={desktopOpen}
+            sx={{
+              display: { xs: 'none', md: 'block' },
+              '& .MuiDrawer-paper': { 
+                boxSizing: 'border-box', 
+                width: larguraAtual,
+                overflowX: 'hidden', // Esconde scroll horizontal na transição
+                borderRight: `1px solid ${theme.palette.divider}`,
+                transition: theme.transitions.create('width', {
+                  easing: theme.transitions.easing.sharp,
+                  duration: theme.transitions.duration.enteringScreen,
+                }),
+              },
+            }}
+          >
+            <Toolbar />
+            {/* Passa o estado para a BarraLateral esconder/mostrar textos */}
+            <BarraLateral aberta={desktopOpen} />
+          </Drawer>
+        )}
       </Box>
 
       {/* Conteúdo Principal (Main) */}
@@ -64,18 +110,17 @@ const RootLayout: React.FC = () => {
         sx={{
           flexGrow: 1,
           p: 3,
-          // No desktop, definimos a largura subtraindo o menu para não vazar a tela horizontalmente
-          width: { md: `calc(100% - ${LARGURA_DRAWER}px)` },
-          bgcolor: theme.palette.background.default,
-          minHeight: '100vh',
-          display: 'flex',
-          flexDirection: 'column'
+          width: { md: `calc(100% - ${larguraAtual}px)` },
+          transition: theme.transitions.create(['width', 'margin'], {
+            easing: theme.transitions.easing.sharp,
+            duration: theme.transitions.duration.enteringScreen,
+          }),
         }}
       >
-        {/* Toolbar vazia para empurrar o conteúdo para baixo da BarraSuperior fixa */}
+        {/* Espaço para a AppBar fixa */}
         <Toolbar />
         
-        {/* Renderiza as páginas filhas (Dashboard, Alunos, etc) */}
+        {/* Onde as páginas são renderizadas */}
         <Box sx={{ width: '100%', mt: 2 }}>
           <Outlet />
         </Box>
@@ -83,5 +128,3 @@ const RootLayout: React.FC = () => {
     </Box>
   )
 }
-
-export default RootLayout

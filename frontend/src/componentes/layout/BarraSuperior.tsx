@@ -17,7 +17,6 @@ import {
   Skeleton,
   Badge,
   Fade,
-
 } from '@mui/material'
 
 // Ícones
@@ -55,7 +54,7 @@ const usePerfilUsuario = (usuario: any, supabase: any) => {
   return useQuery({
     queryKey: ['perfil-usuario', usuario?.id],
     enabled: !!usuario && !!supabase,
-    staleTime: 1000 * 60 * 5, // Cache por 5 minutos
+    staleTime: 1000 * 60 * 5,
     queryFn: async () => {
       if (!usuario || !supabase) return null
       const { data, error } = await supabase
@@ -92,7 +91,7 @@ const BarraSuperior: React.FC<BarraSuperiorProps> = ({ alternarMenuLateral }) =>
   const menuAberto = Boolean(anchorAvatar)
 
   // Lógica de exibição do nome
-  const nomeExibicao = perfil?.name?.split(' ')[0] || 'Usuário' // Pega só o primeiro nome
+  const nomeExibicao = perfil?.name?.split(' ')[0] || 'Usuário' 
   const inicialUsuario = nomeExibicao.charAt(0).toUpperCase()
 
   // Handlers
@@ -114,16 +113,16 @@ const BarraSuperior: React.FC<BarraSuperiorProps> = ({ alternarMenuLateral }) =>
     <>
       <AppBar
         position="fixed"
-        elevation={0} // Remove sombra padrão para usar backdrop-filter
+        elevation={1} // Mantém a sombra para destaque
         sx={{
           zIndex: theme.zIndex.drawer + 1,
-          borderBottom: `1px solid ${theme.palette.divider}`,
-          // EFEITO GLASSMORPHISM
-          bgcolor: ehDark 
-            ? 'rgba(20, 20, 20, 0.85)' 
-            : 'rgba(255, 255, 255, 0.9)',
-          backdropFilter: 'blur(12px)',
-          color: theme.palette.text.primary,
+          borderRadius: 0,
+          // GRADIENTE ORIGINAL (SOLICITADO PELO USUÁRIO)
+          background:
+            theme.palette.mode === 'light'
+              ? 'linear-gradient(90deg, #F7941D 0%, #4CAF50 50%, #2e7d32 100%)'
+              : 'linear-gradient(90deg, #263238 0%, #37474f 50%, #1b5e20 100%)',
+          color: 'common.white', // Força cor branca para textos principais contra o fundo escuro
           transition: 'all 0.3s ease',
         }}
       >
@@ -134,10 +133,11 @@ const BarraSuperior: React.FC<BarraSuperiorProps> = ({ alternarMenuLateral }) =>
             <IconButton
               onClick={alternarMenuLateral}
               edge="start"
+              // Fundo levemente transparente para contraste no gradiente
               sx={{ 
-                color: theme.palette.primary.main,
-                bgcolor: ehDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)',
-                '&:hover': { bgcolor: theme.palette.action.hover }
+                color: 'common.white',
+                bgcolor: 'rgba(255, 255, 255, 0.1)',
+                '&:hover': { bgcolor: 'rgba(255, 255, 255, 0.2)' }
               }}
             >
               <MenuIcon />
@@ -160,7 +160,6 @@ const BarraSuperior: React.FC<BarraSuperiorProps> = ({ alternarMenuLateral }) =>
                 sx={{
                   height: 42,
                   width: 'auto',
-                  filter: ehDark ? 'drop-shadow(0 0 4px rgba(255,255,255,0.2))' : 'none',
                   transition: 'transform 0.2s',
                   '&:hover': { transform: 'scale(1.05)' }
                 }}
@@ -173,17 +172,17 @@ const BarraSuperior: React.FC<BarraSuperiorProps> = ({ alternarMenuLateral }) =>
                     fontWeight: 800, 
                     lineHeight: 1,
                     letterSpacing: '-0.5px',
-                    background: ehDark 
-                      ? 'linear-gradient(45deg, #4CAF50, #81c784)' 
-                      : 'linear-gradient(45deg, #2e7d32, #F7941D)',
-                    backgroundClip: 'text',
-                    WebkitBackgroundClip: 'text',
-                    color: 'transparent', // Texto gradiente
+                    color: 'common.white', // Cor sólida branca/clara no gradiente
                   }}
                 >
                   SIGE-CEJA
                 </Typography>
-                <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 500 }}>
+                <Typography variant="caption" 
+                  sx={{ 
+                    fontWeight: 500, 
+                    color: 'rgba(255,255,255,0.8)' // Cor secundária clara
+                  }}
+                >
                   Gestão Escolar Inteligente
                 </Typography>
               </Box>
@@ -199,24 +198,31 @@ const BarraSuperior: React.FC<BarraSuperiorProps> = ({ alternarMenuLateral }) =>
                 onClick={alternarModo} 
                 color="inherit"
                 sx={{ 
-                  transition: 'transform 0.5s cubic-bezier(0.4, 0, 0.2, 1)',
-                  transform: ehDark ? 'rotate(180deg)' : 'rotate(0deg)'
+                   transition: 'transform 0.5s cubic-bezier(0.4, 0, 0.2, 1)',
+                   transform: ehDark ? 'rotate(180deg)' : 'rotate(0deg)',
+                   bgcolor: 'rgba(255, 255, 255, 0.1)',
+                   '&:hover': { bgcolor: 'rgba(255, 255, 255, 0.2)' }
                 }}
               >
-                {ehDark ? <LightModeRoundedIcon sx={{ color: '#FDD835' }} /> : <DarkModeRoundedIcon sx={{ color: '#546E7A' }} />}
+                {ehDark ? <LightModeRoundedIcon sx={{ color: '#FDD835' }} /> : <DarkModeRoundedIcon sx={{ color: 'common.white' }} />}
               </IconButton>
             </Tooltip>
 
             {/* Notificações (Mock visual) */}
             <Tooltip title="Notificações">
-              <IconButton color="inherit">
+              <IconButton color="inherit"
+                 sx={{ 
+                   bgcolor: 'rgba(255, 255, 255, 0.1)',
+                   '&:hover': { bgcolor: 'rgba(255, 255, 255, 0.2)' }
+                 }}
+              >
                 <Badge variant="dot" color="error">
                   <NotificationsNoneRoundedIcon />
                 </Badge>
               </IconButton>
             </Tooltip>
             
-            <Divider orientation="vertical" flexItem variant="middle" sx={{ mx: 1, height: 24, alignSelf: 'center' }} />
+            <Divider orientation="vertical" flexItem variant="middle" sx={{ mx: 1, height: 24, alignSelf: 'center', bgcolor: 'rgba(255, 255, 255, 0.5)' }} />
 
             {/* Área do Usuário */}
             <Tooltip title="Gerenciar conta">
@@ -231,11 +237,11 @@ const BarraSuperior: React.FC<BarraSuperiorProps> = ({ alternarMenuLateral }) =>
                   pr: 1,
                   borderRadius: 50,
                   cursor: 'pointer',
-                  border: `1px solid ${theme.palette.divider}`,
+                  border: `1px solid rgba(255, 255, 255, 0.4)`, // Borda clara
                   transition: 'all 0.2s',
                   '&:hover': {
-                    bgcolor: theme.palette.action.hover,
-                    borderColor: theme.palette.primary.light
+                    bgcolor: 'rgba(255, 255, 255, 0.1)', // Hover claro
+                    borderColor: 'common.white'
                   }
                 }}
               >
@@ -243,15 +249,15 @@ const BarraSuperior: React.FC<BarraSuperiorProps> = ({ alternarMenuLateral }) =>
                 <Box sx={{ display: { xs: 'none', sm: 'flex' }, flexDirection: 'column', alignItems: 'flex-end' }}>
                   {isLoading ? (
                     <>
-                      <Skeleton width={80} height={20} variant="text" />
-                      <Skeleton width={50} height={15} variant="text" />
+                      <Skeleton width={80} height={20} variant="text" sx={{ bgcolor: 'rgba(255,255,255,0.4)' }} />
+                      <Skeleton width={50} height={15} variant="text" sx={{ bgcolor: 'rgba(255,255,255,0.3)' }} />
                     </>
                   ) : (
                     <>
-                      <Typography variant="subtitle2" sx={{ fontWeight: 600, lineHeight: 1.2 }}>
+                      <Typography variant="subtitle2" sx={{ fontWeight: 600, lineHeight: 1.2, color: 'common.white' }}>
                         {nomeExibicao}
                       </Typography>
-                      <Typography variant="caption" color="text.secondary" sx={{ lineHeight: 1 }}>
+                      <Typography variant="caption" sx={{ lineHeight: 1, color: 'rgba(255,255,255,0.8)' }}>
                         Admin
                       </Typography>
                     </>
@@ -289,6 +295,7 @@ const BarraSuperior: React.FC<BarraSuperiorProps> = ({ alternarMenuLateral }) =>
                   <Avatar
                     src={perfil?.foto_url || undefined}
                     alt={nomeExibicao}
+                    // Avatar é um dos poucos elementos que mantém cores do tema para se destacar
                     sx={{ width: 38, height: 38, border: `2px solid ${theme.palette.background.paper}` }}
                   >
                     {inicialUsuario}
@@ -297,10 +304,10 @@ const BarraSuperior: React.FC<BarraSuperiorProps> = ({ alternarMenuLateral }) =>
                 
                 <KeyboardArrowDownIcon 
                   fontSize="small" 
-                  color="action" 
                   sx={{ 
                     transition: 'transform 0.2s',
-                    transform: menuAberto ? 'rotate(180deg)' : 'rotate(0deg)'
+                    transform: menuAberto ? 'rotate(180deg)' : 'rotate(0deg)',
+                    color: 'common.white'
                   }} 
                 />
               </Box>
@@ -309,7 +316,7 @@ const BarraSuperior: React.FC<BarraSuperiorProps> = ({ alternarMenuLateral }) =>
         </Toolbar>
       </AppBar>
 
-      {/* Menu Dropdown Estilizado */}
+      {/* Menu Dropdown (Mantém o estilo pop-up limpo) */}
       <Menu
         anchorEl={anchorAvatar}
         open={menuAberto}

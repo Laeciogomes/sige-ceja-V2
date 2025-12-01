@@ -7,6 +7,7 @@ import { LoginPage } from '../paginas/Autenticacao/LoginPage'
 import { NovaSenhaPage } from '../paginas/Autenticacao/NovaSenhaPage'
 import { DashboardPage } from '../paginas/Dashboard/DashboardPage'
 import { PaginaSimples } from '../paginas/PaginaSimples'
+import { PerfilPage } from '../paginas/Perfil/PerfilPage'
 import { useAuth } from '../contextos/AuthContext'
 
 export const AppRoutes: React.FC = () => {
@@ -51,15 +52,20 @@ export const AppRoutes: React.FC = () => {
         />
         <Route path="relatorios" element={<PaginaSimples titulo="Relatórios" />} />
         <Route path="config" element={<PaginaSimples titulo="Configurações" />} />
+
+        {/* PERFIL DO USUÁRIO */}
+        <Route path="perfil" element={<PerfilPage />} />
       </Route>
 
       {/* QUALQUER OUTRA ROTA: REDIRECIONA CONFORME AUTENTICAÇÃO */}
       <Route
         path="*"
         element={
-          autenticado
-            ? <Navigate to="/" replace />
-            : <Navigate to="/login" replace />
+          autenticado ? (
+            <Navigate to="/" replace />
+          ) : (
+            <Navigate to="/login" replace />
+          )
         }
       />
     </Routes>
