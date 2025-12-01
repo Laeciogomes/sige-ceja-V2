@@ -7,6 +7,8 @@ import {
   Button,
   Chip,
   CircularProgress,
+  IconButton,
+  InputAdornment,
   MenuItem,
   Paper,
   Stack,
@@ -14,6 +16,8 @@ import {
   Typography,
   useTheme,
 } from '@mui/material'
+import VisibilityIcon from '@mui/icons-material/Visibility'
+import VisibilityOffIcon from '@mui/icons-material/VisibilityOff'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 
 import { useAuth } from '../../contextos/AuthContext'
@@ -100,6 +104,14 @@ const PerfilPage: React.FC = () => {
   const [mensagemSucesso, setMensagemSucesso] = useState<string | null>(null)
   const [mensagemErro, setMensagemErro] = useState<string | null>(null)
   const [uploadingFoto, setUploadingFoto] = useState(false)
+
+  // Campos de alteração de senha
+  const [senhaAtual, setSenhaAtual] = useState('')
+  const [novaSenha, setNovaSenha] = useState('')
+  const [confirmarSenha, setConfirmarSenha] = useState('')
+  const [mostrarSenhaAtual, setMostrarSenhaAtual] = useState(false)
+  const [mostrarNovaSenha, setMostrarNovaSenha] = useState(false)
+  const [mostrarConfirmarSenha, setMostrarConfirmarSenha] = useState(false)
 
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
@@ -213,7 +225,8 @@ const PerfilPage: React.FC = () => {
       setForm((prev) => (prev ? { ...prev, [campo]: event.target.value } : prev))
     }
 
-  const mutation = useMutation({
+  // Mutação para salvar dados de perfil
+  const mutationPerfil = useMutation({
     mutationFn: async (dados: FormPerfil) => {
       if (!usuario || !supabase) {
         throw new Error('Usuário ou conexão com o banco indisponível.')
@@ -267,7 +280,57 @@ const PerfilPage: React.FC = () => {
     },
   })
 
-  const handleSubmit = (event: React.FormEvent) => {
+  // Mutação para alteração de senha
+  const mutationSenha = useMutation({
+    mutationFn: async () => {
+      if (!usuario || !supabase) {
+        throw new Error('Usuário ou conexão com o banco indisponível.')
+      }
+
+      const emailLogin = usuario.email || form?.email
+      if (!emailLogin) {
+        throw new Error('E-mail do usuário não encontrado para reautenticação.')
+      }
+
+      // 1. Reautentica com senha atual
+      const { error: loginError } = await supabase.auth.signInWithPassword({
+        email: emailLogin,
+        password: senhaAtual,
+      })
+
+      if (loginError) {
+        throw new Error('Senha atual incorreta.')
+      }
+
+      // 2. Atualiza a senha
+      const { error: updateError } = await supabase.auth.updateUser({
+        password: novaSenha,
+      })
+
+      if (updateError) {
+        console.error(updateError)
+        throw new Error('Erro ao atualizar senha.')
+      }
+    },
+    onSuccess: () => {
+      setMensagemErro(null)
+      setMensagemSucesso('Senha alterada com sucesso.')
+      setSenhaAtual('')
+      setNovaSenha('')
+      setConfirmarSenha('')
+    },
+    onError: (err: unknown) => {
+      console.error(err)
+      setMensagemSucesso(null)
+      if (err instanceof Error) {
+        setMensagemErro(err.message)
+      } else {
+        setMensagemErro('Não foi possível alterar a senha. Tente novamente.')
+      }
+    },
+  })
+
+  const handleSubmitPerfil = (event: React.FormEvent) => {
     event.preventDefault()
     if (!form) return
 
@@ -282,7 +345,30 @@ const PerfilPage: React.FC = () => {
       return
     }
 
-    mutation.mutate(form)
+    mutationPerfil.mutate(form)
+  }
+
+  const handleSubmitSenha = (event: React.FormEvent) => {
+    event.preventDefault()
+    setMensagemErro(null)
+    setMensagemSucesso(null)
+
+    if (!senhaAtual.trim()) {
+      setMensagemErro('Informe a senha atual.')
+      return
+    }
+
+    if (novaSenha.length < 6) {
+      setMensagemErro('A nova senha deve ter pelo menos 6 caracteres.')
+      return
+    }
+
+    if (novaSenha !== confirmarSenha) {
+      setMensagemErro('A confirmação da nova senha não confere.')
+      return
+    }
+
+    mutationSenha.mutate()
   }
 
   const handleSelecionarFotoClick = () => {
@@ -319,7 +405,7 @@ const PerfilPage: React.FC = () => {
       const caminho = `${nomeBase}/${Date.now()}_${nomeArquivoLimpo}${extensao}`
 
       const { error: uploadError } = await supabase.storage
-        .from('avatars') // bucket precisa existir no Supabase
+        .from('avatars') // bucket precisa existir e ter policy de INSERT para authenticated
         .upload(caminho, arquivo, {
           cacheControl: '3600',
           upsert: true,
@@ -397,7 +483,8 @@ const PerfilPage: React.FC = () => {
     perfil.tipo_usuario_nome || `Tipo #${perfil.id_tipo_usuario}`
 
   const avatarInicial = form.name ? form.name.charAt(0).toUpperCase() : 'U'
-  const salvando = mutation.status === 'pending'
+  const salvandoPerfil = mutationPerfil.status === 'pending'
+  const salvandoSenha = mutationSenha.status === 'pending'
 
   return (
     <Box sx={{ maxWidth: 960, mx: 'auto' }}>
@@ -426,8 +513,7 @@ const PerfilPage: React.FC = () => {
             Meu perfil
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            Atualize seus dados pessoais, de contato e endereço. Essas
-            informações são utilizadas em cadastros, matrículas e relatórios.
+            Atualize seus dados pessoais, de contato, endereço e senha de acesso.
           </Typography>
         </Box>
 
@@ -439,7 +525,7 @@ const PerfilPage: React.FC = () => {
         />
       </Stack>
 
-      {/* Feedback */}
+      {/* Feedback geral */}
       <Stack spacing={2} sx={{ mb: 2 }}>
         {mensagemSucesso && (
           <Alert severity="success" onClose={() => setMensagemSucesso(null)}>
@@ -463,245 +549,15 @@ const PerfilPage: React.FC = () => {
         onChange={handleArquivoSelecionado}
       />
 
-      <Box component="form" noValidate onSubmit={handleSubmit}>
-        <Stack spacing={3}>
-          {/* Dados pessoais */}
-          <Paper variant="outlined" sx={{ p: 2.5 }}>
-            <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2 }}>
-              Dados pessoais
-            </Typography>
-
-            <Box
-              sx={{
-                display: 'grid',
-                gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' },
-                gap: 2,
-              }}
-            >
-              <TextField
-                label="Nome completo"
-                fullWidth
-                required
-                value={form.name}
-                onChange={handleChange('name')}
-              />
-              <TextField
-                label="Nome de usuário"
-                fullWidth
-                value={form.username}
-                onChange={handleChange('username')}
-                helperText="Opcional. Usado em relatórios e identificações rápidas."
-              />
-            </Box>
-
-            <Box
-              sx={{
-                mt: 2,
-                display: 'grid',
-                gridTemplateColumns: { xs: '1fr', md: '2fr 1fr 1fr' },
-                gap: 2,
-              }}
-            >
-              <TextField
-                label="E-mail"
-                type="email"
-                fullWidth
-                required
-                value={form.email}
-                onChange={handleChange('email')}
-                helperText="Usado para contato e notificações."
-              />
-              <TextField
-                label="Data de nascimento"
-                type="date"
-                fullWidth
-                InputLabelProps={{ shrink: true }}
-                value={form.data_nascimento}
-                onChange={handleChange('data_nascimento')}
-              />
-              <TextField
-                label="Sexo"
-                select
-                fullWidth
-                value={form.sexo}
-                onChange={handleChange('sexo')}
-              >
-                {opcoesSexo.map((opt) => (
-                  <MenuItem key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </MenuItem>
-                ))}
-              </TextField>
-            </Box>
-
-            <Box
-              sx={{
-                mt: 2,
-                display: 'grid',
-                gridTemplateColumns: { xs: '1fr', md: 'repeat(3, 1fr)' },
-                gap: 2,
-              }}
-            >
-              <TextField
-                label="CPF"
-                fullWidth
-                value={form.cpf}
-                onChange={handleChange('cpf')}
-              />
-              <TextField
-                label="RG"
-                fullWidth
-                value={form.rg}
-                onChange={handleChange('rg')}
-              />
-              <TextField
-                label="Celular"
-                fullWidth
-                value={form.celular}
-                onChange={handleChange('celular')}
-              />
-            </Box>
-
-            <Box
-              sx={{
-                mt: 2,
-                maxWidth: { xs: '100%', md: 280 },
-              }}
-            >
-              <TextField
-                label="Raça / Cor"
-                select
-                fullWidth
-                value={form.raca}
-                onChange={handleChange('raca')}
-              >
-                {opcoesRaca.map((opt) => (
-                  <MenuItem key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </MenuItem>
-                ))}
-              </TextField>
-            </Box>
-          </Paper>
-
-          {/* Endereço */}
-          <Paper variant="outlined" sx={{ p: 2.5 }}>
-            <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2 }}>
-              Endereço
-            </Typography>
-
-            <Box
-              sx={{
-                display: 'grid',
-                gridTemplateColumns: { xs: '1fr', md: '2fr 1fr' },
-                gap: 2,
-              }}
-            >
-              <TextField
-                label="Logradouro"
-                fullWidth
-                value={form.logradouro}
-                onChange={handleChange('logradouro')}
-              />
-              <TextField
-                label="Número"
-                fullWidth
-                value={form.numero_endereco}
-                onChange={handleChange('numero_endereco')}
-              />
-            </Box>
-
-            <Box
-              sx={{
-                mt: 2,
-                display: 'grid',
-                gridTemplateColumns: { xs: '1fr', md: 'repeat(3, 1fr)' },
-                gap: 2,
-              }}
-            >
-              <TextField
-                label="Bairro"
-                fullWidth
-                value={form.bairro}
-                onChange={handleChange('bairro')}
-              />
-              <TextField
-                label="Município"
-                fullWidth
-                value={form.municipio}
-                onChange={handleChange('municipio')}
-              />
-              <TextField
-                label="Ponto de referência"
-                fullWidth
-                value={form.ponto_referencia}
-                onChange={handleChange('ponto_referencia')}
-              />
-            </Box>
-          </Paper>
-
-          {/* Foto e redes sociais */}
-          <Paper variant="outlined" sx={{ p: 2.5 }}>
-            <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2 }}>
-              Foto e redes sociais
-            </Typography>
-
-            <Stack spacing={2}>
-              <Box
-                sx={{
-                  display: 'grid',
-                  gridTemplateColumns: { xs: '1fr', md: '2fr 1fr' },
-                  gap: 2,
-                  alignItems: 'center',
-                }}
-              >
-                <TextField
-                  label="URL da foto de perfil"
-                  fullWidth
-                  value={form.foto_url}
-                  onChange={handleChange('foto_url')}
-                  helperText="Se preferir, escolha um arquivo abaixo para enviar."
-                />
-
-                <Stack spacing={1} alignItems="center">
-                  <Avatar
-                    src={form.foto_url || undefined}
-                    sx={{
-                      width: 72,
-                      height: 72,
-                      bgcolor: theme.palette.primary.main,
-                      fontSize: 32,
-                      fontWeight: 700,
-                    }}
-                  >
-                    {form.foto_url ? null : avatarInicial}
-                  </Avatar>
-                  <Typography variant="caption" color="text.secondary">
-                    Pré-visualização da foto
-                  </Typography>
-                </Stack>
-              </Box>
-
-              <Box
-                sx={{
-                  display: 'flex',
-                  flexWrap: 'wrap',
-                  gap: 1.5,
-                }}
-              >
-                <Button
-                  type="button"
-                  variant="outlined"
-                  onClick={handleSelecionarFotoClick}
-                  disabled={uploadingFoto}
-                >
-                  {uploadingFoto ? 'Enviando foto...' : 'Selecionar foto / câmera'}
-                </Button>
-                <Typography variant="caption" color="text.secondary">
-                  Em celulares, o botão pode abrir a câmera. Em computadores, ele
-                  abre o seletor de arquivos.
-                </Typography>
-              </Box>
+      <Stack spacing={3}>
+        {/* FORMULÁRIO DE PERFIL */}
+        <Box component="form" noValidate onSubmit={handleSubmitPerfil}>
+          <Stack spacing={3}>
+            {/* Dados pessoais */}
+            <Paper variant="outlined" sx={{ p: 2.5 }}>
+              <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2 }}>
+                Dados pessoais
+              </Typography>
 
               <Box
                 sx={{
@@ -711,142 +567,500 @@ const PerfilPage: React.FC = () => {
                 }}
               >
                 <TextField
-                  label="Facebook"
+                  label="Nome completo"
                   fullWidth
-                  value={form.facebook_url}
-                  onChange={handleChange('facebook_url')}
-                  placeholder="https://facebook.com/seu_usuario"
+                  required
+                  value={form.name}
+                  onChange={handleChange('name')}
                 />
                 <TextField
-                  label="Instagram"
+                  label="Nome de usuário"
                   fullWidth
-                  value={form.instagram_url}
-                  onChange={handleChange('instagram_url')}
-                  placeholder="https://instagram.com/seu_usuario"
+                  value={form.username}
+                  onChange={handleChange('username')}
+                  helperText="Opcional. Usado em relatórios e identificações rápidas."
                 />
+              </Box>
+
+              <Box
+                sx={{
+                  mt: 2,
+                  display: 'grid',
+                  gridTemplateColumns: { xs: '1fr', md: '2fr 1fr 1fr' },
+                  gap: 2,
+                }}
+              >
+                <TextField
+                  label="E-mail"
+                  type="email"
+                  fullWidth
+                  required
+                  value={form.email}
+                  onChange={handleChange('email')}
+                  helperText="Usado para contato e notificações."
+                />
+                <TextField
+                  label="Data de nascimento"
+                  type="date"
+                  fullWidth
+                  InputLabelProps={{ shrink: true }}
+                  value={form.data_nascimento}
+                  onChange={handleChange('data_nascimento')}
+                />
+                <TextField
+                  label="Sexo"
+                  select
+                  fullWidth
+                  value={form.sexo}
+                  onChange={handleChange('sexo')}
+                >
+                  {opcoesSexo.map((opt) => (
+                    <MenuItem key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </MenuItem>
+                  ))}
+                </TextField>
+              </Box>
+
+              <Box
+                sx={{
+                  mt: 2,
+                  display: 'grid',
+                  gridTemplateColumns: { xs: '1fr', md: 'repeat(3, 1fr)' },
+                  gap: 2,
+                }}
+              >
+                <TextField
+                  label="CPF"
+                  fullWidth
+                  value={form.cpf}
+                  onChange={handleChange('cpf')}
+                />
+                <TextField
+                  label="RG"
+                  fullWidth
+                  value={form.rg}
+                  onChange={handleChange('rg')}
+                />
+                <TextField
+                  label="Celular"
+                  fullWidth
+                  value={form.celular}
+                  onChange={handleChange('celular')}
+                />
+              </Box>
+
+              <Box
+                sx={{
+                  mt: 2,
+                  maxWidth: { xs: '100%', md: 280 },
+                }}
+              >
+                <TextField
+                  label="Raça / Cor"
+                  select
+                  fullWidth
+                  value={form.raca}
+                  onChange={handleChange('raca')}
+                >
+                  {opcoesRaca.map((opt) => (
+                    <MenuItem key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </MenuItem>
+                  ))}
+                </TextField>
+              </Box>
+            </Paper>
+
+            {/* Endereço */}
+            <Paper variant="outlined" sx={{ p: 2.5 }}>
+              <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2 }}>
+                Endereço
+              </Typography>
+
+              <Box
+                sx={{
+                  display: 'grid',
+                  gridTemplateColumns: { xs: '1fr', md: '2fr 1fr' },
+                  gap: 2,
+                }}
+              >
+                <TextField
+                  label="Logradouro"
+                  fullWidth
+                  value={form.logradouro}
+                  onChange={handleChange('logradouro')}
+                />
+                <TextField
+                  label="Número"
+                  fullWidth
+                  value={form.numero_endereco}
+                  onChange={handleChange('numero_endereco')}
+                />
+              </Box>
+
+              <Box
+                sx={{
+                  mt: 2,
+                  display: 'grid',
+                  gridTemplateColumns: { xs: '1fr', md: 'repeat(3, 1fr)' },
+                  gap: 2,
+                }}
+              >
+                <TextField
+                  label="Bairro"
+                  fullWidth
+                  value={form.bairro}
+                  onChange={handleChange('bairro')}
+                />
+                <TextField
+                  label="Município"
+                  fullWidth
+                  value={form.municipio}
+                  onChange={handleChange('municipio')}
+                />
+                <TextField
+                  label="Ponto de referência"
+                  fullWidth
+                  value={form.ponto_referencia}
+                  onChange={handleChange('ponto_referencia')}
+                />
+              </Box>
+            </Paper>
+
+            {/* Foto e redes sociais */}
+            <Paper variant="outlined" sx={{ p: 2.5 }}>
+              <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2 }}>
+                Foto e redes sociais
+              </Typography>
+
+              <Stack spacing={2}>
+                <Box
+                  sx={{
+                    display: 'grid',
+                    gridTemplateColumns: { xs: '1fr', md: '2fr 1fr' },
+                    gap: 2,
+                    alignItems: 'center',
+                  }}
+                >
+                  <TextField
+                    label="URL da foto de perfil"
+                    fullWidth
+                    value={form.foto_url}
+                    onChange={handleChange('foto_url')}
+                    helperText="Se preferir, escolha um arquivo abaixo para enviar."
+                  />
+
+                  <Stack spacing={1} alignItems="center">
+                    <Avatar
+                      src={form.foto_url || undefined}
+                      sx={{
+                        width: 72,
+                        height: 72,
+                        bgcolor: theme.palette.primary.main,
+                        fontSize: 32,
+                        fontWeight: 700,
+                      }}
+                    >
+                      {form.foto_url ? null : avatarInicial}
+                    </Avatar>
+                    <Typography variant="caption" color="text.secondary">
+                      Pré-visualização da foto
+                    </Typography>
+                  </Stack>
+                </Box>
+
+                <Box
+                  sx={{
+                    display: 'flex',
+                    flexWrap: 'wrap',
+                    gap: 1.5,
+                  }}
+                >
+                  <Button
+                    type="button"
+                    variant="outlined"
+                    onClick={handleSelecionarFotoClick}
+                    disabled={uploadingFoto}
+                  >
+                    {uploadingFoto ? 'Enviando foto...' : 'Selecionar foto / câmera'}
+                  </Button>
+                  <Typography variant="caption" color="text.secondary">
+                    Em celulares, o botão pode abrir a câmera. Em computadores, ele
+                    abre o seletor de arquivos.
+                  </Typography>
+                </Box>
+
+                <Box
+                  sx={{
+                    display: 'grid',
+                    gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' },
+                    gap: 2,
+                  }}
+                >
+                  <TextField
+                    label="Facebook"
+                    fullWidth
+                    value={form.facebook_url}
+                    onChange={handleChange('facebook_url')}
+                    placeholder="https://facebook.com/seu_usuario"
+                  />
+                  <TextField
+                    label="Instagram"
+                    fullWidth
+                    value={form.instagram_url}
+                    onChange={handleChange('instagram_url')}
+                    placeholder="https://instagram.com/seu_usuario"
+                  />
+                </Box>
+              </Stack>
+            </Paper>
+
+            {/* Informações do sistema */}
+            <Paper variant="outlined" sx={{ p: 2.5 }}>
+              <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2 }}>
+                Informações do sistema
+              </Typography>
+
+              <Box
+                sx={{
+                  display: 'grid',
+                  gridTemplateColumns: { xs: '1fr', md: '2fr 1fr 1fr' },
+                  gap: 2,
+                }}
+              >
+                <TextField
+                  label="ID do usuário"
+                  fullWidth
+                  value={perfil.id}
+                  InputProps={{ readOnly: true }}
+                />
+                <TextField
+                  label="Tipo de usuário"
+                  fullWidth
+                  value={tipoUsuarioLabel}
+                  InputProps={{ readOnly: true }}
+                />
+                <TextField
+                  label="Status"
+                  fullWidth
+                  value={perfil.status}
+                  InputProps={{ readOnly: true }}
+                />
+              </Box>
+
+              <Box
+                sx={{
+                  mt: 2,
+                  display: 'grid',
+                  gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' },
+                  gap: 2,
+                }}
+              >
+                <TextField
+                  label="Criado em"
+                  fullWidth
+                  value={new Date(perfil.created_at).toLocaleString()}
+                  InputProps={{ readOnly: true }}
+                />
+                <TextField
+                  label="Última atualização"
+                  fullWidth
+                  value={new Date(perfil.updated_at).toLocaleString()}
+                  InputProps={{ readOnly: true }}
+                />
+              </Box>
+            </Paper>
+
+            {/* Ações do perfil */}
+            <Box
+              sx={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                mt: 1,
+                mb: 2,
+                flexWrap: 'wrap',
+                gap: 2,
+              }}
+            >
+              <Typography variant="body2" color="text.secondary">
+                As alterações serão refletidas em cadastros, matrículas e relatórios
+                do sistema.
+              </Typography>
+
+              <Stack direction="row" spacing={2}>
+                <Button
+                  type="button"
+                  variant="outlined"
+                  disabled={salvandoPerfil}
+                  onClick={() => {
+                    if (perfil) {
+                      setForm({
+                        name: perfil.name ?? '',
+                        username: perfil.username ?? '',
+                        email: perfil.email ?? '',
+                        data_nascimento: perfil.data_nascimento ?? '',
+                        sexo: perfil.sexo ?? '',
+                        cpf: perfil.cpf ?? '',
+                        rg: perfil.rg ?? '',
+                        celular: perfil.celular ?? '',
+                        logradouro: perfil.logradouro ?? '',
+                        numero_endereco: perfil.numero_endereco ?? '',
+                        bairro: perfil.bairro ?? '',
+                        municipio: perfil.municipio ?? '',
+                        ponto_referencia: perfil.ponto_referencia ?? '',
+                        raca: perfil.raca ?? '',
+                        foto_url: perfil.foto_url ?? '',
+                        facebook_url: perfil.facebook_url ?? '',
+                        instagram_url: perfil.instagram_url ?? '',
+                      })
+                    }
+                    setMensagemErro(null)
+                    setMensagemSucesso(null)
+                  }}
+                >
+                  Desfazer alterações
+                </Button>
+
+                <Button
+                  type="submit"
+                  variant="contained"
+                  color="primary"
+                  disabled={salvandoPerfil}
+                >
+                  {salvandoPerfil ? 'Salvando...' : 'Salvar alterações'}
+                </Button>
+              </Stack>
+            </Box>
+          </Stack>
+        </Box>
+
+        {/* FORMULÁRIO DE ALTERAÇÃO DE SENHA */}
+        <Box
+          component="form"
+          noValidate
+          onSubmit={handleSubmitSenha}
+          sx={{ mb: 4 }}
+        >
+          <Paper variant="outlined" sx={{ p: 2.5 }}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2 }}>
+              Alterar senha
+            </Typography>
+
+            <Stack spacing={2}>
+              <TextField
+                label="Senha atual"
+                fullWidth
+                type={mostrarSenhaAtual ? 'text' : 'password'}
+                value={senhaAtual}
+                onChange={(e) => setSenhaAtual(e.target.value)}
+                InputProps={{
+                  endAdornment: (
+                    <InputAdornment position="end">
+                      <IconButton
+                        onClick={() =>
+                          setMostrarSenhaAtual((prev) => !prev)
+                        }
+                        edge="end"
+                      >
+                        {mostrarSenhaAtual ? (
+                          <VisibilityOffIcon />
+                        ) : (
+                          <VisibilityIcon />
+                        )}
+                      </IconButton>
+                    </InputAdornment>
+                  ),
+                }}
+              />
+
+              <TextField
+                label="Nova senha"
+                fullWidth
+                type={mostrarNovaSenha ? 'text' : 'password'}
+                value={novaSenha}
+                onChange={(e) => setNovaSenha(e.target.value)}
+                helperText="Mínimo de 6 caracteres."
+                InputProps={{
+                  endAdornment: (
+                    <InputAdornment position="end">
+                      <IconButton
+                        onClick={() =>
+                          setMostrarNovaSenha((prev) => !prev)
+                        }
+                        edge="end"
+                      >
+                        {mostrarNovaSenha ? (
+                          <VisibilityOffIcon />
+                        ) : (
+                          <VisibilityIcon />
+                        )}
+                      </IconButton>
+                    </InputAdornment>
+                  ),
+                }}
+              />
+
+              <TextField
+                label="Confirmar nova senha"
+                fullWidth
+                type={mostrarConfirmarSenha ? 'text' : 'password'}
+                value={confirmarSenha}
+                onChange={(e) => setConfirmarSenha(e.target.value)}
+                InputProps={{
+                  endAdornment: (
+                    <InputAdornment position="end">
+                      <IconButton
+                        onClick={() =>
+                          setMostrarConfirmarSenha((prev) => !prev)
+                        }
+                        edge="end"
+                      >
+                        {mostrarConfirmarSenha ? (
+                          <VisibilityOffIcon />
+                        ) : (
+                          <VisibilityIcon />
+                        )}
+                      </IconButton>
+                    </InputAdornment>
+                  ),
+                }}
+              />
+
+              <Box
+                sx={{
+                  display: 'flex',
+                  justifyContent: 'flex-end',
+                  gap: 2,
+                  mt: 1,
+                }}
+              >
+                <Button
+                  type="button"
+                  variant="outlined"
+                  disabled={salvandoSenha}
+                  onClick={() => {
+                    setSenhaAtual('')
+                    setNovaSenha('')
+                    setConfirmarSenha('')
+                  }}
+                >
+                  Limpar
+                </Button>
+                <Button
+                  type="submit"
+                  variant="contained"
+                  color="primary"
+                  disabled={salvandoSenha}
+                >
+                  {salvandoSenha ? 'Atualizando senha...' : 'Atualizar senha'}
+                </Button>
               </Box>
             </Stack>
           </Paper>
-
-          {/* Informações do sistema */}
-          <Paper variant="outlined" sx={{ p: 2.5 }}>
-            <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2 }}>
-              Informações do sistema
-            </Typography>
-
-            <Box
-              sx={{
-                display: 'grid',
-                gridTemplateColumns: { xs: '1fr', md: '2fr 1fr 1fr' },
-                gap: 2,
-              }}
-            >
-              <TextField
-                label="ID do usuário"
-                fullWidth
-                value={perfil.id}
-                InputProps={{ readOnly: true }}
-              />
-              <TextField
-                label="Tipo de usuário"
-                fullWidth
-                value={tipoUsuarioLabel}
-                InputProps={{ readOnly: true }}
-              />
-              <TextField
-                label="Status"
-                fullWidth
-                value={perfil.status}
-                InputProps={{ readOnly: true }}
-              />
-            </Box>
-
-            <Box
-              sx={{
-                mt: 2,
-                display: 'grid',
-                gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' },
-                gap: 2,
-              }}
-            >
-              <TextField
-                label="Criado em"
-                fullWidth
-                value={new Date(perfil.created_at).toLocaleString()}
-                InputProps={{ readOnly: true }}
-              />
-              <TextField
-                label="Última atualização"
-                fullWidth
-                value={new Date(perfil.updated_at).toLocaleString()}
-                InputProps={{ readOnly: true }}
-              />
-            </Box>
-          </Paper>
-
-          {/* Ações */}
-          <Box
-            sx={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              mt: 1,
-              mb: 4,
-              flexWrap: 'wrap',
-              gap: 2,
-            }}
-          >
-            <Typography variant="body2" color="text.secondary">
-              As alterações serão refletidas em cadastros, matrículas e relatórios
-              do sistema.
-            </Typography>
-
-            <Stack direction="row" spacing={2}>
-              <Button
-                type="button"
-                variant="outlined"
-                disabled={salvando}
-                onClick={() => {
-                  if (perfil) {
-                    setForm({
-                      name: perfil.name ?? '',
-                      username: perfil.username ?? '',
-                      email: perfil.email ?? '',
-                      data_nascimento: perfil.data_nascimento ?? '',
-                      sexo: perfil.sexo ?? '',
-                      cpf: perfil.cpf ?? '',
-                      rg: perfil.rg ?? '',
-                      celular: perfil.celular ?? '',
-                      logradouro: perfil.logradouro ?? '',
-                      numero_endereco: perfil.numero_endereco ?? '',
-                      bairro: perfil.bairro ?? '',
-                      municipio: perfil.municipio ?? '',
-                      ponto_referencia: perfil.ponto_referencia ?? '',
-                      raca: perfil.raca ?? '',
-                      foto_url: perfil.foto_url ?? '',
-                      facebook_url: perfil.facebook_url ?? '',
-                      instagram_url: perfil.instagram_url ?? '',
-                    })
-                  }
-                  setMensagemErro(null)
-                  setMensagemSucesso(null)
-                }}
-              >
-                Desfazer alterações
-              </Button>
-
-              <Button
-                type="submit"
-                variant="contained"
-                color="primary"
-                disabled={salvando}
-              >
-                {salvando ? 'Salvando...' : 'Salvar alterações'}
-              </Button>
-            </Stack>
-          </Box>
-        </Stack>
-      </Box>
+        </Box>
+      </Stack>
     </Box>
   )
 }
