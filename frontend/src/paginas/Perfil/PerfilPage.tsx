@@ -878,114 +878,109 @@ const PerfilPage: React.FC = () => {
         </TabPanel>
 
         {/* --- ABA 4: SEGURANÇA --- */}
-        <TabPanel value={tabValue} index={3}>
-          <Box
-            component="form"
-            sx={{ maxWidth: 500, px: { xs: 0, md: 2 } }}
-            onSubmit={e => {
-              e.preventDefault()
-              handleAlterarSenha()
-            }}
-          >
-            <Alert severity="info" sx={{ mb: 3 }}>
-              Para sua segurança, informe sua senha atual para definir uma nova.
-            </Alert>
-            <Stack spacing={3}>
-              <TextField
-                label="Senha Atual"
-                type={mostrarSenhas.atual ? 'text' : 'password'}
-                value={senhaData.atual}
-                onChange={e =>
-                  setSenhaData({ ...senhaData, atual: e.target.value })
+<TabPanel value={tabValue} index={3}>
+  <Box
+    component="form"
+    sx={{ maxWidth: 500, px: { xs: 0, md: 2 } }}
+    onSubmit={e => {
+      e.preventDefault()
+      handleAlterarSenha()
+    }}
+  >
+    <Alert severity="info" sx={{ mb: 3 }}>
+      Para sua segurança, informe sua senha atual para definir uma nova.
+    </Alert>
+    <Stack spacing={3}>
+      <TextField
+        label="Senha Atual"
+        type={mostrarSenhas.atual ? 'text' : 'password'}
+        value={senhaData.atual}
+        autoComplete="current-password"          // <<< AQUI
+        onChange={e =>
+          setSenhaData({ ...senhaData, atual: e.target.value })
+        }
+        InputProps={{
+          endAdornment: (
+            <InputAdornment position="end">
+              <IconButton
+                onClick={() =>
+                  setMostrarSenhas({
+                    ...mostrarSenhas,
+                    atual: !mostrarSenhas.atual,
+                  })
                 }
-                InputProps={{
-                  endAdornment: (
-                    <InputAdornment position="end">
-                      <IconButton
-                        onClick={() =>
-                          setMostrarSenhas({
-                            ...mostrarSenhas,
-                            atual: !mostrarSenhas.atual,
-                          })
-                        }
-                      >
-                        {mostrarSenhas.atual ? (
-                          <VisibilityOff />
-                        ) : (
-                          <Visibility />
-                        )}
-                      </IconButton>
-                    </InputAdornment>
-                  ),
-                }}
-              />
-              <TextField
-                label="Nova Senha"
-                type={mostrarSenhas.nova ? 'text' : 'password'}
-                value={senhaData.nova}
-                onChange={e =>
-                  setSenhaData({ ...senhaData, nova: e.target.value })
-                }
-                InputProps={{
-                  endAdornment: (
-                    <InputAdornment position="end">
-                      <IconButton
-                        onClick={() =>
-                          setMostrarSenhas({
-                            ...mostrarSenhas,
-                            nova: !mostrarSenhas.nova,
-                          })
-                        }
-                      >
-                        {mostrarSenhas.nova ? (
-                          <VisibilityOff />
-                        ) : (
-                          <Visibility />
-                        )}
-                      </IconButton>
-                    </InputAdornment>
-                  ),
-                }}
-              />
-              <TextField
-                label="Confirmar Senha"
-                type={mostrarSenhas.conf ? 'text' : 'password'}
-                value={senhaData.conf}
-                onChange={e =>
-                  setSenhaData({ ...senhaData, conf: e.target.value })
-                }
-                InputProps={{
-                  endAdornment: (
-                    <InputAdornment position="end">
-                      <IconButton
-                        onClick={() =>
-                          setMostrarSenhas({
-                            ...mostrarSenhas,
-                            conf: !mostrarSenhas.conf,
-                          })
-                        }
-                      >
-                        {mostrarSenhas.conf ? (
-                          <VisibilityOff />
-                        ) : (
-                          <Visibility />
-                        )}
-                      </IconButton>
-                    </InputAdornment>
-                  ),
-                }}
-              />
-              <Button
-                variant="contained"
-                color="warning"
-                type="submit"
-                disabled={loadingSenha}
               >
-                {loadingSenha ? 'Alterando...' : 'Alterar Senha'}
-              </Button>
-            </Stack>
-          </Box>
-        </TabPanel>
+                {mostrarSenhas.atual ? <VisibilityOff /> : <Visibility />}
+              </IconButton>
+            </InputAdornment>
+          ),
+        }}
+      />
+
+      <TextField
+        label="Nova Senha"
+        type={mostrarSenhas.nova ? 'text' : 'password'}
+        value={senhaData.nova}
+        autoComplete="new-password"              // <<< AQUI
+        onChange={e =>
+          setSenhaData({ ...senhaData, nova: e.target.value })
+        }
+        InputProps={{
+          endAdornment: (
+            <InputAdornment position="end">
+              <IconButton
+                onClick={() =>
+                  setMostrarSenhas({
+                    ...mostrarSenhas,
+                    nova: !mostrarSenhas.nova,
+                  })
+                }
+              >
+                {mostrarSenhas.nova ? <VisibilityOff /> : <Visibility />}
+              </IconButton>
+            </InputAdornment>
+          ),
+        }}
+      />
+
+      <TextField
+        label="Confirmar Senha"
+        type={mostrarSenhas.conf ? 'text' : 'password'}
+        value={senhaData.conf}
+        autoComplete="new-password"              // <<< AQUI
+        onChange={e =>
+          setSenhaData({ ...senhaData, conf: e.target.value })
+        }
+        InputProps={{
+          endAdornment: (
+            <InputAdornment position="end">
+              <IconButton
+                onClick={() =>
+                  setMostrarSenhas({
+                    ...mostrarSenhas,
+                    conf: !mostrarSenhas.conf,
+                  })
+                }
+              >
+                {mostrarSenhas.conf ? <VisibilityOff /> : <Visibility />}
+              </IconButton>
+            </InputAdornment>
+          ),
+        }}
+      />
+
+      <Button
+        variant="contained"
+        color="warning"
+        type="submit"
+        disabled={loadingSenha}
+      >
+        {loadingSenha ? 'Alterando...' : 'Alterar Senha'}
+      </Button>
+    </Stack>
+  </Box>
+</TabPanel>
+
       </Paper>
 
       {/* Modal da câmera */}
