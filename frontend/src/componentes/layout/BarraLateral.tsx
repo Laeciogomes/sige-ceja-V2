@@ -9,7 +9,7 @@ import {
   useTheme,
 } from '@mui/material'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { itensMenu } from '../../config/menu'
+import { itensMenu, type ItemMenuConfig } from '../../config/menu'
 
 interface BarraLateralProps {
   aberta: boolean
@@ -25,10 +25,23 @@ const BarraLateral: React.FC<BarraLateralProps> = ({ aberta }) => {
     return location.pathname.startsWith(caminho)
   }
 
+  const laranja = '#F7941D'
+
+  const hoverBg =
+    theme.palette.mode === 'dark'
+      ? 'rgba(247, 148, 29, 0.25)'
+      : 'rgba(247, 148, 29, 0.12)'
+
+  const ativoBg =
+    theme.palette.mode === 'dark'
+      ? 'rgba(247, 148, 29, 0.35)'
+      : 'rgba(247, 148, 29, 0.18)'
+
   return (
     <List sx={{ py: 1 }}>
-      {itensMenu.map((item) => {
+      {itensMenu.map((item: ItemMenuConfig) => {
         const ativo = rotaAtiva(item.caminho)
+
         return (
           <Tooltip
             key={item.caminho}
@@ -47,42 +60,45 @@ const BarraLateral: React.FC<BarraLateralProps> = ({ aberta }) => {
                   ['background-color', 'transform'],
                   {
                     duration: theme.transitions.duration.shortest,
-                  }
+                  },
                 ),
+                bgcolor: ativo ? ativoBg : 'transparent',
                 '&:hover': {
-                  bgcolor: theme.palette.action.hover,
+                  bgcolor: hoverBg,
                   transform: 'translateX(2px)',
                   boxShadow: 1,
                 },
-                '&.Mui-selected': {
-                  bgcolor: theme.palette.action.selected,
-                  '&:hover': {
-                    bgcolor: theme.palette.action.selected,
-                  },
-                  borderLeft: `3px solid ${theme.palette.primary.main}`,
-                },
               }}
             >
+              {/* Ícone: sempre aparece, mesmo com menu recolhido */}
               <ListItemIcon
                 sx={{
                   minWidth: aberta ? 36 : 'auto',
                   mr: aberta ? 1.5 : 0,
                   justifyContent: 'center',
-                  color: ativo
-                    ? theme.palette.primary.main
-                    : theme.palette.text.secondary,
+                  color: ativo ? laranja : theme.palette.text.secondary,
                 }}
               >
                 {item.icone}
               </ListItemIcon>
+
+              {/* Texto: some só quando o menu está recolhido */}
               <ListItemText
                 primary={item.rotulo}
-                primaryTypographyProps={{ variant: 'body2' }}
+                primaryTypographyProps={{
+                  variant: 'body2',
+                  sx: { fontWeight: ativo ? 600 : 400 },
+                }}
                 sx={{
                   opacity: aberta ? 1 : 0,
                   transition: theme.transitions.create('opacity', {
                     duration: theme.transitions.duration.shortest,
                   }),
+                  '& .MuiListItemText-primary': {
+                    color: ativo
+                      ? laranja
+                      : theme.palette.text.primary,
+                  },
                 }}
               />
             </ListItemButton>

@@ -17,7 +17,7 @@ import {
   Skeleton,
   Badge,
   Fade,
-  Chip
+
 } from '@mui/material'
 
 // Ícones

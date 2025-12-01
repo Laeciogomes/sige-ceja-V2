@@ -42,7 +42,8 @@ const DashboardPage: React.FC = () => {
     'Selecione uma área no menu lateral para começar.'
 
   return (
-    <Box>
+    // maxWidth limita; mr:'auto' ancora à ESQUERDA perto do menu
+    <Box sx={{ maxWidth: 1200, mr: 'auto' }}>
       {/* Cabeçalho do painel */}
       <Box sx={{ mb: 3 }}>
         <Typography variant="h5" sx={{ fontWeight: 700, mb: 0.5 }}>

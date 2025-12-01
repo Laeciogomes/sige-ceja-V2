@@ -1,4 +1,4 @@
-// frontend/src/config/menu.ts
+// frontend/src/config/menu.tsx
 import React from 'react'
 
 import DashboardIcon from '@mui/icons-material/Dashboard'
@@ -28,5 +28,5 @@ export const itensMenu: ItemMenuConfig[] = [
   { rotulo: 'Salas de Atendimento', caminho: '/salas', icone: <DoorFrontIcon /> },
   { rotulo: 'Atendimentos', caminho: '/atendimentos', icone: <MeetingRoomIcon /> },
   { rotulo: 'Relatórios', caminho: '/relatorios', icone: <AssessmentIcon /> },
-  { rotulo: 'Configurações', caminho: '/config', icone: <SettingsIcon /> },
+  // >>> OBS: "Configurações" foi removido daqui, fica só lá em cima no menu do usuário.
 ]
