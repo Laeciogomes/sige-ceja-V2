@@ -1,5 +1,5 @@
 // frontend/src/paginas/Perfil/PerfilPage.tsx
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState, useRef } from 'react'
 import {
   Alert,
   Avatar,
@@ -22,6 +22,7 @@ import { useSupabase } from '../../contextos/SupabaseContext'
 type UsuarioPerfil = {
   id: string
   id_tipo_usuario: number
+  tipo_usuario_nome?: string | null
   name: string
   username: string | null
   email: string
@@ -81,13 +82,11 @@ const opcoesRaca = [
   { value: 'Outro', label: 'Outro' },
 ]
 
-const mapTipoUsuario: Record<number, string> = {
-  1: 'Administrador',
-  2: 'Direção',
-  3: 'Coordenação',
-  4: 'Secretaria',
-  5: 'Professor',
-  6: 'Aluno',
+const normalizarCaminhoNome = (nome: string): string => {
+  return nome
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9-_]/g, '_')
 }
 
 const PerfilPage: React.FC = () => {
@@ -99,6 +98,9 @@ const PerfilPage: React.FC = () => {
   const [form, setForm] = useState<FormPerfil | null>(null)
   const [mensagemSucesso, setMensagemSucesso] = useState<string | null>(null)
   const [mensagemErro, setMensagemErro] = useState<string | null>(null)
+  const [uploadingFoto, setUploadingFoto] = useState(false)
+
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
 
   const {
     data: perfil,
@@ -137,17 +139,46 @@ const PerfilPage: React.FC = () => {
             'status',
             'created_at',
             'updated_at',
+            'tipos_usuario ( nome )',
           ].join(','),
         )
         .eq('id', usuario.id)
-        .maybeSingle<UsuarioPerfil>()
+        .maybeSingle<any>() // relação aninhada
 
       if (err) {
         console.error('Erro ao carregar perfil:', err)
         throw err
       }
 
-      return data
+      if (!data) return null
+
+      const perfilNormalizado: UsuarioPerfil = {
+        id: data.id,
+        id_tipo_usuario: data.id_tipo_usuario,
+        tipo_usuario_nome: data.tipos_usuario?.nome ?? null,
+        name: data.name,
+        username: data.username,
+        email: data.email,
+        data_nascimento: data.data_nascimento,
+        sexo: data.sexo,
+        cpf: data.cpf,
+        rg: data.rg,
+        celular: data.celular,
+        logradouro: data.logradouro,
+        numero_endereco: data.numero_endereco,
+        bairro: data.bairro,
+        municipio: data.municipio,
+        ponto_referencia: data.ponto_referencia,
+        raca: data.raca,
+        foto_url: data.foto_url,
+        facebook_url: data.facebook_url,
+        instagram_url: data.instagram_url,
+        status: data.status,
+        created_at: data.created_at,
+        updated_at: data.updated_at,
+      }
+
+      return perfilNormalizado
     },
   })
 
@@ -253,6 +284,74 @@ const PerfilPage: React.FC = () => {
     mutation.mutate(form)
   }
 
+  const handleSelecionarFotoClick = () => {
+    fileInputRef.current?.click()
+  }
+
+  const handleArquivoSelecionado = async (
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    const arquivo = event.target.files?.[0]
+    if (!arquivo || !usuario || !supabase) return
+
+    setMensagemErro(null)
+    setMensagemSucesso(null)
+    setUploadingFoto(true)
+
+    try {
+      const nomeBase = form?.name ? normalizarCaminhoNome(form.name) : usuario.id
+      const caminho = `${nomeBase}/${Date.now()}_${arquivo.name}`
+
+      const { error: uploadError } = await supabase.storage
+        .from('avatars') // bucket precisa existir no Supabase
+        .upload(caminho, arquivo, {
+          cacheControl: '3600',
+          upsert: true,
+        })
+
+      if (uploadError) {
+        console.error(uploadError)
+        throw uploadError
+      }
+
+      const { data: publicData } = supabase.storage
+        .from('avatars')
+        .getPublicUrl(caminho)
+
+      const novaUrl = publicData.publicUrl
+
+      // Atualiza banco só com a foto
+      const { error: updateError } = await supabase
+        .from('usuarios')
+        .update({
+          foto_url: novaUrl,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', usuario.id)
+
+      if (updateError) {
+        console.error(updateError)
+        throw updateError
+      }
+
+      setForm((prev) => (prev ? { ...prev, foto_url: novaUrl } : prev))
+      queryClient.invalidateQueries({ queryKey: ['perfil-usuario', usuario.id] })
+      queryClient.invalidateQueries({
+        queryKey: ['perfil-usuario-editar', usuario.id],
+      })
+
+      setMensagemSucesso('Foto de perfil atualizada com sucesso.')
+    } catch (err) {
+      console.error(err)
+      setMensagemErro(
+        'Não foi possível enviar a foto. Verifique o arquivo e tente novamente.',
+      )
+    } finally {
+      setUploadingFoto(false)
+      if (fileInputRef.current) fileInputRef.current.value = ''
+    }
+  }
+
   if (isLoading || !form || !perfil) {
     return (
       <Box
@@ -280,10 +379,9 @@ const PerfilPage: React.FC = () => {
   }
 
   const tipoUsuarioLabel =
-    mapTipoUsuario[perfil.id_tipo_usuario] ?? `Tipo #${perfil.id_tipo_usuario}`
+    perfil.tipo_usuario_nome || `Tipo #${perfil.id_tipo_usuario}`
 
   const avatarInicial = form.name ? form.name.charAt(0).toUpperCase() : 'U'
-
   const salvando = mutation.status === 'pending'
 
   return (
@@ -339,6 +437,16 @@ const PerfilPage: React.FC = () => {
           </Alert>
         )}
       </Stack>
+
+      {/* Input de arquivo oculto para foto */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        style={{ display: 'none' }}
+        onChange={handleArquivoSelecionado}
+      />
 
       <Box component="form" noValidate onSubmit={handleSubmit}>
         <Stack spacing={3}>
@@ -523,64 +631,86 @@ const PerfilPage: React.FC = () => {
               Foto e redes sociais
             </Typography>
 
-            <Box
-              sx={{
-                display: 'grid',
-                gridTemplateColumns: { xs: '1fr', md: '2fr 1fr' },
-                gap: 2,
-                alignItems: 'center',
-              }}
-            >
-              <TextField
-                label="URL da foto de perfil"
-                fullWidth
-                value={form.foto_url}
-                onChange={handleChange('foto_url')}
-                helperText="Cole o link da imagem (por exemplo, do Storage do Supabase)."
-              />
+            <Stack spacing={2}>
+              <Box
+                sx={{
+                  display: 'grid',
+                  gridTemplateColumns: { xs: '1fr', md: '2fr 1fr' },
+                  gap: 2,
+                  alignItems: 'center',
+                }}
+              >
+                <TextField
+                  label="URL da foto de perfil"
+                  fullWidth
+                  value={form.foto_url}
+                  onChange={handleChange('foto_url')}
+                  helperText="Se preferir, escolha um arquivo abaixo para enviar."
+                />
 
-              <Stack spacing={1} alignItems="center">
-                <Avatar
-                  src={form.foto_url || undefined}
-                  sx={{
-                    width: 72,
-                    height: 72,
-                    bgcolor: theme.palette.primary.main,
-                    fontSize: 32,
-                    fontWeight: 700,
-                  }}
+                <Stack spacing={1} alignItems="center">
+                  <Avatar
+                    src={form.foto_url || undefined}
+                    sx={{
+                      width: 72,
+                      height: 72,
+                      bgcolor: theme.palette.primary.main,
+                      fontSize: 32,
+                      fontWeight: 700,
+                    }}
+                  >
+                    {form.foto_url ? null : avatarInicial}
+                  </Avatar>
+                  <Typography variant="caption" color="text.secondary">
+                    Pré-visualização da foto
+                  </Typography>
+                </Stack>
+              </Box>
+
+              <Box
+                sx={{
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  gap: 1.5,
+                }}
+              >
+                <Button
+                  type="button"
+                  variant="outlined"
+                  onClick={handleSelecionarFotoClick}
+                  disabled={uploadingFoto}
                 >
-                  {form.foto_url ? null : avatarInicial}
-                </Avatar>
+                  {uploadingFoto ? 'Enviando foto...' : 'Selecionar foto / câmera'}
+                </Button>
                 <Typography variant="caption" color="text.secondary">
-                  Pré-visualização da foto
+                  Em celulares, o botão pode abrir a câmera. Em computadores, ele
+                  abre o seletor de arquivos.
                 </Typography>
-              </Stack>
-            </Box>
+              </Box>
 
-            <Box
-              sx={{
-                mt: 2,
-                display: 'grid',
-                gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' },
-                gap: 2,
-              }}
-            >
-              <TextField
-                label="Facebook"
-                fullWidth
-                value={form.facebook_url}
-                onChange={handleChange('facebook_url')}
-                placeholder="https://facebook.com/seu_usuario"
-              />
-              <TextField
-                label="Instagram"
-                fullWidth
-                value={form.instagram_url}
-                onChange={handleChange('instagram_url')}
-                placeholder="https://instagram.com/seu_usuario"
-              />
-            </Box>
+              <Box
+                sx={{
+                  display: 'grid',
+                  gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' },
+                  gap: 2,
+                }}
+              >
+                <TextField
+                  label="Facebook"
+                  fullWidth
+                  value={form.facebook_url}
+                  onChange={handleChange('facebook_url')}
+                  placeholder="https://facebook.com/seu_usuario"
+                />
+                <TextField
+                  label="Instagram"
+                  fullWidth
+                  value={form.instagram_url}
+                  onChange={handleChange('instagram_url')}
+                  placeholder="https://instagram.com/seu_usuario"
+                />
+              </Box>
+            </Stack>
           </Paper>
 
           {/* Informações do sistema */}
@@ -603,11 +733,10 @@ const PerfilPage: React.FC = () => {
                 InputProps={{ readOnly: true }}
               />
               <TextField
-                label="Tipo de usuário (ID)"
+                label="Tipo de usuário"
                 fullWidth
-                value={perfil.id_tipo_usuario}
+                value={tipoUsuarioLabel}
                 InputProps={{ readOnly: true }}
-                helperText={tipoUsuarioLabel}
               />
               <TextField
                 label="Status"
@@ -648,11 +777,13 @@ const PerfilPage: React.FC = () => {
               alignItems: 'center',
               mt: 1,
               mb: 4,
+              flexWrap: 'wrap',
+              gap: 2,
             }}
           >
             <Typography variant="body2" color="text.secondary">
-              As alterações serão refletidas em cadastros, matrículas e
-              relatórios do sistema.
+              As alterações serão refletidas em cadastros, matrículas e relatórios
+              do sistema.
             </Typography>
 
             <Stack direction="row" spacing={2}>
