@@ -1,5 +1,5 @@
-// frontend/src/paginas/Perfil/PerfilPage.tsx
-import React, { useEffect, useState, useRef } from 'react'
+// src/paginas/Perfil/PerfilPage.tsx
+import React, { useEffect, useRef, useState } from 'react'
 import {
   Alert,
   Avatar,
@@ -7,26 +7,40 @@ import {
   Button,
   Chip,
   CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   IconButton,
   InputAdornment,
-  MenuItem,
   Paper,
   Stack,
+  Tab,
+  Tabs,
   TextField,
   Typography,
   useTheme,
+  Grid,
 } from '@mui/material'
-import VisibilityIcon from '@mui/icons-material/Visibility'
-import VisibilityOffIcon from '@mui/icons-material/VisibilityOff'
+import {
+  Image as ImageIcon,
+  PhotoCamera,
+  Visibility,
+  VisibilityOff,
+  Person as PersonIcon,
+  Home as HomeIcon,
+  Security as SecurityIcon,
+  PhotoCameraFront as PhotoIcon
+} from '@mui/icons-material'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 
 import { useAuth } from '../../contextos/AuthContext'
 import { useSupabase } from '../../contextos/SupabaseContext'
 
+// --- Tipagens ---
 type UsuarioPerfil = {
   id: string
   id_tipo_usuario: number
-  tipo_usuario_nome?: string | null
   name: string
   username: string | null
   email: string
@@ -69,30 +83,33 @@ type FormPerfil = {
   instagram_url: string
 }
 
-const opcoesSexo = [
-  { value: '', label: 'Não informado' },
-  { value: 'Masculino', label: 'Masculino' },
-  { value: 'Feminino', label: 'Feminino' },
-  { value: 'Outro', label: 'Outro' },
-]
-
-const opcoesRaca = [
-  { value: '', label: 'Não informado' },
-  { value: 'Branca', label: 'Branca' },
-  { value: 'Preta', label: 'Preta' },
-  { value: 'Parda', label: 'Parda' },
-  { value: 'Amarela', label: 'Amarela' },
-  { value: 'Indígena', label: 'Indígena' },
-  { value: 'Outro', label: 'Outro' },
-]
-
-// Deixa o texto seguro para usar em caminho de arquivo do Storage
-const normalizarCaminhoNome = (texto: string): string => {
-  return texto
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '') // remove acentos
-    .replace(/[^a-zA-Z0-9._-]/g, '_') // só letras, números, ponto, underline e hífen
+// --- Helpers e Componentes Auxiliares ---
+interface TabPanelProps {
+  children?: React.ReactNode
+  index: number
+  value: number
 }
+
+function TabPanel(props: TabPanelProps) {
+  const { children, value, index, ...other } = props
+  return (
+    <div role="tabpanel" hidden={value !== index} {...other} style={{ width: '100%' }}>
+      {value === index && <Box sx={{ py: 3, px: 1 }}>{children}</Box>}
+    </div>
+  )
+}
+
+const masks = {
+  cpf: (v: string) => v.replace(/\D/g, '').replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d{1,2})/, '$1-$2').substring(0, 14),
+  celular: (v: string) => v.replace(/\D/g, '').replace(/(\d{2})(\d)/, '($1) $2').replace(/(\d{5})(\d)/, '$1-$2').substring(0, 15),
+}
+
+const mapTipoUsuario: Record<number, string> = {
+  1: 'Diretor', 2: 'Professor', 3: 'Coordenador', 4: 'Secretário', 5: 'Aluno', 6: 'Administrador',
+}
+
+const slugify = (value: string) =>
+  value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-zA-Z0-9._-]/g, '_')
 
 const PerfilPage: React.FC = () => {
   const theme = useTheme()
@@ -100,100 +117,33 @@ const PerfilPage: React.FC = () => {
   const { supabase } = useSupabase()
   const queryClient = useQueryClient()
 
+  // States
+  const [tabValue, setTabValue] = useState(0)
   const [form, setForm] = useState<FormPerfil | null>(null)
   const [mensagemSucesso, setMensagemSucesso] = useState<string | null>(null)
   const [mensagemErro, setMensagemErro] = useState<string | null>(null)
-  const [uploadingFoto, setUploadingFoto] = useState(false)
 
-  // Campos de alteração de senha
-  const [senhaAtual, setSenhaAtual] = useState('')
-  const [novaSenha, setNovaSenha] = useState('')
-  const [confirmarSenha, setConfirmarSenha] = useState('')
-  const [mostrarSenhaAtual, setMostrarSenhaAtual] = useState(false)
-  const [mostrarNovaSenha, setMostrarNovaSenha] = useState(false)
-  const [mostrarConfirmarSenha, setMostrarConfirmarSenha] = useState(false)
-
-  // Inputs de arquivo
+  // Camera & Upload
+  const [uploadingAvatar, setUploadingAvatar] = useState(false)
   const fileInputGaleriaRef = useRef<HTMLInputElement | null>(null)
-  const fileInputCameraRef = useRef<HTMLInputElement | null>(null)
+  const [cameraAberta, setCameraAberta] = useState(false)
+  const videoRef = useRef<HTMLVideoElement | null>(null)
+  const streamRef = useRef<MediaStream | null>(null)
 
-  const {
-    data: perfil,
-    isLoading,
-    isError,
-    error,
-  } = useQuery({
+  // Senha
+  const [senhaData, setSenhaData] = useState({ atual: '', nova: '', conf: '' })
+  const [mostrarSenhas, setMostrarSenhas] = useState({ atual: false, nova: false, conf: false })
+  const [loadingSenha, setLoadingSenha] = useState(false)
+
+  // Query Data
+  const { data: perfil, isLoading, isError, error } = useQuery({
     queryKey: ['perfil-usuario-editar', usuario?.id],
     enabled: !!usuario && !!supabase,
     queryFn: async (): Promise<UsuarioPerfil | null> => {
       if (!usuario || !supabase) return null
-
-      const { data, error: err } = await supabase
-        .from('usuarios')
-        .select(
-          [
-            'id',
-            'id_tipo_usuario',
-            'name',
-            'username',
-            'email',
-            'data_nascimento',
-            'sexo',
-            'cpf',
-            'rg',
-            'celular',
-            'logradouro',
-            'numero_endereco',
-            'bairro',
-            'municipio',
-            'ponto_referencia',
-            'raca',
-            'foto_url',
-            'facebook_url',
-            'instagram_url',
-            'status',
-            'created_at',
-            'updated_at',
-            'tipos_usuario ( nome )',
-          ].join(','),
-        )
-        .eq('id', usuario.id)
-        .maybeSingle<any>()
-
-      if (err) {
-        console.error('Erro ao carregar perfil:', err)
-        throw err
-      }
-
-      if (!data) return null
-
-      const perfilNormalizado: UsuarioPerfil = {
-        id: data.id,
-        id_tipo_usuario: data.id_tipo_usuario,
-        tipo_usuario_nome: data.tipos_usuario?.nome ?? null,
-        name: data.name,
-        username: data.username,
-        email: data.email,
-        data_nascimento: data.data_nascimento,
-        sexo: data.sexo,
-        cpf: data.cpf,
-        rg: data.rg,
-        celular: data.celular,
-        logradouro: data.logradouro,
-        numero_endereco: data.numero_endereco,
-        bairro: data.bairro,
-        municipio: data.municipio,
-        ponto_referencia: data.ponto_referencia,
-        raca: data.raca,
-        foto_url: data.foto_url,
-        facebook_url: data.facebook_url,
-        instagram_url: data.instagram_url,
-        status: data.status,
-        created_at: data.created_at,
-        updated_at: data.updated_at,
-      }
-
-      return perfilNormalizado
+      const { data, error: err } = await supabase.from('usuarios').select('*').eq('id', usuario.id).maybeSingle()
+      if (err) throw err
+      return data
     },
   })
 
@@ -221,872 +171,357 @@ const PerfilPage: React.FC = () => {
     }
   }, [perfil])
 
-  const handleChange =
-    (campo: keyof FormPerfil) =>
-    (event: React.ChangeEvent<HTMLInputElement>) => {
-      setForm((prev) => (prev ? { ...prev, [campo]: event.target.value } : prev))
-    }
+  // Handlers
+  const handleTabChange = (_: React.SyntheticEvent, newValue: number) => setTabValue(newValue)
 
-  // Mutação para salvar dados de perfil
-  const mutationPerfil = useMutation({
+  const handleChange = (campo: keyof FormPerfil) => (event: React.ChangeEvent<HTMLInputElement>) => {
+    let valor = event.target.value
+    if (campo === 'cpf') valor = masks.cpf(valor)
+    if (campo === 'celular') valor = masks.celular(valor)
+    setForm(prev => (prev ? { ...prev, [campo]: valor } : prev))
+  }
+
+  // Mutation Update
+  const mutation = useMutation({
     mutationFn: async (dados: FormPerfil) => {
-      if (!usuario || !supabase) {
-        throw new Error('Usuário ou conexão com o banco indisponível.')
-      }
-
+      if (!usuario || !supabase) throw new Error('Erro conexão')
       const payload = {
-        name: dados.name.trim(),
-        username: dados.username.trim() || null,
-        email: dados.email.trim(),
-        data_nascimento: dados.data_nascimento || null,
-        sexo: dados.sexo || null,
-        cpf: dados.cpf.trim() || null,
-        rg: dados.rg.trim() || null,
-        celular: dados.celular.trim() || null,
-        logradouro: dados.logradouro.trim() || null,
-        numero_endereco: dados.numero_endereco.trim() || null,
-        bairro: dados.bairro.trim() || null,
-        municipio: dados.municipio.trim() || null,
-        ponto_referencia: dados.ponto_referencia.trim() || null,
-        raca: dados.raca || null,
-        foto_url: dados.foto_url.trim() || null,
-        facebook_url: dados.facebook_url.trim() || null,
-        instagram_url: dados.instagram_url.trim() || null,
-        updated_at: new Date().toISOString(),
+        ...dados,
+        cpf: dados.cpf || null,
+        updated_at: new Date().toISOString()
       }
-
-      const { error: err } = await supabase
-        .from('usuarios')
-        .update(payload)
-        .eq('id', usuario.id)
-
-      if (err) {
-        console.error('Erro ao atualizar perfil:', err)
-        throw err
-      }
-
+      const { error } = await supabase.from('usuarios').update(payload).eq('id', usuario.id)
+      if (error) throw error
       return payload
     },
     onSuccess: () => {
+      setMensagemSucesso('Perfil atualizado com sucesso!')
       setMensagemErro(null)
-      setMensagemSucesso('Perfil atualizado com sucesso.')
-      queryClient.invalidateQueries({ queryKey: ['perfil-usuario', usuario?.id] })
-      queryClient.invalidateQueries({
-        queryKey: ['perfil-usuario-editar', usuario?.id],
-      })
+      queryClient.invalidateQueries({ queryKey: ['perfil-usuario'] })
     },
-    onError: (err: unknown) => {
-      console.error(err)
-      setMensagemSucesso(null)
-      setMensagemErro('Não foi possível salvar as alterações. Tente novamente.')
-    },
+    onError: () => setMensagemErro('Erro ao salvar.')
   })
 
-  // Mutação para alteração de senha
-  const mutationSenha = useMutation({
-    mutationFn: async () => {
-      if (!usuario || !supabase) {
-        throw new Error('Usuário ou conexão com o banco indisponível.')
-      }
-
-      const emailLogin = usuario.email || form?.email
-      if (!emailLogin) {
-        throw new Error('E-mail do usuário não encontrado para reautenticação.')
-      }
-
-      // 1. Reautentica com senha atual
-      const { error: loginError } = await supabase.auth.signInWithPassword({
-        email: emailLogin,
-        password: senhaAtual,
-      })
-
-      if (loginError) {
-        throw new Error('Senha atual incorreta.')
-      }
-
-      // 2. Atualiza a senha
-      const { error: updateError } = await supabase.auth.updateUser({
-        password: novaSenha,
-      })
-
-      if (updateError) {
-        console.error(updateError)
-        throw new Error('Erro ao atualizar senha.')
-      }
-    },
-    onSuccess: () => {
-      setMensagemErro(null)
-      setMensagemSucesso('Senha alterada com sucesso.')
-      setSenhaAtual('')
-      setNovaSenha('')
-      setConfirmarSenha('')
-    },
-    onError: (err: unknown) => {
-      console.error(err)
-      setMensagemSucesso(null)
-      if (err instanceof Error) {
-        setMensagemErro(err.message)
-      } else {
-        setMensagemErro('Não foi possível alterar a senha. Tente novamente.')
-      }
-    },
-  })
-
-  const handleSubmitPerfil = (event: React.FormEvent) => {
-    event.preventDefault()
-    if (!form) return
-
-    if (!form.name.trim()) {
-      setMensagemSucesso(null)
-      setMensagemErro('O nome completo é obrigatório.')
-      return
+  // Camera Logic
+  useEffect(() => {
+    if (cameraAberta && videoRef.current && streamRef.current) {
+      ;(videoRef.current as any).srcObject = streamRef.current
     }
-    if (!form.email.trim()) {
-      setMensagemSucesso(null)
-      setMensagemErro('O e-mail é obrigatório.')
-      return
-    }
+  }, [cameraAberta])
 
-    mutationPerfil.mutate(form)
-  }
-
-  const handleSubmitSenha = (event: React.FormEvent) => {
-    event.preventDefault()
-    setMensagemErro(null)
-    setMensagemSucesso(null)
-
-    if (!senhaAtual.trim()) {
-      setMensagemErro('Informe a senha atual.')
-      return
-    }
-
-    if (novaSenha.length < 6) {
-      setMensagemErro('A nova senha deve ter pelo menos 6 caracteres.')
-      return
-    }
-
-    if (novaSenha !== confirmarSenha) {
-      setMensagemErro('A confirmação da nova senha não confere.')
-      return
-    }
-
-    mutationSenha.mutate()
-  }
-
-  const handleSelecionarFotoClick = () => {
-    fileInputGaleriaRef.current?.click()
-  }
-
-  const handleSelecionarCameraClick = () => {
-    fileInputCameraRef.current?.click()
-  }
-
-  const handleArquivoSelecionado = async (
-    event: React.ChangeEvent<HTMLInputElement>,
-  ) => {
-    const arquivo = event.target.files?.[0]
-    if (!arquivo || !usuario || !supabase) return
-
-    setMensagemErro(null)
-    setMensagemSucesso(null)
-    setUploadingFoto(true)
-
+  const abrirCamera = async () => {
+    if (!navigator.mediaDevices?.getUserMedia) return setMensagemErro('Navegador sem suporte a câmera.')
     try {
-      const nomeBase =
-        form?.name && form.name.trim().length > 0
-          ? normalizarCaminhoNome(form.name)
-          : normalizarCaminhoNome(usuario.email ?? usuario.id)
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true })
+      streamRef.current = stream
+      setCameraAberta(true)
+    } catch { setMensagemErro('Erro ao acessar câmera.') }
+  }
 
-      const nomeArquivoOriginal = arquivo.name
-      const indicePonto = nomeArquivoOriginal.lastIndexOf('.')
-      const extensao =
-        indicePonto !== -1 ? nomeArquivoOriginal.substring(indicePonto) : ''
-      const nomeSemExtensao =
-        indicePonto !== -1
-          ? nomeArquivoOriginal.substring(0, indicePonto)
-          : nomeArquivoOriginal
-
-      const nomeArquivoLimpo = normalizarCaminhoNome(nomeSemExtensao)
-
-      const caminho = `${nomeBase}/${Date.now()}_${nomeArquivoLimpo}${extensao}`
-
-      const { error: uploadError } = await supabase.storage
-        .from('avatars') // bucket precisa existir e ter policy de INSERT/UPDATE para authenticated
-        .upload(caminho, arquivo, {
-          cacheControl: '3600',
-          upsert: true,
-        })
-
-      if (uploadError) {
-        console.error(uploadError)
-        throw uploadError
-      }
-
-      const { data: publicData } = supabase.storage
-        .from('avatars')
-        .getPublicUrl(caminho)
-
-      const novaUrl = publicData.publicUrl
-
-      const { error: updateError } = await supabase
-        .from('usuarios')
-        .update({
-          foto_url: novaUrl,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', usuario.id)
-
-      if (updateError) {
-        console.error(updateError)
-        throw updateError
-      }
-
-      setForm((prev) => (prev ? { ...prev, foto_url: novaUrl } : prev))
-      queryClient.invalidateQueries({ queryKey: ['perfil-usuario', usuario.id] })
-      queryClient.invalidateQueries({
-        queryKey: ['perfil-usuario-editar', usuario.id],
-      })
-
-      setMensagemSucesso('Foto de perfil atualizada com sucesso.')
-    } catch (err) {
-      console.error(err)
-      setMensagemErro(
-        'Não foi possível enviar a foto. Verifique o arquivo e tente novamente.',
-      )
-    } finally {
-      setUploadingFoto(false)
-      if (event.target) event.target.value = ''
+  const fecharCamera = () => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop())
+      streamRef.current = null
     }
+    setCameraAberta(false)
   }
 
-  if (isLoading || !form || !perfil) {
-    return (
-      <Box
-        sx={{
-          minHeight: '60vh',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
+  const capturarFotoDaCamera = () => {
+    if (!videoRef.current || !form) return
+    const video = videoRef.current
+    const canvas = document.createElement('canvas')
+    canvas.width = video.videoWidth || 640
+    canvas.height = video.videoHeight || 480
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
+    canvas.toBlob(blob => {
+      if (!blob) return
+      uploadAvatar(new File([blob], 'foto-camera.jpg', { type: 'image/jpeg' }))
+      fecharCamera()
+    }, 'image/jpeg', 0.9)
+  }
+
+  // Upload Logic
+  const uploadAvatar = async (file: File) => {
+    if (!supabase || !usuario || !form) return
+    setUploadingAvatar(true)
+    try {
+      if (file.size > 5 * 1024 * 1024) throw new Error('Máximo 5MB.')
+      const bucket = 'avatars'
+      const ext = (file.name.split('.').pop() || 'jpg').toLowerCase()
+      const caminho = `${slugify(usuario.email || 'user')}/${Date.now()}.${ext}`
+      
+      const { error: upErr } = await supabase.storage.from(bucket).upload(caminho, file, { upsert: true })
+      if (upErr) throw upErr
+      
+      const { data } = supabase.storage.from(bucket).getPublicUrl(caminho)
+      const novoForm = { ...form, foto_url: data.publicUrl }
+      setForm(novoForm)
+      mutation.mutate(novoForm)
+      setMensagemSucesso('Foto atualizada!')
+    } catch (e) { setMensagemErro('Erro ao enviar foto.') }
+    finally { setUploadingAvatar(false) }
+  }
+
+  // Senha Logic
+  const handleAlterarSenha = async () => {
+    if (!supabase || !usuario) return
+    setMensagemErro(null); setMensagemSucesso(null);
+    if (!senhaData.atual || !senhaData.nova || !senhaData.conf) return setMensagemErro('Preencha todos os campos.')
+    if (senhaData.nova !== senhaData.conf) return setMensagemErro('Senhas não conferem.')
+    if (senhaData.nova.length < 6) return setMensagemErro('Mínimo 6 caracteres.')
+
+    setLoadingSenha(true)
+    try {
+      const { error: loginError } = await supabase.auth.signInWithPassword({ email: usuario.email!, password: senhaData.atual })
+      if (loginError) throw new Error('Senha atual incorreta.')
+      
+      const { error: upError } = await supabase.auth.updateUser({ password: senhaData.nova })
+      if (upError) throw upError
+
+      setMensagemSucesso('Senha alterada com sucesso!')
+      setSenhaData({ atual: '', nova: '', conf: '' })
+    } catch (e: any) { setMensagemErro(e.message) }
+    finally { setLoadingSenha(false) }
+  }
+
+  if (isLoading || !form || !perfil) return <Box sx={{ display: 'flex', justifyContent: 'center', mt: 10 }}><CircularProgress /></Box>
+  if (isError) return <Alert severity="error">Erro ao carregar perfil.</Alert>
+
+// FIM DA PARTE 1
+return (
+    <Box sx={{ maxWidth: 1000, mx: 'auto', pb: 5 }}>
+      {/* Header Visual */}
+      <Paper 
+        elevation={0} 
+        sx={{ 
+            p: 3, mb: 3, 
+            display: 'flex', alignItems: 'center', gap: 2, 
+            bgcolor: theme.palette.primary.main, color: 'white',
+            borderRadius: 2
         }}
-      >
-        <CircularProgress />
-      </Box>
-    )
-  }
-
-  if (isError) {
-    return (
-      <Box sx={{ maxWidth: 960, mx: 'auto', mt: 4 }}>
-        <Alert severity="error">
-          Ocorreu um erro ao carregar seus dados de perfil.
-          {error instanceof Error ? ` Detalhes: ${error.message}` : null}
-        </Alert>
-      </Box>
-    )
-  }
-
-  const tipoUsuarioLabel =
-    perfil.tipo_usuario_nome || `Tipo #${perfil.id_tipo_usuario}`
-
-  const avatarInicial = form.name ? form.name.charAt(0).toUpperCase() : 'U'
-  const salvandoPerfil = mutationPerfil.status === 'pending'
-  const salvandoSenha = mutationSenha.status === 'pending'
-
-  return (
-    <Box sx={{ maxWidth: 960, mx: 'auto' }}>
-      {/* Cabeçalho */}
-      <Stack
-        direction={{ xs: 'column', sm: 'row' }}
-        spacing={3}
-        alignItems={{ xs: 'flex-start', sm: 'center' }}
-        sx={{ mb: 3 }}
       >
         <Avatar
           src={form.foto_url || undefined}
-          sx={{
-            width: 72,
-            height: 72,
-            bgcolor: theme.palette.primary.main,
-            fontSize: 32,
-            fontWeight: 700,
-          }}
+          sx={{ width: 80, height: 80, border: '3px solid white', boxShadow: 2, bgcolor: theme.palette.primary.dark }}
         >
-          {form.foto_url ? null : avatarInicial}
+            {form.name.charAt(0)}
         </Avatar>
-
         <Box sx={{ flexGrow: 1 }}>
-          <Typography variant="h5" sx={{ fontWeight: 700 }}>
-            Meu perfil
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
-            Atualize seus dados pessoais, de contato, endereço, foto e senha de
-            acesso.
-          </Typography>
+            <Typography variant="h5" fontWeight={700}>{form.name}</Typography>
+            <Typography variant="body2" sx={{ opacity: 0.9 }}>{form.email}</Typography>
+            <Chip 
+                label={mapTipoUsuario[perfil.id_tipo_usuario] || 'Usuário'} 
+                size="small" 
+                sx={{ mt: 1, bgcolor: 'rgba(255,255,255,0.2)', color: 'white', fontWeight: 600 }} 
+            />
         </Box>
+      </Paper>
 
-        <Chip
-          label={tipoUsuarioLabel}
-          color="primary"
-          variant="outlined"
-          sx={{ fontWeight: 500 }}
-        />
-      </Stack>
-
-      {/* Feedback geral */}
+      {/* Alertas */}
       <Stack spacing={2} sx={{ mb: 2 }}>
-        {mensagemSucesso && (
-          <Alert severity="success" onClose={() => setMensagemSucesso(null)}>
-            {mensagemSucesso}
-          </Alert>
-        )}
-        {mensagemErro && (
-          <Alert severity="error" onClose={() => setMensagemErro(null)}>
-            {mensagemErro}
-          </Alert>
-        )}
+        {mensagemSucesso && <Alert severity="success" onClose={() => setMensagemSucesso(null)}>{mensagemSucesso}</Alert>}
+        {mensagemErro && <Alert severity="error" onClose={() => setMensagemErro(null)}>{mensagemErro}</Alert>}
       </Stack>
 
-      {/* Inputs ocultos para upload */}
-      <input
-        ref={fileInputGaleriaRef}
-        type="file"
-        accept="image/*"
-        style={{ display: 'none' }}
-        onChange={handleArquivoSelecionado}
-      />
-      <input
-        ref={fileInputCameraRef}
-        type="file"
-        accept="image/*"
-        capture="environment"
-        style={{ display: 'none' }}
-        onChange={handleArquivoSelecionado}
-      />
-
-      <Stack spacing={3}>
-        {/* FORMULÁRIO DE PERFIL */}
-        <Box component="form" noValidate onSubmit={handleSubmitPerfil}>
-          <Stack spacing={3}>
-            {/* Dados pessoais */}
-            <Paper variant="outlined" sx={{ p: 2.5 }}>
-              <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2 }}>
-                Dados pessoais
-              </Typography>
-
-              <Box
-                sx={{
-                  display: 'grid',
-                  gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' },
-                  gap: 2,
-                }}
-              >
-                <TextField
-                  label="Nome completo"
-                  fullWidth
-                  required
-                  value={form.name}
-                  onChange={handleChange('name')}
-                />
-                <TextField
-                  label="Nome de usuário"
-                  fullWidth
-                  value={form.username}
-                  onChange={handleChange('username')}
-                  helperText="Opcional. Usado em relatórios e identificações rápidas."
-                />
-              </Box>
-
-              <Box
-                sx={{
-                  mt: 2,
-                  display: 'grid',
-                  gridTemplateColumns: { xs: '1fr', md: '2fr 1fr 1fr' },
-                  gap: 2,
-                }}
-              >
-                <TextField
-                  label="E-mail"
-                  type="email"
-                  fullWidth
-                  required
-                  value={form.email}
-                  onChange={handleChange('email')}
-                  helperText="Usado para contato e notificações."
-                />
-                <TextField
-                  label="Data de nascimento"
-                  type="date"
-                  fullWidth
-                  InputLabelProps={{ shrink: true }}
-                  value={form.data_nascimento}
-                  onChange={handleChange('data_nascimento')}
-                />
-                <TextField
-                  label="Sexo"
-                  select
-                  fullWidth
-                  value={form.sexo}
-                  onChange={handleChange('sexo')}
-                >
-                  {opcoesSexo.map((opt) => (
-                    <MenuItem key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </MenuItem>
-                  ))}
-                </TextField>
-              </Box>
-
-              <Box
-                sx={{
-                  mt: 2,
-                  display: 'grid',
-                  gridTemplateColumns: { xs: '1fr', md: 'repeat(3, 1fr)' },
-                  gap: 2,
-                }}
-              >
-                <TextField
-                  label="CPF"
-                  fullWidth
-                  value={form.cpf}
-                  onChange={handleChange('cpf')}
-                />
-                <TextField
-                  label="RG"
-                  fullWidth
-                  value={form.rg}
-                  onChange={handleChange('rg')}
-                />
-                <TextField
-                  label="Celular"
-                  fullWidth
-                  value={form.celular}
-                  onChange={handleChange('celular')}
-                />
-              </Box>
-
-              <Box
-                sx={{
-                  mt: 2,
-                  maxWidth: { xs: '100%', md: 280 },
-                }}
-              >
-                <TextField
-                  label="Raça / Cor"
-                  select
-                  fullWidth
-                  value={form.raca}
-                  onChange={handleChange('raca')}
-                >
-                  {opcoesRaca.map((opt) => (
-                    <MenuItem key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </MenuItem>
-                  ))}
-                </TextField>
-              </Box>
-            </Paper>
-
-            {/* Endereço */}
-            <Paper variant="outlined" sx={{ p: 2.5 }}>
-              <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2 }}>
-                Endereço
-              </Typography>
-
-              <Box
-                sx={{
-                  display: 'grid',
-                  gridTemplateColumns: { xs: '1fr', md: '2fr 1fr' },
-                  gap: 2,
-                }}
-              >
-                <TextField
-                  label="Logradouro"
-                  fullWidth
-                  value={form.logradouro}
-                  onChange={handleChange('logradouro')}
-                />
-                <TextField
-                  label="Número"
-                  fullWidth
-                  value={form.numero_endereco}
-                  onChange={handleChange('numero_endereco')}
-                />
-              </Box>
-
-              <Box
-                sx={{
-                  mt: 2,
-                  display: 'grid',
-                  gridTemplateColumns: { xs: '1fr', md: 'repeat(3, 1fr)' },
-                  gap: 2,
-                }}
-              >
-                <TextField
-                  label="Bairro"
-                  fullWidth
-                  value={form.bairro}
-                  onChange={handleChange('bairro')}
-                />
-                <TextField
-                  label="Município"
-                  fullWidth
-                  value={form.municipio}
-                  onChange={handleChange('municipio')}
-                />
-                <TextField
-                  label="Ponto de referência"
-                  fullWidth
-                  value={form.ponto_referencia}
-                  onChange={handleChange('ponto_referencia')}
-                />
-              </Box>
-            </Paper>
-
-            {/* Foto e redes sociais */}
-            <Paper variant="outlined" sx={{ p: 2.5 }}>
-              <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2 }}>
-                Foto e redes sociais
-              </Typography>
-
-              <Stack spacing={2}>
-                <Box
-                  sx={{
-                    display: 'grid',
-                    gridTemplateColumns: { xs: '1fr', md: '2fr 1fr' },
-                    gap: 2,
-                    alignItems: 'center',
-                  }}
-                >
-                  <TextField
-                    label="URL da foto de perfil"
-                    fullWidth
-                    value={form.foto_url}
-                    onChange={handleChange('foto_url')}
-                    helperText="Se preferir, use os botões abaixo para enviar uma foto."
-                  />
-
-                  <Stack spacing={1} alignItems="center">
-                    <Avatar
-                      src={form.foto_url || undefined}
-                      sx={{
-                        width: 72,
-                        height: 72,
-                        bgcolor: theme.palette.primary.main,
-                        fontSize: 32,
-                        fontWeight: 700,
-                      }}
-                    >
-                      {form.foto_url ? null : avatarInicial}
-                    </Avatar>
-                    <Typography variant="caption" color="text.secondary">
-                      Pré-visualização da foto
-                    </Typography>
-                  </Stack>
-                </Box>
-
-                <Box
-                  sx={{
-                    display: 'flex',
-                    flexWrap: 'wrap',
-                    gap: 1.5,
-                  }}
-                >
-                  <Button
-                    type="button"
-                    variant="outlined"
-                    onClick={handleSelecionarFotoClick}
-                    disabled={uploadingFoto}
-                  >
-                    {uploadingFoto ? 'Enviando...' : 'Selecionar foto'}
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outlined"
-                    onClick={handleSelecionarCameraClick}
-                    disabled={uploadingFoto}
-                  >
-                    {uploadingFoto ? 'Enviando...' : 'Usar câmera'}
-                  </Button>
-                  <Typography variant="caption" color="text.secondary">
-                    No celular, "Usar câmera" costuma abrir a câmera do aparelho.
-                    No computador, o comportamento depende do navegador (pode abrir
-                    a webcam ou o seletor de arquivos).
-                  </Typography>
-                </Box>
-
-                <Box
-                  sx={{
-                    display: 'grid',
-                    gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' },
-                    gap: 2,
-                  }}
-                >
-                  <TextField
-                    label="Facebook"
-                    fullWidth
-                    value={form.facebook_url}
-                    onChange={handleChange('facebook_url')}
-                    placeholder="https://facebook.com/seu_usuario"
-                  />
-                  <TextField
-                    label="Instagram"
-                    fullWidth
-                    value={form.instagram_url}
-                    onChange={handleChange('instagram_url')}
-                    placeholder="https://instagram.com/seu_usuario"
-                  />
-                </Box>
-              </Stack>
-            </Paper>
-
-            {/* Informações do sistema */}
-            <Paper variant="outlined" sx={{ p: 2.5 }}>
-              <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2 }}>
-                Informações do sistema
-              </Typography>
-
-              <Box
-                sx={{
-                  display: 'grid',
-                  gridTemplateColumns: { xs: '1fr', md: '2fr 1fr 1fr' },
-                  gap: 2,
-                }}
-              >
-                <TextField
-                  label="ID do usuário"
-                  fullWidth
-                  value={perfil.id}
-                  InputProps={{ readOnly: true }}
-                />
-                <TextField
-                  label="Tipo de usuário"
-                  fullWidth
-                  value={tipoUsuarioLabel}
-                  InputProps={{ readOnly: true }}
-                />
-                <TextField
-                  label="Status"
-                  fullWidth
-                  value={perfil.status}
-                  InputProps={{ readOnly: true }}
-                />
-              </Box>
-
-              <Box
-                sx={{
-                  mt: 2,
-                  display: 'grid',
-                  gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' },
-                  gap: 2,
-                }}
-              >
-                <TextField
-                  label="Criado em"
-                  fullWidth
-                  value={new Date(perfil.created_at).toLocaleString()}
-                  InputProps={{ readOnly: true }}
-                />
-                <TextField
-                  label="Última atualização"
-                  fullWidth
-                  value={new Date(perfil.updated_at).toLocaleString()}
-                  InputProps={{ readOnly: true }}
-                />
-              </Box>
-            </Paper>
-
-            {/* Ações do perfil */}
-            <Box
-              sx={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                mt: 1,
-                mb: 2,
-                flexWrap: 'wrap',
-                gap: 2,
-              }}
-            >
-              <Typography variant="body2" color="text.secondary">
-                As alterações serão refletidas em cadastros, matrículas e relatórios
-                do sistema.
-              </Typography>
-
-              <Stack direction="row" spacing={2}>
-                <Button
-                  type="button"
-                  variant="outlined"
-                  disabled={salvandoPerfil}
-                  onClick={() => {
-                    if (perfil) {
-                      setForm({
-                        name: perfil.name ?? '',
-                        username: perfil.username ?? '',
-                        email: perfil.email ?? '',
-                        data_nascimento: perfil.data_nascimento ?? '',
-                        sexo: perfil.sexo ?? '',
-                        cpf: perfil.cpf ?? '',
-                        rg: perfil.rg ?? '',
-                        celular: perfil.celular ?? '',
-                        logradouro: perfil.logradouro ?? '',
-                        numero_endereco: perfil.numero_endereco ?? '',
-                        bairro: perfil.bairro ?? '',
-                        municipio: perfil.municipio ?? '',
-                        ponto_referencia: perfil.ponto_referencia ?? '',
-                        raca: perfil.raca ?? '',
-                        foto_url: perfil.foto_url ?? '',
-                        facebook_url: perfil.facebook_url ?? '',
-                        instagram_url: perfil.instagram_url ?? '',
-                      })
-                    }
-                    setMensagemErro(null)
-                    setMensagemSucesso(null)
-                  }}
-                >
-                  Desfazer alterações
-                </Button>
-
-                <Button
-                  type="submit"
-                  variant="contained"
-                  color="primary"
-                  disabled={salvandoPerfil}
-                >
-                  {salvandoPerfil ? 'Salvando...' : 'Salvar alterações'}
-                </Button>
-              </Stack>
-            </Box>
-          </Stack>
-        </Box>
-
-        {/* FORMULÁRIO DE ALTERAÇÃO DE SENHA */}
-        <Box
-          component="form"
-          noValidate
-          onSubmit={handleSubmitSenha}
-          sx={{ mb: 4 }}
+      {/* Sistema de Abas */}
+      <Paper variant="outlined" sx={{ overflow: 'hidden' }}>
+        <Tabs 
+            value={tabValue} 
+            onChange={handleTabChange} 
+            variant="scrollable"
+            scrollButtons="auto"
+            sx={{ borderBottom: 1, borderColor: 'divider', bgcolor: theme.palette.background.default }}
         >
-          <Paper variant="outlined" sx={{ p: 2.5 }}>
-            <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2 }}>
-              Alterar senha
-            </Typography>
+            <Tab icon={<PersonIcon />} iconPosition="start" label="Dados Pessoais" />
+            <Tab icon={<HomeIcon />} iconPosition="start" label="Endereço" />
+            <Tab icon={<PhotoIcon />} iconPosition="start" label="Foto & Social" />
+            <Tab icon={<SecurityIcon />} iconPosition="start" label="Segurança" />
+        </Tabs>
 
-            <Stack spacing={2}>
-              <TextField
-                label="Senha atual"
-                fullWidth
-                type={mostrarSenhaAtual ? 'text' : 'password'}
-                value={senhaAtual}
-                onChange={(e) => setSenhaAtual(e.target.value)}
-                autoComplete="current-password"
-                InputProps={{
-                  endAdornment: (
-                    <InputAdornment position="end">
-                      <IconButton
-                        onClick={() =>
-                          setMostrarSenhaAtual((prev) => !prev)
-                        }
-                        edge="end"
-                      >
-                        {mostrarSenhaAtual ? (
-                          <VisibilityOffIcon />
-                        ) : (
-                          <VisibilityIcon />
-                        )}
-                      </IconButton>
-                    </InputAdornment>
-                  ),
-                }}
-              />
+        {/* --- ABA 1: DADOS PESSOAIS --- */}
+        <TabPanel value={tabValue} index={0}>
+             <Box component="form" onSubmit={(e) => { e.preventDefault(); mutation.mutate(form); }} sx={{ px: { xs: 0, md: 2 } }}>
+                <Grid container spacing={3}>
+                    <Grid item xs={12} md={6}>
+                        <TextField fullWidth label="Nome Completo" value={form.name} onChange={handleChange('name')} required />
+                    </Grid>
+                    <Grid item xs={12} md={6}>
+                        <TextField fullWidth label="E-mail" value={form.email} disabled helperText="E-mail de login." />
+                    </Grid>
+                    <Grid item xs={12} md={3}>
+                        <TextField fullWidth label="CPF" value={form.cpf} onChange={handleChange('cpf')} placeholder="000.000.000-00" />
+                    </Grid>
+                    <Grid item xs={12} md={3}>
+                        <TextField fullWidth label="RG" value={form.rg} onChange={handleChange('rg')} />
+                    </Grid>
+                    <Grid item xs={12} md={3}>
+                        <TextField fullWidth label="Celular" value={form.celular} onChange={handleChange('celular')} placeholder="(00) 00000-0000" />
+                    </Grid>
+                    <Grid item xs={12} md={3}>
+                        <TextField fullWidth type="date" label="Nascimento" value={form.data_nascimento} onChange={handleChange('data_nascimento')} InputLabelProps={{ shrink: true }} />
+                    </Grid>
+                    <Grid item xs={12} md={3}>
+                         <TextField select fullWidth label="Sexo" value={form.sexo} onChange={handleChange('sexo')} SelectProps={{ native: true }}>
+                             <option value="">Selecione</option>
+                             <option value="Masculino">Masculino</option>
+                             <option value="Feminino">Feminino</option>
+                             <option value="Outro">Outro</option>
+                         </TextField>
+                    </Grid>
+                    <Grid item xs={12} md={3}>
+                         <TextField select fullWidth label="Raça" value={form.raca} onChange={handleChange('raca')} SelectProps={{ native: true }}>
+                             <option value="">Selecione</option>
+                             <option value="Branca">Branca</option>
+                             <option value="Preta">Preta</option>
+                             <option value="Parda">Parda</option>
+                             <option value="Amarela">Amarela</option>
+                             <option value="Indígena">Indígena</option>
+                         </TextField>
+                    </Grid>
+                    <Grid item xs={12} sx={{ mt: 2 }}>
+                        <Button variant="contained" type="submit" size="large" disabled={mutation.isPending}>
+                            {mutation.isPending ? 'Salvando...' : 'Salvar Dados Pessoais'}
+                        </Button>
+                    </Grid>
+                </Grid>
+             </Box>
+        </TabPanel>
 
-              <TextField
-                label="Nova senha"
-                fullWidth
-                type={mostrarNovaSenha ? 'text' : 'password'}
-                value={novaSenha}
-                onChange={(e) => setNovaSenha(e.target.value)}
-                helperText="Mínimo de 6 caracteres."
-                autoComplete="new-password"
-                InputProps={{
-                  endAdornment: (
-                    <InputAdornment position="end">
-                      <IconButton
-                        onClick={() =>
-                          setMostrarNovaSenha((prev) => !prev)
-                        }
-                        edge="end"
-                      >
-                        {mostrarNovaSenha ? (
-                          <VisibilityOffIcon />
-                        ) : (
-                          <VisibilityIcon />
-                        )}
-                      </IconButton>
-                    </InputAdornment>
-                  ),
-                }}
-              />
+        {/* --- ABA 2: ENDEREÇO --- */}
+        <TabPanel value={tabValue} index={1}>
+            <Box component="form" onSubmit={(e) => { e.preventDefault(); mutation.mutate(form); }} sx={{ px: { xs: 0, md: 2 } }}>
+                <Grid container spacing={3}>
+                    <Grid item xs={12} md={6}>
+                        <TextField fullWidth label="Logradouro" value={form.logradouro} onChange={handleChange('logradouro')} />
+                    </Grid>
+                    <Grid item xs={12} md={2}>
+                        <TextField fullWidth label="Número" value={form.numero_endereco} onChange={handleChange('numero_endereco')} />
+                    </Grid>
+                    <Grid item xs={12} md={4}>
+                        <TextField fullWidth label="Bairro" value={form.bairro} onChange={handleChange('bairro')} />
+                    </Grid>
+                    <Grid item xs={12} md={4}>
+                        <TextField fullWidth label="Município" value={form.municipio} onChange={handleChange('municipio')} />
+                    </Grid>
+                    <Grid item xs={12} md={8}>
+                        <TextField fullWidth label="Ponto de Referência" value={form.ponto_referencia} onChange={handleChange('ponto_referencia')} />
+                    </Grid>
+                    <Grid item xs={12} sx={{ mt: 2 }}>
+                         <Button variant="contained" type="submit" size="large" disabled={mutation.isPending}>
+                            Salvar Endereço
+                        </Button>
+                    </Grid>
+                </Grid>
+            </Box>
+        </TabPanel>
+{/* FIM PARTE 2 */}
+{/* --- ABA 3: FOTO E SOCIAL --- */}
+        <TabPanel value={tabValue} index={2}>
+             <Box sx={{ px: { xs: 0, md: 2 } }}>
+                <Grid container spacing={4}>
+                    <Grid item xs={12} md={4} sx={{ textAlign: 'center' }}>
+                         <Typography variant="subtitle2" gutterBottom>Foto de Perfil</Typography>
+                         <Avatar src={form.foto_url || undefined} sx={{ width: 120, height: 120, mx: 'auto', mb: 2 }} />
+                         <Stack direction="row" justifyContent="center" spacing={1}>
+                             <Button variant="outlined" size="small" onClick={() => fileInputGaleriaRef.current?.click()} startIcon={<ImageIcon />}>
+                                 Galeria
+                             </Button>
+                             <Button variant="outlined" size="small" onClick={abrirCamera} startIcon={<PhotoCamera />}>
+                                 Câmera
+                             </Button>
+                         </Stack>
+                         {uploadingAvatar && <Typography variant="caption">Enviando...</Typography>}
+                         <input ref={fileInputGaleriaRef} type="file" hidden accept="image/*" onChange={(e) => { if(e.target.files?.[0]) uploadAvatar(e.target.files[0]) }} />
+                    </Grid>
+                    <Grid item xs={12} md={8}>
+                        <Stack spacing={3}>
+                            <TextField label="Nome de Usuário (Username)" value={form.username} onChange={handleChange('username')} fullWidth helperText="Usado para identificação no sistema." />
+                            <TextField label="Instagram" value={form.instagram_url} onChange={handleChange('instagram_url')} fullWidth placeholder="https://instagram.com/..." />
+                            <TextField label="Facebook" value={form.facebook_url} onChange={handleChange('facebook_url')} fullWidth placeholder="https://facebook.com/..." />
+                            <Button variant="contained" onClick={() => mutation.mutate(form)} sx={{ width: 'fit-content' }}>
+                                Salvar Social
+                            </Button>
+                        </Stack>
+                    </Grid>
+                </Grid>
+             </Box>
+        </TabPanel>
 
-              <TextField
-                label="Confirmar nova senha"
-                fullWidth
-                type={mostrarConfirmarSenha ? 'text' : 'password'}
-                value={confirmarSenha}
-                onChange={(e) => setConfirmarSenha(e.target.value)}
-                autoComplete="new-password"
-                InputProps={{
-                  endAdornment: (
-                    <InputAdornment position="end">
-                      <IconButton
-                        onClick={() =>
-                          setMostrarConfirmarSenha((prev) => !prev)
-                        }
-                        edge="end"
-                      >
-                        {mostrarConfirmarSenha ? (
-                          <VisibilityOffIcon />
-                        ) : (
-                          <VisibilityIcon />
-                        )}
-                      </IconButton>
-                    </InputAdornment>
-                  ),
-                }}
-              />
-
-              <Box
-                sx={{
-                  display: 'flex',
-                  justifyContent: 'flex-end',
-                  gap: 2,
-                  mt: 1,
-                }}
-              >
-                <Button
-                  type="button"
-                  variant="outlined"
-                  disabled={salvandoSenha}
-                  onClick={() => {
-                    setSenhaAtual('')
-                    setNovaSenha('')
-                    setConfirmarSenha('')
-                  }}
-                >
-                  Limpar
-                </Button>
-                <Button
-                  type="submit"
-                  variant="contained"
-                  color="primary"
-                  disabled={salvandoSenha}
-                >
-                  {salvandoSenha ? 'Atualizando senha...' : 'Atualizar senha'}
-                </Button>
-              </Box>
-            </Stack>
-          </Paper>
-        </Box>
-      </Stack>
+        {/* --- ABA 4: SEGURANÇA --- */}
+        <TabPanel value={tabValue} index={3}>
+            <Box component="form" sx={{ maxWidth: 500, px: { xs: 0, md: 2 } }}>
+                <Alert severity="info" sx={{ mb: 3 }}>
+                    Para sua segurança, informe sua senha atual para definir uma nova.
+                </Alert>
+                <Stack spacing={3}>
+                    <TextField 
+                        label="Senha Atual" 
+                        type={mostrarSenhas.atual ? 'text' : 'password'}
+                        value={senhaData.atual}
+                        onChange={(e) => setSenhaData({...senhaData, atual: e.target.value})}
+                        InputProps={{
+                            endAdornment: (
+                                <InputAdornment position="end">
+                                    <IconButton onClick={() => setMostrarSenhas({...mostrarSenhas, atual: !mostrarSenhas.atual})}>
+                                        {mostrarSenhas.atual ? <VisibilityOff /> : <Visibility />}
+                                    </IconButton>
+                                </InputAdornment>
+                            )
+                        }}
+                    />
+                    <TextField 
+                        label="Nova Senha" 
+                        type={mostrarSenhas.nova ? 'text' : 'password'}
+                        value={senhaData.nova}
+                        onChange={(e) => setSenhaData({...senhaData, nova: e.target.value})}
+                        InputProps={{
+                            endAdornment: (
+                                <InputAdornment position="end">
+                                    <IconButton onClick={() => setMostrarSenhas({...mostrarSenhas, nova: !mostrarSenhas.nova})}>
+                                        {mostrarSenhas.nova ? <VisibilityOff /> : <Visibility />}
+                                    </IconButton>
+                                </InputAdornment>
+                            )
+                        }}
+                    />
+                     <TextField 
+                        label="Confirmar Senha" 
+                        type={mostrarSenhas.conf ? 'text' : 'password'}
+                        value={senhaData.conf}
+                        onChange={(e) => setSenhaData({...senhaData, conf: e.target.value})}
+                        InputProps={{
+                            endAdornment: (
+                                <InputAdornment position="end">
+                                    <IconButton onClick={() => setMostrarSenhas({...mostrarSenhas, conf: !mostrarSenhas.conf})}>
+                                        {mostrarSenhas.conf ? <VisibilityOff /> : <Visibility />}
+                                    </IconButton>
+                                </InputAdornment>
+                            )
+                        }}
+                    />
+                    <Button variant="contained" color="warning" onClick={handleAlterarSenha} disabled={loadingSenha}>
+                        {loadingSenha ? 'Alterando...' : 'Alterar Senha'}
+                    </Button>
+                </Stack>
+            </Box>
+        </TabPanel>
+      </Paper>
+      
+      {/* Modal da câmera */}
+      <Dialog open={cameraAberta} onClose={fecharCamera} fullWidth maxWidth="sm">
+        <DialogTitle>Usar câmera</DialogTitle>
+        <DialogContent>
+          <Box sx={{ mt: 1, borderRadius: 2, overflow: 'hidden', bgcolor: 'black', height: 300 }}>
+            <video ref={videoRef} autoPlay playsInline style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={fecharCamera}>Cancelar</Button>
+          <Button variant="contained" onClick={capturarFotoDaCamera}>Tirar foto</Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   )
 }
