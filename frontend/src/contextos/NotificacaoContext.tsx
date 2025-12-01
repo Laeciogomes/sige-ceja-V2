@@ -42,13 +42,17 @@ type NotificacaoProviderProps = {
 }
 
 const TOAST_PADRAO_MS = 4000
+const TOAST_SOUND_STORAGE_KEY = 'sigeceja-toast-som-ativo' // 'on' | 'off'
 
+// Áudios
 const somSucesso =
   typeof Audio !== 'undefined' ? new Audio('/sons/sucesso.mp3') : undefined
 const somAviso =
   typeof Audio !== 'undefined' ? new Audio('/sons/aviso.mp3') : undefined
 const somErro =
   typeof Audio !== 'undefined' ? new Audio('/sons/erro.mp3') : undefined
+
+// ----------------- Helpers de mapeamento -----------------
 
 const mapearTipoParaSeveridade = (tipo: TipoNotificacao): AlertColor => {
   switch (tipo) {
@@ -78,6 +82,8 @@ const mapearTipoParaIcone = (tipo: TipoNotificacao) => {
   }
 }
 
+// ----------------- Áudio / Som -----------------
+
 const playSafe = (audio?: HTMLAudioElement) => {
   if (!audio) return
   try {
@@ -86,11 +92,25 @@ const playSafe = (audio?: HTMLAudioElement) => {
       p.catch(() => {})
     }
   } catch {
-    // ignora
+    // ignora erro de reprodução
+  }
+}
+
+// Lê preferência salva em localStorage.
+// Padrão: som ATIVADO (retorna true se não houver nada salvo).
+const deveTocarSom = (): boolean => {
+  if (typeof window === 'undefined') return true
+  try {
+    const valor = window.localStorage.getItem(TOAST_SOUND_STORAGE_KEY)
+    return valor !== 'off'
+  } catch {
+    return true
   }
 }
 
 const tocarSom = (tipo: TipoNotificacao) => {
+  if (!deveTocarSom()) return
+
   switch (tipo) {
     case 'sucesso':
       playSafe(somSucesso)
@@ -107,6 +127,8 @@ const tocarSom = (tipo: TipoNotificacao) => {
   }
 }
 
+// ----------------- Provider -----------------
+
 export const NotificacaoProvider: React.FC<NotificacaoProviderProps> = ({
   children,
 }) => {
@@ -116,6 +138,7 @@ export const NotificacaoProvider: React.FC<NotificacaoProviderProps> = ({
 
   const idRef = useRef(1)
 
+  // Sempre que não houver notificação atual, puxa da fila
   useEffect(() => {
     if (!atual && fila.length > 0) {
       const [proximo, ...resto] = fila
@@ -233,6 +256,8 @@ export const NotificacaoProvider: React.FC<NotificacaoProviderProps> = ({
     </NotificacaoContext.Provider>
   )
 }
+
+// ----------------- Hook -----------------
 
 export const useNotificacaoContext = (): NotificacaoContextTipo => {
   const ctx = useContext(NotificacaoContext)

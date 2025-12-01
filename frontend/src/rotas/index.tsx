@@ -8,6 +8,7 @@ import { NovaSenhaPage } from '../paginas/Autenticacao/NovaSenhaPage'
 import { DashboardPage } from '../paginas/Dashboard/DashboardPage'
 import { PaginaSimples } from '../paginas/PaginaSimples'
 import PerfilPage from '../paginas/Perfil/PerfilPage'
+import ConfiguracoesPage from '../paginas/Configuracoes/ConfiguracoesPage'
 import { useAuth } from '../contextos/AuthContext'
 
 export const AppRoutes: React.FC = () => {
@@ -63,12 +64,11 @@ export const AppRoutes: React.FC = () => {
           path="relatorios"
           element={<PaginaSimples titulo="Relatórios" />}
         />
-        <Route
-          path="config"
-          element={<PaginaSimples titulo="Configurações" />}
-        />
 
-        {/* NOVA ROTA: PERFIL DO USUÁRIO */}
+        {/* CONFIGURAÇÕES (página completa de ajustes do usuário) */}
+        <Route path="config" element={<ConfiguracoesPage />} />
+
+        {/* PERFIL DO USUÁRIO */}
         <Route path="perfil" element={<PerfilPage />} />
       </Route>
 
