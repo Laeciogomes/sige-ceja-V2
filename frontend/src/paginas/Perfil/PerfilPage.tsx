@@ -354,11 +354,43 @@ const PerfilPage: React.FC = () => {
     },
   })
 
-  // --------- Lógica da câmera ---------
+  // --------- Lógica da câmera (simplificada com callback ref) ---------
 
-  // Abre apenas o diálogo; o stream é tratado no useEffect abaixo
-  const abrirCamera = () => {
-    setCameraAberta(true)
+  // Abre a câmera: pede o stream e só depois abre o diálogo
+  const abrirCamera = async () => {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      showToast('warning', 'Navegador sem suporte a câmera.')
+      console.error(
+        '[PerfilPage] navigator.mediaDevices.getUserMedia indisponível',
+      )
+      return
+    }
+
+    try {
+      console.log('[PerfilPage] Solicitando acesso à câmera...')
+      let stream: MediaStream
+
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: 'user' },
+        })
+      } catch (e) {
+        console.warn(
+          '[PerfilPage] Erro com facingMode:user, tentando vídeo genérico:',
+          e,
+        )
+        stream = await navigator.mediaDevices.getUserMedia({ video: true })
+      }
+
+      streamRef.current = stream
+      setCameraAberta(true)
+    } catch (e) {
+      console.error('[PerfilPage] erro ao acessar câmera:', e)
+      showToast(
+        'error',
+        'Erro ao acessar câmera. Verifique permissões, HTTPS/localhost e se outra aplicação não está usando a câmera.',
+      )
+    }
   }
 
   // Fecha diálogo e limpa stream
@@ -372,71 +404,6 @@ const PerfilPage: React.FC = () => {
       ;(videoRef.current as any).srcObject = null
     }
   }
-
-  // Liga/desliga a câmera quando o diálogo abre/fecha
-  useEffect(() => {
-    const iniciarCamera = async () => {
-      if (!cameraAberta) return
-      if (!videoRef.current) return
-
-      if (!navigator.mediaDevices?.getUserMedia) {
-        showToast('warning', 'Navegador sem suporte a câmera.')
-        console.error(
-          '[PerfilPage] navigator.mediaDevices.getUserMedia indisponível',
-        )
-        return
-      }
-
-      try {
-        console.log('[PerfilPage] Tentando abrir câmera...')
-        // tenta com facingMode:user, se falhar cai para um vídeo genérico
-        let stream: MediaStream
-        try {
-          stream = await navigator.mediaDevices.getUserMedia({
-            video: { facingMode: 'user' },
-          })
-        } catch (e) {
-          console.warn(
-            '[PerfilPage] Erro com facingMode:user, tentando vídeo genérico:',
-            e,
-          )
-          stream = await navigator.mediaDevices.getUserMedia({ video: true })
-        }
-
-        streamRef.current = stream
-
-        const video = videoRef.current
-        ;(video as any).srcObject = stream
-        await video.play().catch(err => {
-          console.warn('[PerfilPage] video.play() falhou:', err)
-        })
-
-        console.log(
-          '[PerfilPage] Câmera iniciada. dimensões:',
-          video.videoWidth,
-          video.videoHeight,
-        )
-      } catch (e) {
-        console.error('[PerfilPage] erro ao acessar câmera:', e)
-        showToast(
-          'error',
-          'Erro ao acessar câmera. Verifique permissões, HTTPS/localhost e se outra aplicação não está usando a câmera.',
-        )
-        fecharCamera()
-      }
-    }
-
-    iniciarCamera()
-
-    // Cleanup ao desmontar/fechar diálogo
-    return () => {
-      if (streamRef.current && !cameraAberta) {
-        streamRef.current.getTracks().forEach(track => track.stop())
-        streamRef.current = null
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cameraAberta])
 
   const capturarFotoDaCamera = () => {
     if (!videoRef.current || !form) return
@@ -1093,7 +1060,24 @@ const PerfilPage: React.FC = () => {
             }}
           >
             <video
-              ref={videoRef}
+              ref={el => {
+                videoRef.current = el
+                if (el && streamRef.current) {
+                  try {
+                    ;(el as any).srcObject = streamRef.current
+                    el
+                      .play()
+                      .catch(err =>
+                        console.warn('[PerfilPage] video.play() falhou:', err),
+                      )
+                  } catch (e) {
+                    console.error(
+                      '[PerfilPage] erro ao associar stream ao vídeo:',
+                      e,
+                    )
+                  }
+                }
+              }}
               autoPlay
               muted
               playsInline
