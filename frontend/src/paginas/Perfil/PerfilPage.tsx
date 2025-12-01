@@ -20,8 +20,8 @@ import {
   TextField,
   Typography,
   useTheme,
-  Snackbar,
   GridLegacy as Grid,
+  Snackbar,
 } from '@mui/material'
 
 import {
@@ -40,7 +40,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '../../contextos/AuthContext'
 import { useSupabase } from '../../contextos/SupabaseContext'
 
-// --- Tipagens ---
+// ---------------- Tipagens ----------------
+
 type UsuarioPerfil = {
   id: string
   id_tipo_usuario: number
@@ -86,7 +87,8 @@ type FormPerfil = {
   instagram_url: string
 }
 
-// --- Helpers e Componentes Auxiliares ---
+// ---------------- Tabs / helpers ----------------
+
 interface TabPanelProps {
   children?: React.ReactNode
   index: number
@@ -138,6 +140,11 @@ const slugify = (value: string) =>
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/[^a-zA-Z0-9._-]/g, '_')
 
+// Toast local (pode ser adaptado para o seu sistema global depois)
+type ToastSeverity = 'success' | 'error' | 'warning'
+
+// ---------------- Componente principal ----------------
+
 const PerfilPage: React.FC = () => {
   const theme = useTheme()
   const { usuario } = useAuth()
@@ -147,10 +154,25 @@ const PerfilPage: React.FC = () => {
   // Tabs
   const [tabValue, setTabValue] = useState(0)
 
-  // Form
+  // Formulário
   const [form, setForm] = useState<FormPerfil | null>(null)
 
-  // Camera & Upload
+  // Toast
+  const [toast, setToast] = useState<{
+    open: boolean
+    message: string
+    severity: ToastSeverity
+  } | null>(null)
+
+  const showToast = (severity: ToastSeverity, message: string) => {
+    setToast({ open: true, severity, message })
+  }
+
+  const handleCloseToast = () => {
+    setToast(prev => (prev ? { ...prev, open: false } : prev))
+  }
+
+  // Câmera & upload
   const [uploadingAvatar, setUploadingAvatar] = useState(false)
   const fileInputGaleriaRef = useRef<HTMLInputElement | null>(null)
   const [cameraAberta, setCameraAberta] = useState(false)
@@ -166,75 +188,29 @@ const PerfilPage: React.FC = () => {
   })
   const [loadingSenha, setLoadingSenha] = useState(false)
 
-  // Toast local (substitui alerts na tela)
-  const [toastOpen, setToastOpen] = useState(false)
-  const [toastMensagem, setToastMensagem] = useState('')
-  const [toastTipo, setToastTipo] = useState<'success' | 'error' | 'warning'>(
-    'success',
-  )
+  // --------- Query: carregar perfil do Supabase (tabela public.usuarios) ---------
 
-  const fecharToast = () => setToastOpen(false)
-
-  const tocarSomToast = (tipo: 'success' | 'error' | 'warning') => {
-    // Ajuste os caminhos para os áudios conforme a pasta /public do seu projeto
-    const mapaSons: Record<typeof tipo, string> = {
-      success: '/sons/sucesso.mp3',
-      warning: '/sons/aviso.mp3',
-      error: '/sons/erro.mp3',
-    }
-
-    const src = mapaSons[tipo]
-    if (!src) return
-
-    try {
-      const audio = new Audio(src)
-      audio.volume = 0.5
-      audio.play().catch(() => {
-        // Ignora falha se o áudio não existir ainda
-      })
-    } catch {
-      // Nada
-    }
-  }
-
-  const abrirToast = (
-    tipo: 'success' | 'error' | 'warning',
-    mensagem: string,
-  ) => {
-    setToastTipo(tipo)
-    setToastMensagem(mensagem)
-    setToastOpen(true)
-    tocarSomToast(tipo)
-  }
-
-  // Query Data
   const {
     data: perfil,
     isLoading,
     isError,
-    error,
   } = useQuery({
-    queryKey: ['perfil-usuario-editar', usuario?.id],
+    queryKey: ['perfil-usuario', usuario?.id],
     enabled: !!usuario && !!supabase,
     queryFn: async (): Promise<UsuarioPerfil | null> => {
       if (!usuario || !supabase) return null
-      const { data, error: err } = await supabase
+      const { data, error } = await supabase
         .from('usuarios')
         .select('*')
         .eq('id', usuario.id)
         .maybeSingle()
 
-      if (err) throw err
+      if (error) throw error
       return data
     },
   })
 
-  useEffect(() => {
-    if (isError && error) {
-      abrirToast('error', `Erro ao carregar perfil: ${(error as any).message}`)
-    }
-  }, [isError, error])
-
+  // Quando o perfil chegar da API, popular o form
   useEffect(() => {
     if (perfil) {
       setForm({
@@ -259,7 +235,33 @@ const PerfilPage: React.FC = () => {
     }
   }, [perfil])
 
-  // Handlers
+  // Toast para erro de carregamento
+  useEffect(() => {
+    if (isError) {
+      showToast('error', 'Erro ao carregar os dados do perfil.')
+    }
+  }, [isError])
+
+  // Som dos toasts (opcional – ajuste os caminhos dos arquivos de áudio em /public/sons)
+  useEffect(() => {
+    if (toast?.open) {
+      const audioMap: Record<ToastSeverity, string> = {
+        success: '/sons/toast-sucesso.mp3',
+        warning: '/sons/toast-aviso.mp3',
+        error: '/sons/toast-erro.mp3',
+      }
+      const src = audioMap[toast.severity]
+      if (src) {
+        const audio = new Audio(src)
+        audio.play().catch(() => {
+          // ignora erro de áudio (ex.: arquivo não encontrado)
+        })
+      }
+    }
+  }, [toast])
+
+  // --------- Handlers de formulário ---------
+
   const handleTabChange = (_: React.SyntheticEvent, newValue: number) =>
     setTabValue(newValue)
 
@@ -271,52 +273,85 @@ const PerfilPage: React.FC = () => {
       setForm(prev => (prev ? { ...prev, [campo]: valor } : prev))
     }
 
-  // Mutation Update
+  // --------- Mutation: salvar perfil no Supabase ---------
+
   const mutation = useMutation({
     mutationFn: async (dados: FormPerfil) => {
       if (!usuario || !supabase) {
-        throw new Error('Falha de conexão com Supabase ou usuário não autenticado.')
+        throw new Error('Erro de conexão com Supabase.')
       }
 
       const payload = {
         ...dados,
+        data_nascimento: dados.data_nascimento || null,
+        sexo: dados.sexo || null,
         cpf: dados.cpf || null,
+        rg: dados.rg || null,
+        celular: dados.celular || null,
+        logradouro: dados.logradouro || null,
+        numero_endereco: dados.numero_endereco || null,
+        bairro: dados.bairro || null,
+        municipio: dados.municipio || null,
+        ponto_referencia: dados.ponto_referencia || null,
+        raca: dados.raca || null,
+        foto_url: dados.foto_url || null,
+        facebook_url: dados.facebook_url || null,
+        instagram_url: dados.instagram_url || null,
         updated_at: new Date().toISOString(),
       }
 
-      // Força retorno para garantir que realmente atualizou alguma linha
-      const { data, error: upError } = await supabase
+      // .select().single() garante que só vamos tratar como sucesso se pelo menos 1 registro foi atualizado
+      const { data, error } = await supabase
         .from('usuarios')
         .update(payload)
         .eq('id', usuario.id)
-        .select()
-        .maybeSingle()
+        .select('*')
+        .single()
 
-      if (upError) throw upError
-      if (!data) {
-        // Nenhuma linha atualizada: em geral é problema de tabela/coluna ou RLS
-        throw new Error(
-          'Nenhum registro de usuário foi atualizado. Verifique se a tabela "usuarios" possui um registro com este id e se as políticas de RLS permitem UPDATE.',
-        )
-      }
+      if (error) throw error
 
-      return payload
+      return data as UsuarioPerfil
     },
-    onSuccess: () => {
-      abrirToast('success', 'Perfil atualizado com sucesso!')
-      // Recarrega os dados de perfil usados nesta página
-      queryClient.invalidateQueries({ queryKey: ['perfil-usuario-editar'] })
+    onSuccess: data => {
+      // Sincroniza formulário com o que está efetivamente gravado no banco
+      setForm({
+        name: data.name ?? '',
+        username: data.username ?? '',
+        email: data.email ?? '',
+        data_nascimento: data.data_nascimento ?? '',
+        sexo: (data.sexo as string) ?? '',
+        cpf: data.cpf ?? '',
+        rg: data.rg ?? '',
+        celular: data.celular ?? '',
+        logradouro: data.logradouro ?? '',
+        numero_endereco: data.numero_endereco ?? '',
+        bairro: data.bairro ?? '',
+        municipio: data.municipio ?? '',
+        ponto_referencia: data.ponto_referencia ?? '',
+        raca: data.raca ?? '',
+        foto_url: data.foto_url ?? '',
+        facebook_url: data.facebook_url ?? '',
+        instagram_url: data.instagram_url ?? '',
+      })
+
+      showToast('success', 'Perfil atualizado com sucesso!')
+      // Revalida qualquer tela que use esta query
+      queryClient.invalidateQueries({
+        queryKey: ['perfil-usuario', usuario?.id],
+      })
     },
-    onError: (err: any) => {
-      console.error('[PerfilPage] erro ao salvar perfil:', err)
-      abrirToast(
+    onError: (error: any) => {
+      console.error('[PerfilPage] erro ao salvar perfil', error)
+      showToast(
         'error',
-        err?.message || 'Erro ao salvar perfil. Tente novamente.',
+        error?.message ||
+          'Erro ao salvar perfil. Verifique os dados e tente novamente.'
       )
     },
   })
 
-  // Camera Logic
+  // --------- Lógica da câmera ---------
+
   useEffect(() => {
     if (cameraAberta && videoRef.current && streamRef.current) {
       ;(videoRef.current as any).srcObject = streamRef.current
@@ -325,7 +360,7 @@ const PerfilPage: React.FC = () => {
 
   const abrirCamera = async () => {
     if (!navigator.mediaDevices?.getUserMedia) {
-      abrirToast('warning', 'Navegador sem suporte a câmera.')
+      showToast('error', 'Navegador sem suporte a câmera.')
       return
     }
     try {
@@ -333,7 +368,7 @@ const PerfilPage: React.FC = () => {
       streamRef.current = stream
       setCameraAberta(true)
     } catch {
-      abrirToast('error', 'Erro ao acessar câmera.')
+      showToast('error', 'Erro ao acessar câmera.')
     }
   }
 
@@ -358,16 +393,17 @@ const PerfilPage: React.FC = () => {
       blob => {
         if (!blob) return
         uploadAvatar(
-          new File([blob], 'foto-camera.jpg', { type: 'image/jpeg' }),
+          new File([blob], 'foto-camera.jpg', { type: 'image/jpeg' })
         )
         fecharCamera()
       },
       'image/jpeg',
-      0.9,
+      0.9
     )
   }
 
-  // Upload Logic
+  // --------- Upload de avatar ---------
+
   const uploadAvatar = async (file: File) => {
     if (!supabase || !usuario || !form) return
 
@@ -376,10 +412,14 @@ const PerfilPage: React.FC = () => {
     try {
       // Limite de 5MB no frontend
       if (file.size > 5 * 1024 * 1024) {
-        throw new Error('Tamanho máximo da foto é 5MB.')
+        showToast('warning', 'Tamanho máximo permitido para a foto é 5MB.')
+        return
       }
 
+      // CONFIRA se o nome do bucket no seu Supabase é realmente "avatars".
+      // Se você criou "profile_photos", troque aqui:
       const bucket = 'avatars'
+
       const ext = (file.name.split('.').pop() || 'jpg').toLowerCase()
       const caminho = `${slugify(usuario.email || 'user')}/${Date.now()}.${ext}`
 
@@ -398,7 +438,6 @@ const PerfilPage: React.FC = () => {
 
       console.log('[uploadAvatar] upload OK:', uploadData)
 
-      // URL pública
       const { data: publicUrlData } = supabase.storage
         .from(bucket)
         .getPublicUrl(caminho)
@@ -408,35 +447,39 @@ const PerfilPage: React.FC = () => {
       const novoForm: FormPerfil = { ...form, foto_url }
       setForm(novoForm)
 
-      // Atualiza registro do usuário no banco
+      // Atualiza registro do usuário no banco usando a mesma mutation
       mutation.mutate(novoForm)
-      // A mensagem de sucesso vem do onSuccess da mutation
+
+      showToast('success', 'Foto de perfil atualizada!')
     } catch (e: any) {
       console.error('[uploadAvatar] erro geral:', e)
       const msg =
         e?.message ||
         e?.error_description ||
         'Erro ao enviar foto. Verifique as permissões do Storage.'
-      abrirToast('error', msg)
+      showToast('error', msg)
     } finally {
       setUploadingAvatar(false)
     }
   }
 
-  // Senha Logic
+  // --------- Alteração de senha ---------
+
   const handleAlterarSenha = async () => {
     if (!supabase || !usuario) return
 
     if (!senhaData.atual || !senhaData.nova || !senhaData.conf) {
-      abrirToast('warning', 'Preencha todos os campos de senha.')
+      showToast('warning', 'Preencha todos os campos de senha.')
       return
     }
+
     if (senhaData.nova !== senhaData.conf) {
-      abrirToast('warning', 'A nova senha e a confirmação não conferem.')
+      showToast('warning', 'A confirmação da senha não confere.')
       return
     }
+
     if (senhaData.nova.length < 6) {
-      abrirToast('warning', 'A nova senha deve ter pelo menos 6 caracteres.')
+      showToast('warning', 'A nova senha deve ter pelo menos 6 caracteres.')
       return
     }
 
@@ -453,16 +496,17 @@ const PerfilPage: React.FC = () => {
       })
       if (upError) throw upError
 
-      abrirToast('success', 'Senha alterada com sucesso!')
+      showToast('success', 'Senha alterada com sucesso!')
       setSenhaData({ atual: '', nova: '', conf: '' })
     } catch (e: any) {
-      abrirToast('error', e?.message || 'Erro ao alterar senha.')
+      showToast('error', e.message || 'Erro ao alterar a senha.')
     } finally {
       setLoadingSenha(false)
     }
   }
 
-  // Estados de carregamento/erro
+  // --------- Estados de carregamento / erro global ---------
+
   if (isLoading || !form || !perfil) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', mt: 10 }}>
@@ -472,17 +516,38 @@ const PerfilPage: React.FC = () => {
   }
 
   if (isError) {
-    // Já mostramos toast no useEffect; aqui só uma fallback mínima
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', mt: 10 }}>
-        <Typography color="error">Erro ao carregar perfil.</Typography>
+        <Alert severity="error">Erro ao carregar perfil.</Alert>
       </Box>
     )
   }
 
-  // RENDER PRINCIPAL
+  // --------- Render ---------
+
   return (
     <Box sx={{ maxWidth: 1000, mx: 'auto', pb: 5 }}>
+      {/* Toast flutuante */}
+      // Toast flutuante
+{toast && toast.open && (
+  <Snackbar
+    open={true}
+    autoHideDuration={4000}
+    onClose={handleCloseToast}
+    anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
+  >
+    <Alert
+      onClose={handleCloseToast}
+      severity={toast.severity}
+      variant="filled"
+      sx={{ width: '100%' }}
+    >
+      {toast.message}
+    </Alert>
+  </Snackbar>
+)}
+
+
       {/* Header Visual */}
       <Paper
         elevation={0}
@@ -574,7 +639,7 @@ const PerfilPage: React.FC = () => {
                   label="Nome de Usuário"
                   value={form.username}
                   onChange={handleChange('username')}
-                  helperText="Usado para identificação no sistema."
+                  helperText="Como você será identificado no sistema."
                 />
               </Grid>
               <Grid item xs={12} md={6}>
@@ -583,7 +648,7 @@ const PerfilPage: React.FC = () => {
                   label="E-mail"
                   value={form.email}
                   disabled
-                  helperText="E-mail de login."
+                  helperText="E-mail de login (não editável aqui)."
                 />
               </Grid>
               <Grid item xs={12} md={3}>
@@ -726,14 +791,14 @@ const PerfilPage: React.FC = () => {
                   size="large"
                   disabled={mutation.isPending}
                 >
-                  Salvar Endereço
+                  {mutation.isPending ? 'Salvando...' : 'Salvar Endereço'}
                 </Button>
               </Grid>
             </Grid>
           </Box>
         </TabPanel>
 
-        {/* --- ABA 3: FOTO E SOCIAL --- */}
+        {/* --- ABA 3: FOTO & SOCIAL --- */}
         <TabPanel value={tabValue} index={2}>
           <Box sx={{ px: { xs: 0, md: 2 } }}>
             <Grid container spacing={4}>
@@ -764,7 +829,7 @@ const PerfilPage: React.FC = () => {
                   </Button>
                 </Stack>
                 {uploadingAvatar && (
-                  <Typography variant="caption">Enviando foto...</Typography>
+                  <Typography variant="caption">Enviando...</Typography>
                 )}
                 <input
                   ref={fileInputGaleriaRef}
@@ -778,13 +843,6 @@ const PerfilPage: React.FC = () => {
               </Grid>
               <Grid item xs={12} md={8}>
                 <Stack spacing={3}>
-                  <TextField
-                    label="Nome de Usuário (Username)"
-                    value={form.username}
-                    onChange={handleChange('username')}
-                    fullWidth
-                    helperText="Usado para identificação no sistema."
-                  />
                   <TextField
                     label="Instagram"
                     value={form.instagram_url}
@@ -801,12 +859,11 @@ const PerfilPage: React.FC = () => {
                   />
                   <Button
                     variant="contained"
-                    onClick={() => {
-                      if (form) mutation.mutate(form)
-                    }}
+                    onClick={() => form && mutation.mutate(form)}
                     sx={{ width: 'fit-content' }}
+                    disabled={mutation.isPending}
                   >
-                    Salvar Social
+                    {mutation.isPending ? 'Salvando...' : 'Salvar Foto & Social'}
                   </Button>
                 </Stack>
               </Grid>
@@ -953,23 +1010,6 @@ const PerfilPage: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
-
-      {/* Toast global da página de Perfil */}
-      <Snackbar
-        open={toastOpen}
-        autoHideDuration={4000}
-        onClose={fecharToast}
-        anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
-      >
-        <Alert
-          onClose={fecharToast}
-          severity={toastTipo}
-          variant="filled"
-          sx={{ minWidth: 260 }}
-        >
-          {toastMensagem}
-        </Alert>
-      </Snackbar>
     </Box>
   )
 }
