@@ -245,26 +245,67 @@ const PerfilPage: React.FC = () => {
   }
 
   // Upload Logic
-  const uploadAvatar = async (file: File) => {
-    if (!supabase || !usuario || !form) return
-    setUploadingAvatar(true)
-    try {
-      if (file.size > 5 * 1024 * 1024) throw new Error('Máximo 5MB.')
-      const bucket = 'avatars'
-      const ext = (file.name.split('.').pop() || 'jpg').toLowerCase()
-      const caminho = `${slugify(usuario.email || 'user')}/${Date.now()}.${ext}`
-      
-      const { error: upErr } = await supabase.storage.from(bucket).upload(caminho, file, { upsert: true })
-      if (upErr) throw upErr
-      
-      const { data } = supabase.storage.from(bucket).getPublicUrl(caminho)
-      const novoForm = { ...form, foto_url: data.publicUrl }
-      setForm(novoForm)
-      mutation.mutate(novoForm)
-      setMensagemSucesso('Foto atualizada!')
-    } catch (e) { setMensagemErro('Erro ao enviar foto.') }
-    finally { setUploadingAvatar(false) }
+const uploadAvatar = async (file: File) => {
+  if (!supabase || !usuario || !form) return
+
+  setUploadingAvatar(true)
+  setMensagemErro(null)
+  setMensagemSucesso(null)
+
+  try {
+    // Limite de 5MB no frontend
+    if (file.size > 5 * 1024 * 1024) {
+      throw new Error('Máximo 5MB.')
+    }
+
+    const bucket = 'avatars'
+    const ext = (file.name.split('.').pop() || 'jpg').toLowerCase()
+    const caminho = `${slugify(usuario.email || 'user')}/${Date.now()}.${ext}`
+
+    // Upload no Storage
+    const { data: uploadData, error: upErr } = await supabase.storage
+      .from(bucket)
+      .upload(caminho, file, {
+        cacheControl: '3600',
+        upsert: true,
+        contentType: file.type || `image/${ext}`,
+      })
+
+    if (upErr) {
+      console.error('[uploadAvatar] erro Supabase Storage:', upErr)
+      // upErr.message normalmente traz o "code" e "message" do Supabase
+      throw upErr
+    }
+
+    console.log('[uploadAvatar] upload OK:', uploadData)
+
+    // Gera URL pública
+    const { data: publicUrlData } = supabase.storage
+      .from(bucket)
+      .getPublicUrl(caminho)
+
+    const foto_url = publicUrlData.publicUrl
+
+    const novoForm = { ...form, foto_url }
+    setForm(novoForm)
+
+    // Atualiza registro do usuário no banco
+    mutation.mutate(novoForm)
+
+    setMensagemSucesso('Foto atualizada!')
+  } catch (e: any) {
+    console.error('[uploadAvatar] erro geral:', e)
+
+    const msg =
+      e?.message ||
+      e?.error_description ||
+      'Erro ao enviar foto. Verifique as permissões do Storage.'
+    setMensagemErro(msg)
+  } finally {
+    setUploadingAvatar(false)
   }
+}
+
 
   // Senha Logic
   const handleAlterarSenha = async () => {
