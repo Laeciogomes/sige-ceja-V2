@@ -273,8 +273,7 @@ const PerfilPage: React.FC = () => {
       setForm(prev => (prev ? { ...prev, [campo]: valor } : prev))
     }
 
-  // --------- Mutation: salvar perfil no Supabase ---------
-
+    // --------- Mutation: salvar perfil no Supabase ---------
   const mutation = useMutation({
     mutationFn: async (dados: FormPerfil) => {
       if (!usuario || !supabase) {
@@ -300,20 +299,30 @@ const PerfilPage: React.FC = () => {
         updated_at: new Date().toISOString(),
       }
 
-      // .select().single() garante que só vamos tratar como sucesso se pelo menos 1 registro foi atualizado
       const { data, error } = await supabase
         .from('usuarios')
         .update(payload)
         .eq('id', usuario.id)
-        .select('*')
-        .single()
+        .select('*')      // retorna array de linhas
+        // .single()       // NÃO usar .single() aqui
 
-      if (error) throw error
+      if (error) {
+        throw error
+      }
 
-      return data as UsuarioPerfil
+      if (!data || data.length === 0) {
+        // Aqui está o problema real: não há linha visível/atualizada
+        throw new Error(
+          `Nenhum registro foi atualizado na tabela "usuarios" para o id ${usuario.id}. ` +
+            'Verifique no Supabase se existe um registro em public.usuarios com esse id ' +
+            'e se as políticas de RLS permitem UPDATE.'
+        )
+      }
+
+      // data é UsuarioPerfil[]
+      return data[0] as UsuarioPerfil
     },
     onSuccess: data => {
-      // Sincroniza formulário com o que está efetivamente gravado no banco
       setForm({
         name: data.name ?? '',
         username: data.username ?? '',
@@ -335,7 +344,6 @@ const PerfilPage: React.FC = () => {
       })
 
       showToast('success', 'Perfil atualizado com sucesso!')
-      // Revalida qualquer tela que use esta query
       queryClient.invalidateQueries({
         queryKey: ['perfil-usuario', usuario?.id],
       })
@@ -349,6 +357,7 @@ const PerfilPage: React.FC = () => {
       )
     },
   })
+
 
   // --------- Lógica da câmera ---------
 
