@@ -113,7 +113,9 @@ const PerfilPage: React.FC = () => {
   const [mostrarNovaSenha, setMostrarNovaSenha] = useState(false)
   const [mostrarConfirmarSenha, setMostrarConfirmarSenha] = useState(false)
 
-  const fileInputRef = useRef<HTMLInputElement | null>(null)
+  // Inputs de arquivo
+  const fileInputGaleriaRef = useRef<HTMLInputElement | null>(null)
+  const fileInputCameraRef = useRef<HTMLInputElement | null>(null)
 
   const {
     data: perfil,
@@ -372,7 +374,11 @@ const PerfilPage: React.FC = () => {
   }
 
   const handleSelecionarFotoClick = () => {
-    fileInputRef.current?.click()
+    fileInputGaleriaRef.current?.click()
+  }
+
+  const handleSelecionarCameraClick = () => {
+    fileInputCameraRef.current?.click()
   }
 
   const handleArquivoSelecionado = async (
@@ -405,7 +411,7 @@ const PerfilPage: React.FC = () => {
       const caminho = `${nomeBase}/${Date.now()}_${nomeArquivoLimpo}${extensao}`
 
       const { error: uploadError } = await supabase.storage
-        .from('avatars') // bucket precisa existir e ter policy de INSERT para authenticated
+        .from('avatars') // bucket precisa existir e ter policy de INSERT/UPDATE para authenticated
         .upload(caminho, arquivo, {
           cacheControl: '3600',
           upsert: true,
@@ -449,7 +455,7 @@ const PerfilPage: React.FC = () => {
       )
     } finally {
       setUploadingFoto(false)
-      if (fileInputRef.current) fileInputRef.current.value = ''
+      if (event.target) event.target.value = ''
     }
   }
 
@@ -513,7 +519,8 @@ const PerfilPage: React.FC = () => {
             Meu perfil
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            Atualize seus dados pessoais, de contato, endereço e senha de acesso.
+            Atualize seus dados pessoais, de contato, endereço, foto e senha de
+            acesso.
           </Typography>
         </Box>
 
@@ -539,9 +546,16 @@ const PerfilPage: React.FC = () => {
         )}
       </Stack>
 
-      {/* Input de arquivo oculto para foto */}
+      {/* Inputs ocultos para upload */}
       <input
-        ref={fileInputRef}
+        ref={fileInputGaleriaRef}
+        type="file"
+        accept="image/*"
+        style={{ display: 'none' }}
+        onChange={handleArquivoSelecionado}
+      />
+      <input
+        ref={fileInputCameraRef}
         type="file"
         accept="image/*"
         capture="environment"
@@ -748,7 +762,7 @@ const PerfilPage: React.FC = () => {
                     fullWidth
                     value={form.foto_url}
                     onChange={handleChange('foto_url')}
-                    helperText="Se preferir, escolha um arquivo abaixo para enviar."
+                    helperText="Se preferir, use os botões abaixo para enviar uma foto."
                   />
 
                   <Stack spacing={1} alignItems="center">
@@ -783,11 +797,20 @@ const PerfilPage: React.FC = () => {
                     onClick={handleSelecionarFotoClick}
                     disabled={uploadingFoto}
                   >
-                    {uploadingFoto ? 'Enviando foto...' : 'Selecionar foto / câmera'}
+                    {uploadingFoto ? 'Enviando...' : 'Selecionar foto'}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outlined"
+                    onClick={handleSelecionarCameraClick}
+                    disabled={uploadingFoto}
+                  >
+                    {uploadingFoto ? 'Enviando...' : 'Usar câmera'}
                   </Button>
                   <Typography variant="caption" color="text.secondary">
-                    Em celulares, o botão pode abrir a câmera. Em computadores, ele
-                    abre o seletor de arquivos.
+                    No celular, "Usar câmera" costuma abrir a câmera do aparelho.
+                    No computador, o comportamento depende do navegador (pode abrir
+                    a webcam ou o seletor de arquivos).
                   </Typography>
                 </Box>
 
@@ -955,6 +978,7 @@ const PerfilPage: React.FC = () => {
                 type={mostrarSenhaAtual ? 'text' : 'password'}
                 value={senhaAtual}
                 onChange={(e) => setSenhaAtual(e.target.value)}
+                autoComplete="current-password"
                 InputProps={{
                   endAdornment: (
                     <InputAdornment position="end">
@@ -982,6 +1006,7 @@ const PerfilPage: React.FC = () => {
                 value={novaSenha}
                 onChange={(e) => setNovaSenha(e.target.value)}
                 helperText="Mínimo de 6 caracteres."
+                autoComplete="new-password"
                 InputProps={{
                   endAdornment: (
                     <InputAdornment position="end">
@@ -1008,6 +1033,7 @@ const PerfilPage: React.FC = () => {
                 type={mostrarConfirmarSenha ? 'text' : 'password'}
                 value={confirmarSenha}
                 onChange={(e) => setConfirmarSenha(e.target.value)}
+                autoComplete="new-password"
                 InputProps={{
                   endAdornment: (
                     <InputAdornment position="end">
