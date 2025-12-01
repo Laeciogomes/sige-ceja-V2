@@ -1,93 +1,73 @@
 // frontend/src/layouts/RootLayout.tsx
-import React, { useEffect, useState } from 'react'
-import {
-  Box,
-  CssBaseline,
-  Divider,
-  Drawer,
-  Toolbar,
-  useMediaQuery,
-  useTheme,
-} from '@mui/material'
+import React, { useState } from 'react'
 import { Outlet } from 'react-router-dom'
+import { 
+  Box, 
+  Toolbar, 
+  useTheme, 
+  useMediaQuery, 
+  CssBaseline 
+} from '@mui/material'
 
 import BarraSuperior from '../componentes/layout/BarraSuperior'
 import BarraLateral from '../componentes/layout/BarraLateral'
 
-const LARGURA_MENU = 260
-const LARGURA_MENU_RECOLHIDO = 72
+// Define a largura do menu para cálculo do layout
+const LARGURA_DRAWER = 280 
 
+// ALTERAÇÃO AQUI: Adicionado 'export' antes de const e removido o export default do final
 export const RootLayout: React.FC = () => {
   const theme = useTheme()
-  const telaPequena = useMediaQuery(theme.breakpoints.down('md'))
+  // Detecta se a tela é menor que 'md' (tablet/celular)
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'))
+  
+  // Estado para controlar se o menu mobile está aberto
+  const [mobileOpen, setMobileOpen] = useState(false)
 
-  // Em telas pequenas começa recolhido; em telas maiores, aberto
-  const [menuAberto, setMenuAberto] = useState(!telaPequena)
-
-  useEffect(() => {
-    setMenuAberto(!telaPequena)
-  }, [telaPequena])
-
-  const alternarMenuLateral = () => {
-    setMenuAberto((aberto) => !aberto)
+  const handleDrawerToggle = () => {
+    setMobileOpen(!mobileOpen)
   }
 
-  const larguraMenu = menuAberto ? LARGURA_MENU : LARGURA_MENU_RECOLHIDO
-
   return (
-    <Box sx={{ display: 'flex' }}>
+    <Box sx={{ display: 'flex', minHeight: '100vh' }}>
       <CssBaseline />
+      
+      {/* Barra Superior */}
+      <BarraSuperior alternarMenuLateral={handleDrawerToggle} />
 
-      {/* Barra superior com logo, tema e usuário */}
-      <BarraSuperior alternarMenuLateral={alternarMenuLateral} />
-
-      {/* Menu lateral (abre/fecha, só ícones quando recolhido) */}
-      <Drawer
-        variant="persistent"
-        anchor="left"
-        open={menuAberto}
-        sx={{
-          width: larguraMenu,
-          flexShrink: 0,
-          '& .MuiDrawer-paper': {
-            width: larguraMenu,
-            boxSizing: 'border-box',
-            borderRight: `1px solid ${theme.palette.divider}`,
-            transition: theme.transitions.create('width', {
-              easing: theme.transitions.easing.sharp,
-              duration: theme.transitions.duration.shortest,
-            }),
-          },
-        }}
+      {/* Área de Navegação (Barra Lateral) */}
+      <Box
+        component="nav"
+        sx={{ width: { md: LARGURA_DRAWER }, flexShrink: { md: 0 } }}
       >
-        {/* Compensa a altura da AppBar */}
-        <Toolbar />
-        <Divider />
-        <BarraLateral aberta={menuAberto} />
-      </Drawer>
+        <BarraLateral
+          variante={isMobile ? 'temporary' : 'permanent'}
+          aberto={isMobile ? mobileOpen : true}
+          fechar={handleDrawerToggle}
+          largura={LARGURA_DRAWER}
+        />
+      </Box>
 
-      {/* Conteúdo principal, colado ao menu e acompanhando expandir/recolher */}
+      {/* Conteúdo Principal (Main) */}
       <Box
         component="main"
         sx={{
           flexGrow: 1,
-          minHeight: '100vh',
+          p: 3,
+          width: { md: `calc(100% - ${LARGURA_DRAWER}px)` },
           bgcolor: theme.palette.background.default,
-          ml: `${larguraMenu}px`,
-          transition: theme.transitions.create(['margin-left'], {
-            easing: theme.transitions.easing.sharp,
-            duration: theme.transitions.duration.shortest,
-          }),
+          minHeight: '100vh',
+          display: 'flex',
+          flexDirection: 'column'
         }}
       >
-        {/* Compensa a AppBar */}
         <Toolbar />
-        <Box sx={{ p: 2.5, pb: 4 }}>
+        
+        <Box sx={{ width: '100%', mt: 2 }}>
           <Outlet />
         </Box>
       </Box>
     </Box>
   )
 }
-
-export default RootLayout
+// Removida a linha 'export default RootLayout'
