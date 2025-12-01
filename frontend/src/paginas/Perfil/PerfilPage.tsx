@@ -104,7 +104,7 @@ function TabPanel(props: TabPanelProps) {
       {...other}
       style={{ width: '100%' }}
     >
-      {value === index && <Box sx={{ py: 3, px: 1 }}>{children}</Box>}
+      {value === index && <Box sx={{ py: 3 }}>{children}</Box>}
     </div>
   )
 }
@@ -140,7 +140,7 @@ const slugify = (value: string) =>
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/[^a-zA-Z0-9._-]/g, '_')
 
-// Toast local (pode ser adaptado para o seu sistema global depois)
+// Toast local (pode ser adaptado para o sistema global depois)
 type ToastSeverity = 'success' | 'error' | 'warning'
 
 // ---------------- Componente principal ----------------
@@ -188,7 +188,7 @@ const PerfilPage: React.FC = () => {
   })
   const [loadingSenha, setLoadingSenha] = useState(false)
 
-  // --------- Query: carregar perfil do Supabase (tabela public.usuarios) ---------
+  // --------- Query: carregar perfil do Supabase ---------
 
   const {
     data: perfil,
@@ -210,7 +210,7 @@ const PerfilPage: React.FC = () => {
     },
   })
 
-  // Quando o perfil chegar da API, popular o form
+  // Popular form quando perfil chegar
   useEffect(() => {
     if (perfil) {
       setForm({
@@ -235,14 +235,13 @@ const PerfilPage: React.FC = () => {
     }
   }, [perfil])
 
-  // Toast para erro de carregamento
   useEffect(() => {
     if (isError) {
       showToast('error', 'Erro ao carregar os dados do perfil.')
     }
   }, [isError])
 
-  // Som dos toasts (opcional – ajuste os caminhos dos arquivos de áudio em /public/sons)
+  // Som opcional dos toasts
   useEffect(() => {
     if (toast?.open) {
       const audioMap: Record<ToastSeverity, string> = {
@@ -254,7 +253,7 @@ const PerfilPage: React.FC = () => {
       if (src) {
         const audio = new Audio(src)
         audio.play().catch(() => {
-          // ignora erro de áudio (ex.: arquivo não encontrado)
+          // ignora erro de áudio
         })
       }
     }
@@ -274,6 +273,7 @@ const PerfilPage: React.FC = () => {
     }
 
   // --------- Mutation: salvar perfil no Supabase ---------
+
   const mutation = useMutation({
     mutationFn: async (dados: FormPerfil) => {
       if (!usuario || !supabase) {
@@ -303,23 +303,19 @@ const PerfilPage: React.FC = () => {
         .from('usuarios')
         .update(payload)
         .eq('id', usuario.id)
-        .select('*') // retorna array de linhas
-      // .single()   // NÃO usar .single() aqui
+        .select('*') // retorna array
 
       if (error) {
         throw error
       }
 
       if (!data || data.length === 0) {
-        // Aqui está o problema real: não há linha visível/atualizada
         throw new Error(
           `Nenhum registro foi atualizado na tabela "usuarios" para o id ${usuario.id}. ` +
-            'Verifique no Supabase se existe um registro em public.usuarios com esse id ' +
-            'e se as políticas de RLS permitem UPDATE.'
+            'Verifique se as policies de RLS permitem UPDATE.',
         )
       }
 
-      // data é UsuarioPerfil[]
       return data[0] as UsuarioPerfil
     },
     onSuccess: data => {
@@ -353,60 +349,105 @@ const PerfilPage: React.FC = () => {
       showToast(
         'error',
         error?.message ||
-          'Erro ao salvar perfil. Verifique os dados e tente novamente.'
+          'Erro ao salvar perfil. Verifique os dados e tente novamente.',
       )
     },
   })
 
-  // --------- Lógica da câmera ---------
+  // --------- Lógica da câmera (re-escrita) ---------
 
-  useEffect(() => {
-    if (cameraAberta && videoRef.current && streamRef.current) {
-      ;(videoRef.current as any).srcObject = streamRef.current
-    }
-  }, [cameraAberta])
-
-  const abrirCamera = async () => {
-    if (!navigator.mediaDevices?.getUserMedia) {
-      showToast('error', 'Navegador sem suporte a câmera.')
-      return
-    }
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true })
-      streamRef.current = stream
-      setCameraAberta(true)
-    } catch {
-      showToast('error', 'Erro ao acessar câmera.')
-    }
+  // Abre apenas o diálogo; o stream é tratado no useEffect abaixo
+  const abrirCamera = () => {
+    setCameraAberta(true)
   }
 
+  // Fecha diálogo e limpa stream
   const fecharCamera = () => {
+    setCameraAberta(false)
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(track => track.stop())
       streamRef.current = null
     }
-    setCameraAberta(false)
+    if (videoRef.current) {
+      ;(videoRef.current as any).srcObject = null
+    }
   }
+
+  // Efeito que liga/desliga a câmera quando o diálogo abre/fecha
+  useEffect(() => {
+    const iniciarCamera = async () => {
+      if (!cameraAberta) return
+      if (!videoRef.current) return
+
+      if (!navigator.mediaDevices?.getUserMedia) {
+        showToast('warning', 'Navegador sem suporte a câmera.')
+        return
+      }
+
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: 'user' },
+        })
+        streamRef.current = stream
+
+        const video = videoRef.current
+        ;(video as any).srcObject = stream
+        await video.play().catch(() => {
+          // em alguns navegadores o autoplay exige interação,
+          // mas como o usuário já clicou em "Câmera", normalmente passa.
+        })
+      } catch (e) {
+        console.error('[PerfilPage] erro ao acessar câmera:', e)
+        showToast(
+          'error',
+          'Erro ao acessar câmera. Verifique permissões e se está em HTTPS/localhost.',
+        )
+        fecharCamera()
+      }
+    }
+
+    iniciarCamera()
+
+    return () => {
+      // Cleanup ao desmontar/fechar diálogo
+      if (!cameraAberta && streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop())
+        streamRef.current = null
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cameraAberta])
 
   const capturarFotoDaCamera = () => {
     if (!videoRef.current || !form) return
     const video = videoRef.current
+
+    const videoWidth = video.videoWidth || 640
+    const videoHeight = video.videoHeight || 480
+
+    if (!videoWidth || !videoHeight) {
+      showToast('warning', 'Vídeo ainda não está pronto. Aguarde um pouco.')
+      return
+    }
+
     const canvas = document.createElement('canvas')
-    canvas.width = video.videoWidth || 640
-    canvas.height = video.videoHeight || 480
+    canvas.width = videoWidth
+    canvas.height = videoHeight
     const ctx = canvas.getContext('2d')
     if (!ctx) return
+
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
+
     canvas.toBlob(
       blob => {
         if (!blob) return
         uploadAvatar(
-          new File([blob], 'foto-camera.jpg', { type: 'image/jpeg' })
+          new File([blob], 'foto-camera.jpg', { type: 'image/jpeg' }),
         )
         fecharCamera()
       },
       'image/jpeg',
-      0.9
+      0.9,
     )
   }
 
@@ -418,14 +459,11 @@ const PerfilPage: React.FC = () => {
     setUploadingAvatar(true)
 
     try {
-      // Limite de 5MB no frontend
       if (file.size > 5 * 1024 * 1024) {
         showToast('warning', 'Tamanho máximo permitido para a foto é 5MB.')
         return
       }
 
-      // CONFIRA se o nome do bucket no seu Supabase é realmente "avatars".
-      // Se você criou "profile_photos", troque aqui:
       const bucket = 'avatars'
 
       const ext = (file.name.split('.').pop() || 'jpg').toLowerCase()
@@ -455,9 +493,7 @@ const PerfilPage: React.FC = () => {
       const novoForm: FormPerfil = { ...form, foto_url }
       setForm(novoForm)
 
-      // Atualiza registro do usuário no banco usando a mesma mutation
       mutation.mutate(novoForm)
-
       showToast('success', 'Foto de perfil atualizada!')
     } catch (e: any) {
       console.error('[uploadAvatar] erro geral:', e)
@@ -534,7 +570,14 @@ const PerfilPage: React.FC = () => {
   // --------- Render ---------
 
   return (
-    <Box sx={{ maxWidth: 1000, mx: 'auto', pb: 5 }}>
+    <Box
+      sx={{
+        maxWidth: 1000,
+        mx: 'auto',
+        pb: 5,
+        px: { xs: 1.5, sm: 2, md: 0 },
+      }}
+    >
       {/* Toast flutuante */}
       {toast && toast.open && (
         <Snackbar
@@ -558,10 +601,11 @@ const PerfilPage: React.FC = () => {
       <Paper
         elevation={0}
         sx={{
-          p: 3,
+          p: { xs: 2, sm: 3 },
           mb: 3,
           display: 'flex',
-          alignItems: 'center',
+          flexDirection: { xs: 'column', sm: 'row' },
+          alignItems: { xs: 'flex-start', sm: 'center' },
           gap: 2,
           bgcolor: theme.palette.primary.main,
           color: 'white',
@@ -580,11 +624,11 @@ const PerfilPage: React.FC = () => {
         >
           {form.name.charAt(0)}
         </Avatar>
-        <Box sx={{ flexGrow: 1 }}>
-          <Typography variant="h5" fontWeight={700}>
+        <Box sx={{ flexGrow: 1, minWidth: 0 }}>
+          <Typography variant="h6" fontWeight={700} noWrap>
             {form.name}
           </Typography>
-          <Typography variant="body2" sx={{ opacity: 0.9 }}>
+          <Typography variant="body2" sx={{ opacity: 0.9 }} noWrap>
             {form.email}
           </Typography>
           <Chip
@@ -627,9 +671,9 @@ const PerfilPage: React.FC = () => {
               e.preventDefault()
               if (form) mutation.mutate(form)
             }}
-            sx={{ px: { xs: 0, md: 2 } }}
+            sx={{ px: { xs: 1, md: 2 } }}
           >
-            <Grid container spacing={3}>
+            <Grid container spacing={2}>
               <Grid item xs={12} md={6}>
                 <TextField
                   fullWidth
@@ -657,7 +701,7 @@ const PerfilPage: React.FC = () => {
                   helperText="E-mail de login (não editável aqui)."
                 />
               </Grid>
-              <Grid item xs={12} md={3}>
+              <Grid item xs={12} sm={6} md={3}>
                 <TextField
                   fullWidth
                   label="CPF"
@@ -666,7 +710,7 @@ const PerfilPage: React.FC = () => {
                   placeholder="000.000.000-00"
                 />
               </Grid>
-              <Grid item xs={12} md={3}>
+              <Grid item xs={12} sm={6} md={3}>
                 <TextField
                   fullWidth
                   label="RG"
@@ -674,7 +718,7 @@ const PerfilPage: React.FC = () => {
                   onChange={handleChange('rg')}
                 />
               </Grid>
-              <Grid item xs={12} md={3}>
+              <Grid item xs={12} sm={6} md={3}>
                 <TextField
                   fullWidth
                   label="Celular"
@@ -683,7 +727,7 @@ const PerfilPage: React.FC = () => {
                   placeholder="(00) 00000-0000"
                 />
               </Grid>
-              <Grid item xs={12} md={3}>
+              <Grid item xs={12} sm={6} md={3}>
                 <TextField
                   fullWidth
                   type="date"
@@ -693,7 +737,7 @@ const PerfilPage: React.FC = () => {
                   InputLabelProps={{ shrink: true }}
                 />
               </Grid>
-              <Grid item xs={12} md={3}>
+              <Grid item xs={12} sm={6} md={3}>
                 <TextField
                   select
                   fullWidth
@@ -708,7 +752,7 @@ const PerfilPage: React.FC = () => {
                   <option value="Outro">Outro</option>
                 </TextField>
               </Grid>
-              <Grid item xs={12} md={3}>
+              <Grid item xs={12} sm={6} md={3}>
                 <TextField
                   select
                   fullWidth
@@ -725,11 +769,12 @@ const PerfilPage: React.FC = () => {
                   <option value="Indígena">Indígena</option>
                 </TextField>
               </Grid>
-              <Grid item xs={12} sx={{ mt: 2 }}>
+              <Grid item xs={12} sx={{ mt: 1 }}>
                 <Button
                   variant="contained"
                   type="submit"
                   size="large"
+                  fullWidth
                   disabled={mutation.isPending}
                 >
                   {mutation.isPending ? 'Salvando...' : 'Salvar Dados Pessoais'}
@@ -747,9 +792,9 @@ const PerfilPage: React.FC = () => {
               e.preventDefault()
               if (form) mutation.mutate(form)
             }}
-            sx={{ px: { xs: 0, md: 2 } }}
+            sx={{ px: { xs: 1, md: 2 } }}
           >
-            <Grid container spacing={3}>
+            <Grid container spacing={2}>
               <Grid item xs={12} md={6}>
                 <TextField
                   fullWidth
@@ -758,7 +803,7 @@ const PerfilPage: React.FC = () => {
                   onChange={handleChange('logradouro')}
                 />
               </Grid>
-              <Grid item xs={12} md={2}>
+              <Grid item xs={12} sm={6} md={2}>
                 <TextField
                   fullWidth
                   label="Número"
@@ -766,7 +811,7 @@ const PerfilPage: React.FC = () => {
                   onChange={handleChange('numero_endereco')}
                 />
               </Grid>
-              <Grid item xs={12} md={4}>
+              <Grid item xs={12} sm={6} md={4}>
                 <TextField
                   fullWidth
                   label="Bairro"
@@ -774,7 +819,7 @@ const PerfilPage: React.FC = () => {
                   onChange={handleChange('bairro')}
                 />
               </Grid>
-              <Grid item xs={12} md={4}>
+              <Grid item xs={12} sm={6} md={4}>
                 <TextField
                   fullWidth
                   label="Município"
@@ -782,7 +827,7 @@ const PerfilPage: React.FC = () => {
                   onChange={handleChange('municipio')}
                 />
               </Grid>
-              <Grid item xs={12} md={8}>
+              <Grid item xs={12} sm={6} md={8}>
                 <TextField
                   fullWidth
                   label="Ponto de Referência"
@@ -790,11 +835,12 @@ const PerfilPage: React.FC = () => {
                   onChange={handleChange('ponto_referencia')}
                 />
               </Grid>
-              <Grid item xs={12} sx={{ mt: 2 }}>
+              <Grid item xs={12} sx={{ mt: 1 }}>
                 <Button
                   variant="contained"
                   type="submit"
                   size="large"
+                  fullWidth
                   disabled={mutation.isPending}
                 >
                   {mutation.isPending ? 'Salvando...' : 'Salvar Endereço'}
@@ -806,8 +852,8 @@ const PerfilPage: React.FC = () => {
 
         {/* --- ABA 3: FOTO & SOCIAL --- */}
         <TabPanel value={tabValue} index={2}>
-          <Box sx={{ px: { xs: 0, md: 2 } }}>
-            <Grid container spacing={4}>
+          <Box sx={{ px: { xs: 1, md: 2 } }}>
+            <Grid container spacing={3}>
               <Grid item xs={12} md={4} sx={{ textAlign: 'center' }}>
                 <Typography variant="subtitle2" gutterBottom>
                   Foto de Perfil
@@ -816,7 +862,12 @@ const PerfilPage: React.FC = () => {
                   src={form.foto_url || undefined}
                   sx={{ width: 120, height: 120, mx: 'auto', mb: 2 }}
                 />
-                <Stack direction="row" justifyContent="center" spacing={1}>
+                <Stack
+                  direction={{ xs: 'column', sm: 'row' }}
+                  justifyContent="center"
+                  spacing={1}
+                  sx={{ '& > button': { flex: 1 } }}
+                >
                   <Button
                     variant="outlined"
                     size="small"
@@ -848,7 +899,7 @@ const PerfilPage: React.FC = () => {
                 />
               </Grid>
               <Grid item xs={12} md={8}>
-                <Stack spacing={3}>
+                <Stack spacing={2}>
                   <TextField
                     label="Instagram"
                     value={form.instagram_url}
@@ -866,7 +917,7 @@ const PerfilPage: React.FC = () => {
                   <Button
                     variant="contained"
                     onClick={() => form && mutation.mutate(form)}
-                    sx={{ width: 'fit-content' }}
+                    sx={{ width: { xs: '100%', sm: 'fit-content' } }}
                     disabled={mutation.isPending}
                   >
                     {mutation.isPending ? 'Salvando...' : 'Salvar Foto & Social'}
@@ -881,13 +932,13 @@ const PerfilPage: React.FC = () => {
         <TabPanel value={tabValue} index={3}>
           <Box
             component="form"
-            sx={{ maxWidth: 500, px: { xs: 0, md: 2 } }}
+            sx={{ maxWidth: 500, px: { xs: 1, md: 2 } }}
             onSubmit={e => {
               e.preventDefault()
               handleAlterarSenha()
             }}
           >
-            {/* Campo de usuário oculto para acessibilidade/autocomplete */}
+            {/* Campo oculto para autocomplete de username */}
             <input
               type="text"
               name="username"
@@ -900,7 +951,7 @@ const PerfilPage: React.FC = () => {
             <Alert severity="info" sx={{ mb: 3 }}>
               Para sua segurança, informe sua senha atual para definir uma nova.
             </Alert>
-            <Stack spacing={3}>
+            <Stack spacing={2}>
               <TextField
                 label="Senha Atual"
                 type={mostrarSenhas.atual ? 'text' : 'password'}
@@ -920,13 +971,16 @@ const PerfilPage: React.FC = () => {
                           })
                         }
                       >
-                        {mostrarSenhas.atual ? <VisibilityOff /> : <Visibility />}
+                        {mostrarSenhas.atual ? (
+                          <VisibilityOff />
+                        ) : (
+                          <Visibility />
+                        )}
                       </IconButton>
                     </InputAdornment>
                   ),
                 }}
               />
-
               <TextField
                 label="Nova Senha"
                 type={mostrarSenhas.nova ? 'text' : 'password'}
@@ -946,13 +1000,16 @@ const PerfilPage: React.FC = () => {
                           })
                         }
                       >
-                        {mostrarSenhas.nova ? <VisibilityOff /> : <Visibility />}
+                        {mostrarSenhas.nova ? (
+                          <VisibilityOff />
+                        ) : (
+                          <Visibility />
+                        )}
                       </IconButton>
                     </InputAdornment>
                   ),
                 }}
               />
-
               <TextField
                 label="Confirmar Senha"
                 type={mostrarSenhas.conf ? 'text' : 'password'}
@@ -972,30 +1029,37 @@ const PerfilPage: React.FC = () => {
                           })
                         }
                       >
-                        {mostrarSenhas.conf ? <VisibilityOff /> : <Visibility />}
+                        {mostrarSenhas.conf ? (
+                          <VisibilityOff />
+                        ) : (
+                          <Visibility />
+                        )}
                       </IconButton>
                     </InputAdornment>
                   ),
                 }}
               />
-
               <Button
                 variant="contained"
                 color="warning"
                 type="submit"
                 disabled={loadingSenha}
+                sx={{ width: { xs: '100%', sm: 'fit-content' } }}
               >
                 {loadingSenha ? 'Alterando...' : 'Alterar Senha'}
               </Button>
             </Stack>
           </Box>
         </TabPanel>
-
-
       </Paper>
 
       {/* Modal da câmera */}
-      <Dialog open={cameraAberta} onClose={fecharCamera} fullWidth maxWidth="sm">
+      <Dialog
+        open={cameraAberta}
+        onClose={fecharCamera}
+        fullWidth
+        maxWidth="sm"
+      >
         <DialogTitle>Usar câmera</DialogTitle>
         <DialogContent>
           <Box
@@ -1004,12 +1068,13 @@ const PerfilPage: React.FC = () => {
               borderRadius: 2,
               overflow: 'hidden',
               bgcolor: 'black',
-              height: 300,
+              height: { xs: 260, sm: 320 },
             }}
           >
             <video
               ref={videoRef}
               autoPlay
+              muted
               playsInline
               style={{ width: '100%', height: '100%', objectFit: 'cover' }}
             />
