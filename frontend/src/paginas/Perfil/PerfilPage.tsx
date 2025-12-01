@@ -273,7 +273,7 @@ const PerfilPage: React.FC = () => {
       setForm(prev => (prev ? { ...prev, [campo]: valor } : prev))
     }
 
-    // --------- Mutation: salvar perfil no Supabase ---------
+  // --------- Mutation: salvar perfil no Supabase ---------
   const mutation = useMutation({
     mutationFn: async (dados: FormPerfil) => {
       if (!usuario || !supabase) {
@@ -303,8 +303,8 @@ const PerfilPage: React.FC = () => {
         .from('usuarios')
         .update(payload)
         .eq('id', usuario.id)
-        .select('*')      // retorna array de linhas
-        // .single()       // NÃO usar .single() aqui
+        .select('*') // retorna array de linhas
+      // .single()   // NÃO usar .single() aqui
 
       if (error) {
         throw error
@@ -357,7 +357,6 @@ const PerfilPage: React.FC = () => {
       )
     },
   })
-
 
   // --------- Lógica da câmera ---------
 
@@ -537,25 +536,23 @@ const PerfilPage: React.FC = () => {
   return (
     <Box sx={{ maxWidth: 1000, mx: 'auto', pb: 5 }}>
       {/* Toast flutuante */}
-      // Toast flutuante
-{toast && toast.open && (
-  <Snackbar
-    open={true}
-    autoHideDuration={4000}
-    onClose={handleCloseToast}
-    anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
-  >
-    <Alert
-      onClose={handleCloseToast}
-      severity={toast.severity}
-      variant="filled"
-      sx={{ width: '100%' }}
-    >
-      {toast.message}
-    </Alert>
-  </Snackbar>
-)}
-
+      {toast && toast.open && (
+        <Snackbar
+          open={true}
+          autoHideDuration={4000}
+          onClose={handleCloseToast}
+          anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
+        >
+          <Alert
+            onClose={handleCloseToast}
+            severity={toast.severity}
+            variant="filled"
+            sx={{ width: '100%' }}
+          >
+            {toast.message}
+          </Alert>
+        </Snackbar>
+      )}
 
       {/* Header Visual */}
       <Paper
