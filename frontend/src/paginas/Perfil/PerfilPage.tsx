@@ -140,7 +140,7 @@ const slugify = (value: string) =>
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/[^a-zA-Z0-9._-]/g, '_')
 
-// Toast local (pode ser adaptado para o sistema global depois)
+// Toast local
 type ToastSeverity = 'success' | 'error' | 'warning'
 
 // ---------------- Componente principal ----------------
@@ -354,7 +354,7 @@ const PerfilPage: React.FC = () => {
     },
   })
 
-  // --------- Lógica da câmera (re-escrita) ---------
+  // --------- Lógica da câmera ---------
 
   // Abre apenas o diálogo; o stream é tratado no useEffect abaixo
   const abrirCamera = () => {
@@ -373,7 +373,7 @@ const PerfilPage: React.FC = () => {
     }
   }
 
-  // Efeito que liga/desliga a câmera quando o diálogo abre/fecha
+  // Liga/desliga a câmera quando o diálogo abre/fecha
   useEffect(() => {
     const iniciarCamera = async () => {
       if (!cameraAberta) return
@@ -381,26 +381,46 @@ const PerfilPage: React.FC = () => {
 
       if (!navigator.mediaDevices?.getUserMedia) {
         showToast('warning', 'Navegador sem suporte a câmera.')
+        console.error(
+          '[PerfilPage] navigator.mediaDevices.getUserMedia indisponível',
+        )
         return
       }
 
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: 'user' },
-        })
+        console.log('[PerfilPage] Tentando abrir câmera...')
+        // tenta com facingMode:user, se falhar cai para um vídeo genérico
+        let stream: MediaStream
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: 'user' },
+          })
+        } catch (e) {
+          console.warn(
+            '[PerfilPage] Erro com facingMode:user, tentando vídeo genérico:',
+            e,
+          )
+          stream = await navigator.mediaDevices.getUserMedia({ video: true })
+        }
+
         streamRef.current = stream
 
         const video = videoRef.current
         ;(video as any).srcObject = stream
-        await video.play().catch(() => {
-          // em alguns navegadores o autoplay exige interação,
-          // mas como o usuário já clicou em "Câmera", normalmente passa.
+        await video.play().catch(err => {
+          console.warn('[PerfilPage] video.play() falhou:', err)
         })
+
+        console.log(
+          '[PerfilPage] Câmera iniciada. dimensões:',
+          video.videoWidth,
+          video.videoHeight,
+        )
       } catch (e) {
         console.error('[PerfilPage] erro ao acessar câmera:', e)
         showToast(
           'error',
-          'Erro ao acessar câmera. Verifique permissões e se está em HTTPS/localhost.',
+          'Erro ao acessar câmera. Verifique permissões, HTTPS/localhost e se outra aplicação não está usando a câmera.',
         )
         fecharCamera()
       }
@@ -408,9 +428,9 @@ const PerfilPage: React.FC = () => {
 
     iniciarCamera()
 
+    // Cleanup ao desmontar/fechar diálogo
     return () => {
-      // Cleanup ao desmontar/fechar diálogo
-      if (!cameraAberta && streamRef.current) {
+      if (streamRef.current && !cameraAberta) {
         streamRef.current.getTracks().forEach(track => track.stop())
         streamRef.current = null
       }
@@ -422,11 +442,14 @@ const PerfilPage: React.FC = () => {
     if (!videoRef.current || !form) return
     const video = videoRef.current
 
-    const videoWidth = video.videoWidth || 640
-    const videoHeight = video.videoHeight || 480
+    const videoWidth = video.videoWidth || 0
+    const videoHeight = video.videoHeight || 0
 
     if (!videoWidth || !videoHeight) {
-      showToast('warning', 'Vídeo ainda não está pronto. Aguarde um pouco.')
+      showToast(
+        'warning',
+        'A câmera ainda está iniciando. Aguarde 1–2 segundos antes de tirar a foto.',
+      )
       return
     }
 
@@ -465,7 +488,6 @@ const PerfilPage: React.FC = () => {
       }
 
       const bucket = 'avatars'
-
       const ext = (file.name.split('.').pop() || 'jpg').toLowerCase()
       const caminho = `${slugify(usuario.email || 'user')}/${Date.now()}.${ext}`
 
@@ -489,10 +511,9 @@ const PerfilPage: React.FC = () => {
         .getPublicUrl(caminho)
 
       const foto_url = publicUrlData.publicUrl
-
       const novoForm: FormPerfil = { ...form, foto_url }
-      setForm(novoForm)
 
+      setForm(novoForm)
       mutation.mutate(novoForm)
       showToast('success', 'Foto de perfil atualizada!')
     } catch (e: any) {

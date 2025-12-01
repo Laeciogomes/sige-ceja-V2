@@ -9,23 +9,25 @@ import {
   ToggleButton,
   ToggleButtonGroup,
   Switch,
-  FormControlLabel,
   Divider,
   Button,
   Alert,
+  Avatar, // Adicionado
+  alpha
 } from '@mui/material'
 
 import VolumeUpIcon from '@mui/icons-material/VolumeUp'
 import VolumeOffIcon from '@mui/icons-material/VolumeOff'
-import TextFieldsIcon from '@mui/icons-material/TextFields'
 import SettingsIcon from '@mui/icons-material/Settings'
+import NotificationsActiveIcon from '@mui/icons-material/NotificationsActive'
+import AccessibilityNewIcon from '@mui/icons-material/AccessibilityNew'
 
 import { useNotificacaoContext } from '../../contextos/NotificacaoContext'
 
 type FontScale = 'small' | 'medium' | 'large'
 
 const FONT_STORAGE_KEY = 'sigeceja-font-scale'
-const TOAST_SOUND_STORAGE_KEY = 'sigeceja-toast-som-ativo' // 'on' | 'off'
+const TOAST_SOUND_STORAGE_KEY = 'sigeceja-toast-som-ativo'
 
 const fontScaleToPx: Record<FontScale, number> = {
   small: 14,
@@ -40,7 +42,6 @@ const ConfiguracoesPage: React.FC = () => {
   const [fontScale, setFontScale] = useState<FontScale>('medium')
   const [somToastsAtivo, setSomToastsAtivo] = useState(true)
 
-  // Aplica o tamanho de fonte global (html { font-size })
   const aplicarFontScale = (scale: FontScale) => {
     const px = fontScaleToPx[scale] ?? 16
     if (typeof document !== 'undefined') {
@@ -48,19 +49,12 @@ const ConfiguracoesPage: React.FC = () => {
     }
   }
 
-  // Carrega preferências salvas
   useEffect(() => {
     try {
-      const armazenadoFonte = localStorage.getItem(FONT_STORAGE_KEY) as
-        | FontScale
-        | null
-      if (
-        armazenadoFonte === 'small' ||
-        armazenadoFonte === 'medium' ||
-        armazenadoFonte === 'large'
-      ) {
-        setFontScale(armazenadoFonte)
-        aplicarFontScale(armazenadoFonte)
+      const storedFont = localStorage.getItem(FONT_STORAGE_KEY) as FontScale | null
+      if (storedFont && ['small', 'medium', 'large'].includes(storedFont)) {
+        setFontScale(storedFont)
+        aplicarFontScale(storedFont)
       } else {
         aplicarFontScale('medium')
       }
@@ -69,187 +63,156 @@ const ConfiguracoesPage: React.FC = () => {
     }
 
     try {
-      const som = localStorage.getItem(TOAST_SOUND_STORAGE_KEY)
-      setSomToastsAtivo(som !== 'off')
+      const storedSound = localStorage.getItem(TOAST_SOUND_STORAGE_KEY)
+      setSomToastsAtivo(storedSound !== 'off')
     } catch {
       setSomToastsAtivo(true)
     }
   }, [])
 
-  // Handler de mudança de fonte
-  const handleFontScaleChange = (
-    _event: React.MouseEvent<HTMLElement>,
-    novaEscala: FontScale | null,
-  ) => {
+  const handleFontScaleChange = (_: React.MouseEvent<HTMLElement>, novaEscala: FontScale | null) => {
     if (!novaEscala) return
     setFontScale(novaEscala)
     aplicarFontScale(novaEscala)
     try {
       localStorage.setItem(FONT_STORAGE_KEY, novaEscala)
-    } catch {
-      // se não conseguir salvar, ignora
-    }
-    aviso('Tamanho da fonte atualizado.', 'Configurações')
+    } catch {}
+    aviso('Tamanho da fonte atualizado.', 'Acessibilidade')
   }
 
-  // Handler de som dos toasts (sem usar o event, só o checked)
   const handleSomToastsToggle = (checked: boolean) => {
     setSomToastsAtivo(checked)
     try {
       localStorage.setItem(TOAST_SOUND_STORAGE_KEY, checked ? 'on' : 'off')
-    } catch {
-      // ignora erro em localStorage
-    }
-    if (checked) {
-      sucesso('Som das notificações ativado.', 'Configurações')
-    } else {
-      aviso('Som das notificações desativado.', 'Configurações')
-    }
-  }
-
-  const handleTestarToast = () => {
-    sucesso('Este é um teste de notificação.', 'Teste de Toast')
+    } catch {}
+    
+    if (checked) sucesso('Sons ativados.', 'Notificações')
+    else aviso('Sons desativados.', 'Notificações')
   }
 
   return (
     <Box sx={{ maxWidth: 900, mx: 'auto', mt: 2, mb: 4, px: { xs: 1, md: 0 } }}>
-      {/* Cabeçalho da página */}
-      <Box
-        sx={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 2,
-          mb: 3,
+      
+      {/* Cabeçalho */}
+      <Paper 
+        elevation={0} 
+        sx={{ 
+          p: 3, 
+          mb: 4, 
+          borderRadius: 3, 
+          bgcolor: theme.palette.mode === 'dark' ? alpha(theme.palette.primary.main, 0.1) : theme.palette.grey[50],
+          border: `1px solid ${theme.palette.divider}`,
+          display: 'flex', 
+          alignItems: 'center', 
+          gap: 2 
         }}
       >
-        <Box
-          sx={{
-            width: 48,
-            height: 48,
-            borderRadius: '50%',
-            bgcolor: theme.palette.primary.main,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            color: 'common.white',
-          }}
-        >
-          <SettingsIcon />
-        </Box>
+        <Avatar sx={{ bgcolor: theme.palette.primary.main, width: 56, height: 56 }}>
+          <SettingsIcon fontSize="large" />
+        </Avatar>
         <Box>
-          <Typography variant="h5" fontWeight={700}>
-            Configurações do Usuário
+          <Typography variant="h5" fontWeight={700} gutterBottom>
+            Preferências do Sistema
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            Personalize a experiência do SIGE-CEJA conforme sua preferência.
+            Personalize a aparência e o comportamento do SIGE-CEJA para melhor atender às suas necessidades.
           </Typography>
         </Box>
-      </Box>
+      </Paper>
 
-      <Stack spacing={3}>
-        {/* Card: Tamanho da Fonte */}
-        <Paper
-          elevation={1}
-          sx={{
-            p: 3,
-            borderRadius: 2,
-          }}
-        >
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-            <TextFieldsIcon color="primary" />
-            <Typography variant="h6">Tamanho da fonte</Typography>
-          </Box>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            Ajuste o tamanho da fonte de todo o sistema. A alteração afeta
-            menus, tabelas e formulários.
-          </Typography>
+      {/* Grid Layout substituindo MUI Grid para evitar erros de tipagem */}
+      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '7fr 5fr' }, gap: 3 }}>
+        
+        {/* Coluna Esquerda: Acessibilidade */}
+        <Box>
+          <Paper elevation={0} sx={{ p: 3, borderRadius: 3, border: `1px solid ${theme.palette.divider}`, height: '100%' }}>
+            <Stack direction="row" alignItems="center" gap={1.5} mb={2}>
+              <AccessibilityNewIcon color="primary" />
+              <Typography variant="h6" fontWeight={600}>Acessibilidade e Visualização</Typography>
+            </Stack>
+            <Divider sx={{ mb: 3 }} />
 
-          <ToggleButtonGroup
-            color="primary"
-            exclusive
-            value={fontScale}
-            onChange={handleFontScaleChange}
-            size="small"
-          >
-            <ToggleButton value="small">Pequena</ToggleButton>
-            <ToggleButton value="medium">Padrão</ToggleButton>
-            <ToggleButton value="large">Grande</ToggleButton>
-          </ToggleButtonGroup>
-
-          <Box
-            sx={{
-              mt: 3,
-              p: 2,
-              borderRadius: 2,
-              border: `1px dashed ${theme.palette.divider}`,
-              bgcolor: theme.palette.action.hover,
-            }}
-          >
-            <Typography variant="subtitle2" gutterBottom>
-              Pré-visualização
+            <Typography variant="subtitle2" gutterBottom>Tamanho da Fonte</Typography>
+            <Typography variant="body2" color="text.secondary" mb={2}>
+              Ajuste o tamanho do texto para tornar a leitura mais confortável.
             </Typography>
-            <Typography variant="body1">
-              Este é um exemplo de texto com o tamanho atualmente selecionado.
-            </Typography>
-            <Typography variant="body2" color="text.secondary">
-              Ajuste até encontrar o tamanho mais confortável para leitura.
-            </Typography>
-          </Box>
-        </Paper>
 
-        {/* Card: Som das notificações (toasts) */}
-        <Paper
-          elevation={1}
-          sx={{
-            p: 3,
-            borderRadius: 2,
-          }}
-        >
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-            {somToastsAtivo ? (
-              <VolumeUpIcon color="primary" />
-            ) : (
-              <VolumeOffIcon color="action" />
-            )}
-            <Typography variant="h6">Som das notificações</Typography>
-          </Box>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-            Ative ou desative o som reproduzido quando uma notificação é
-            exibida no canto da tela.
-          </Typography>
-
-          <Alert severity="info" variant="outlined" sx={{ mb: 2 }}>
-            Esta configuração é salva neste navegador. Outros dispositivos
-            podem ter preferências diferentes.
-          </Alert>
-
-          <FormControlLabel
-            control={
-              <Switch
-                checked={somToastsAtivo}
-                onChange={(_, checked) => handleSomToastsToggle(checked)}
-              />
-            }
-            label={
-              somToastsAtivo
-                ? 'Som das notificações ativado'
-                : 'Som das notificações desativado'
-            }
-          />
-
-          <Divider sx={{ my: 2 }} />
-
-          <Stack direction="row" spacing={1}>
-            <Button
-              variant="outlined"
-              startIcon={<VolumeUpIcon />}
-              onClick={handleTestarToast}
+            <ToggleButtonGroup
+              color="primary"
+              value={fontScale}
+              exclusive
+              onChange={handleFontScaleChange}
+              fullWidth
+              sx={{ mb: 3 }}
             >
-              Testar notificação
-            </Button>
-          </Stack>
-        </Paper>
-      </Stack>
+              <ToggleButton value="small">Pequeno</ToggleButton>
+              <ToggleButton value="medium">Padrão</ToggleButton>
+              <ToggleButton value="large">Grande</ToggleButton>
+            </ToggleButtonGroup>
+
+            {/* Preview Box */}
+            <Box 
+              sx={{ 
+                p: 2, 
+                borderRadius: 2, 
+                bgcolor: theme.palette.background.default,
+                border: `1px solid ${theme.palette.divider}` 
+              }}
+            >
+              <Typography variant="caption" color="text.secondary" display="block" mb={1}>PREVIEW</Typography>
+              <Typography variant="h6" gutterBottom>Título de Exemplo</Typography>
+              <Typography variant="body1">
+                O rápido caracol marrom saltou sobre o cachorro preguiçoso. 
+                1234567890. Ajuste conforme necessário.
+              </Typography>
+            </Box>
+          </Paper>
+        </Box>
+
+        {/* Coluna Direita: Notificações e Sistema */}
+        <Box>
+          <Paper elevation={0} sx={{ p: 3, borderRadius: 3, border: `1px solid ${theme.palette.divider}`, height: '100%' }}>
+            <Stack direction="row" alignItems="center" gap={1.5} mb={2}>
+              <NotificationsActiveIcon color="warning" />
+              <Typography variant="h6" fontWeight={600}>Notificações</Typography>
+            </Stack>
+            <Divider sx={{ mb: 3 }} />
+
+            <Stack spacing={3}>
+              <Box>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                  <Typography variant="subtitle2">Sons de Alerta</Typography>
+                  <Switch 
+                    checked={somToastsAtivo} 
+                    onChange={(_, c) => handleSomToastsToggle(c)} 
+                    color="primary" 
+                  />
+                </Box>
+                <Typography variant="body2" color="text.secondary">
+                  Reproduzir som ao receber notificações de sucesso ou erro.
+                </Typography>
+              </Box>
+
+              <Alert severity="info" variant="outlined" sx={{ '& .MuiAlert-message': { width: '100%' } }}>
+                <Typography variant="caption" display="block" gutterBottom>
+                  Teste suas configurações:
+                </Typography>
+                <Button 
+                  variant="contained" 
+                  size="small" 
+                  startIcon={somToastsAtivo ? <VolumeUpIcon /> : <VolumeOffIcon />}
+                  onClick={() => sucesso('Teste de notificação realizado!', 'Configurações')}
+                  fullWidth
+                  disableElevation
+                >
+                  Emitir Notificação de Teste
+                </Button>
+              </Alert>
+            </Stack>
+          </Paper>
+        </Box>
+
+      </Box>
     </Box>
   )
 }
