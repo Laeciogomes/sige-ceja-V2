@@ -17,7 +17,7 @@ import BarraLateral from '../componentes/layout/BarraLateral'
 const LARGURA_MENU = 260
 const LARGURA_MENU_RECOLHIDO = 72
 
-const RootLayout: React.FC = () => {
+export const RootLayout: React.FC = () => {
   const theme = useTheme()
   const telaPequena = useMediaQuery(theme.breakpoints.down('md'))
 
@@ -38,8 +38,10 @@ const RootLayout: React.FC = () => {
     <Box sx={{ display: 'flex' }}>
       <CssBaseline />
 
+      {/* Barra superior com logo, tema e usuário */}
       <BarraSuperior alternarMenuLateral={alternarMenuLateral} />
 
+      {/* Menu lateral (abre/fecha, só ícones quando recolhido) */}
       <Drawer
         variant="persistent"
         anchor="left"
@@ -64,7 +66,7 @@ const RootLayout: React.FC = () => {
         <BarraLateral aberta={menuAberto} />
       </Drawer>
 
-      {/* Main colado no menu e acompanhando expandir/recolher */}
+      {/* Conteúdo principal, colado ao menu e acompanhando expandir/recolher */}
       <Box
         component="main"
         sx={{
@@ -78,6 +80,7 @@ const RootLayout: React.FC = () => {
           }),
         }}
       >
+        {/* Compensa a AppBar */}
         <Toolbar />
         <Box sx={{ p: 2.5, pb: 4 }}>
           <Outlet />
