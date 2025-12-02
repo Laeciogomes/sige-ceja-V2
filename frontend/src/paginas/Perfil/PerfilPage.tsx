@@ -100,10 +100,11 @@ const PerfilPage: React.FC = () => {
     queryFn: async () => {
       if (!supabase || !userId) return null
       const { data, error } = await supabase
-        .from('usuarios')
-        .select('id, nome, email, telefone, cidade, estado, endereco, foto_url')
-        .eq('id', userId)
-        .maybeSingle<PerfilApiResponse>()
+      .from('usuarios')
+      .select('id, name:nome, email, telefone, cidade, estado, endereco, foto_url')
+      .eq('id', userId)
+      .maybeSingle<PerfilApiResponse>()
+
 
       if (error) {
         console.error('Erro ao carregar perfil:', error)
@@ -132,15 +133,16 @@ const PerfilPage: React.FC = () => {
       }
 
       const { error } = await supabase
-        .from('usuarios')
-        .update({
-          nome: dados.nome,
-          telefone: dados.telefone,
-          cidade: dados.cidade,
-          estado: dados.estado,
-          endereco: dados.endereco,
-        })
-        .eq('id', userId)
+      .from('usuarios')
+      .update({
+        name: dados.nome,
+        telefone: dados.telefone,
+        cidade: dados.cidade,
+        estado: dados.estado,
+        endereco: dados.endereco,
+      })
+      .eq('id', userId)
+
 
       if (error) {
         throw error
