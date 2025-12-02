@@ -33,6 +33,7 @@ import {
   Home as HomeIcon,
   Security as SecurityIcon,
   PhotoCameraFront as PhotoIcon,
+  Cameraswitch as CameraswitchIcon,
 } from '@mui/icons-material'
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -176,6 +177,9 @@ const PerfilPage: React.FC = () => {
   const [uploadingAvatar, setUploadingAvatar] = useState(false)
   const fileInputGaleriaRef = useRef<HTMLInputElement | null>(null)
   const [cameraAberta, setCameraAberta] = useState(false)
+  const [cameraFacing, setCameraFacing] = useState<'user' | 'environment'>(
+    'user',
+  )
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
 
@@ -354,48 +358,9 @@ const PerfilPage: React.FC = () => {
     },
   })
 
-  // --------- Lógica da câmera (simplificada com callback ref) ---------
+  // --------- Lógica da câmera (com frente/traseira) ---------
 
-  // Abre a câmera: pede o stream e só depois abre o diálogo
-  const abrirCamera = async () => {
-    if (!navigator.mediaDevices?.getUserMedia) {
-      showToast('warning', 'Navegador sem suporte a câmera.')
-      console.error(
-        '[PerfilPage] navigator.mediaDevices.getUserMedia indisponível',
-      )
-      return
-    }
-
-    try {
-      console.log('[PerfilPage] Solicitando acesso à câmera...')
-      let stream: MediaStream
-
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: 'user' },
-        })
-      } catch (e) {
-        console.warn(
-          '[PerfilPage] Erro com facingMode:user, tentando vídeo genérico:',
-          e,
-        )
-        stream = await navigator.mediaDevices.getUserMedia({ video: true })
-      }
-
-      streamRef.current = stream
-      setCameraAberta(true)
-    } catch (e) {
-      console.error('[PerfilPage] erro ao acessar câmera:', e)
-      showToast(
-        'error',
-        'Erro ao acessar câmera. Verifique permissões, HTTPS/localhost e se outra aplicação não está usando a câmera.',
-      )
-    }
-  }
-
-  // Fecha diálogo e limpa stream
-  const fecharCamera = () => {
-    setCameraAberta(false)
+  const stopStream = () => {
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(track => track.stop())
       streamRef.current = null
@@ -403,6 +368,83 @@ const PerfilPage: React.FC = () => {
     if (videoRef.current) {
       ;(videoRef.current as any).srcObject = null
     }
+  }
+
+  const startCamera = async (
+    facing: 'user' | 'environment',
+  ): Promise<boolean> => {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      showToast('warning', 'Navegador sem suporte a câmera.')
+      console.error(
+        '[PerfilPage] navigator.mediaDevices.getUserMedia indisponível',
+      )
+      return false
+    }
+
+    try {
+      console.log('[PerfilPage] Solicitando acesso à câmera, facing:', facing)
+      let stream: MediaStream
+
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: facing },
+        })
+      } catch (e) {
+        console.warn(
+          '[PerfilPage] Erro com facingMode:',
+          facing,
+          ' - tentando vídeo genérico:',
+          e,
+        )
+        stream = await navigator.mediaDevices.getUserMedia({ video: true })
+      }
+
+      stopStream()
+      streamRef.current = stream
+
+      if (videoRef.current) {
+        try {
+          ;(videoRef.current as any).srcObject = stream
+          await videoRef.current
+            .play()
+            .catch(err =>
+              console.warn('[PerfilPage] video.play() falhou:', err),
+            )
+        } catch (e) {
+          console.error(
+            '[PerfilPage] erro ao associar stream ao vídeo (startCamera):',
+            e,
+          )
+        }
+      }
+
+      return true
+    } catch (e) {
+      console.error('[PerfilPage] erro ao acessar câmera:', e)
+      showToast(
+        'error',
+        'Erro ao acessar câmera. Verifique permissões, HTTPS/localhost e se outra aplicação não está usando a câmera.',
+      )
+      return false
+    }
+  }
+
+  // Abre a câmera com o facing atual
+  const abrirCamera = async () => {
+    const ok = await startCamera(cameraFacing)
+    if (ok) setCameraAberta(true)
+  }
+
+  // Alterna entre frontal e traseira enquanto o modal está aberto
+  const alternarCamera = async () => {
+    const novoFacing = cameraFacing === 'user' ? 'environment' : 'user'
+    setCameraFacing(novoFacing)
+    await startCamera(novoFacing)
+  }
+
+  const fecharCamera = () => {
+    setCameraAberta(false)
+    stopStream()
   }
 
   const capturarFotoDaCamera = () => {
@@ -1072,7 +1114,7 @@ const PerfilPage: React.FC = () => {
                       )
                   } catch (e) {
                     console.error(
-                      '[PerfilPage] erro ao associar stream ao vídeo:',
+                      '[PerfilPage] erro ao associar stream ao vídeo (ref):',
                       e,
                     )
                   }
@@ -1085,11 +1127,23 @@ const PerfilPage: React.FC = () => {
             />
           </Box>
         </DialogContent>
-        <DialogActions>
-          <Button onClick={fecharCamera}>Cancelar</Button>
-          <Button variant="contained" onClick={capturarFotoDaCamera}>
-            Tirar foto
+        <DialogActions sx={{ justifyContent: 'space-between' }}>
+          <Button
+            variant="outlined"
+            size="small"
+            startIcon={<CameraswitchIcon />}
+            onClick={alternarCamera}
+          >
+            Trocar câmera
           </Button>
+          <Box sx={{ ml: 'auto' }}>
+            <Button onClick={fecharCamera} sx={{ mr: 1 }}>
+              Cancelar
+            </Button>
+            <Button variant="contained" onClick={capturarFotoDaCamera}>
+              Tirar foto
+            </Button>
+          </Box>
         </DialogActions>
       </Dialog>
     </Box>
