@@ -36,13 +36,6 @@ export type ItemMenuConfig = {
 
 /**
  * Menus por contexto de painel.
- *
- * - ADMIN: painel de administração geral, com acesso aos outros painéis.
- * - SECRETARIA: tudo que a Secretaria faz.
- * - PROFESSOR: atendimentos e acompanhamento de alunos.
- * - COORDENACAO: tudo da secretaria + SASP e acompanhamento.
- * - DIRECAO: igual à coordenação.
- * - ALUNO: visão do aluno (placeholders por enquanto).
  */
 export const menusPorContexto: Record<ContextoPainel, ItemMenuConfig[]> = {
   ADMIN: [
@@ -163,7 +156,6 @@ export const menusPorContexto: Record<ContextoPainel, ItemMenuConfig[]> = {
       caminho: '/coordenacao',
       icone: <DashboardIcon />,
     },
-    // Tudo da Secretaria (reutilizando as rotas /secretaria/...)
     {
       id: 'coord-usuarios',
       rotulo: 'Gerenciar usuários',
@@ -206,7 +198,6 @@ export const menusPorContexto: Record<ContextoPainel, ItemMenuConfig[]> = {
       caminho: '/secretaria/renovacoes',
       icone: <AutorenewIcon />,
     },
-    // Extra da Coordenação
     {
       id: 'coord-sasp',
       rotulo: 'SASP',
@@ -228,7 +219,6 @@ export const menusPorContexto: Record<ContextoPainel, ItemMenuConfig[]> = {
       caminho: '/direcao',
       icone: <DashboardIcon />,
     },
-    // Tudo da Secretaria
     {
       id: 'dir-usuarios',
       rotulo: 'Gerenciar usuários',
@@ -271,7 +261,6 @@ export const menusPorContexto: Record<ContextoPainel, ItemMenuConfig[]> = {
       caminho: '/secretaria/renovacoes',
       icone: <AutorenewIcon />,
     },
-    // Extra da Direção (igual à coordenação)
     {
       id: 'dir-sasp',
       rotulo: 'SASP',
@@ -318,21 +307,29 @@ export const obterContextoPainel = (
 ): ContextoPainel => {
   const path = pathname.toLowerCase()
 
+  // 1. ADMIN sempre usa menu de ADMIN
+  // Corrigimos o erro de type casting 'as string' caso o TS reclame
+  if ((papel as string) === 'ADMIN') {
+    return 'ADMIN'
+  }
+
+  // 2. Tenta inferir pela URL para outros papéis
   if (path.startsWith('/secretaria')) return 'SECRETARIA'
   if (path.startsWith('/professores')) return 'PROFESSOR'
   if (path.startsWith('/coordenacao')) return 'COORDENACAO'
   if (path.startsWith('/direcao')) return 'DIRECAO'
   if (path.startsWith('/alunos')) return 'ALUNO'
 
-  // Se a rota não indica claramente o painel, usamos o papel do usuário
-  switch (papel) {
+  // 3. Fallback pelo papel do usuário
+  switch (papel as string) {
     case 'SECRETARIA':
       return 'SECRETARIA'
     case 'PROFESSOR':
       return 'PROFESSOR'
     case 'COORDENACAO':
       return 'COORDENACAO'
-    case 'DIRETOR':
+    case 'DIRECAO': // Assume que o papel no banco é DIRECAO
+    case 'DIRETOR': // Ou DIRETOR, depende de como salvou
       return 'DIRECAO'
     case 'ALUNO':
       return 'ALUNO'
