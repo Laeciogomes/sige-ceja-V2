@@ -104,7 +104,9 @@ function TabPanel(props: TabPanelProps) {
       {...other}
       style={{ width: '100%' }}
     >
-      {value === index && <Box sx={{ py: 3, width: '100%' }}>{children}</Box>}
+      {value === index && (
+        <Box sx={{ py: 3, width: '100%', boxSizing: 'border-box' }}>{children}</Box>
+      )}
     </div>
   )
 }
@@ -634,6 +636,7 @@ const PerfilPage: React.FC = () => {
           display: 'flex',
           justifyContent: 'center',
           alignItems: 'center',
+          boxSizing: 'border-box',
         }}
       >
         <CircularProgress />
@@ -651,6 +654,7 @@ const PerfilPage: React.FC = () => {
           justifyContent: 'center',
           alignItems: 'center',
           px: 2,
+          boxSizing: 'border-box',
         }}
       >
         <Alert severity="error" sx={{ width: '100%' }}>
@@ -671,6 +675,7 @@ const PerfilPage: React.FC = () => {
         px: { xs: 1.5, sm: 2, md: 2 },
         pb: 10,
         boxSizing: 'border-box',
+        overflowX: 'hidden',
       }}
     >
       {/* Toast */}
@@ -769,10 +774,34 @@ const PerfilPage: React.FC = () => {
             bgcolor: theme.palette.background.default,
           }}
         >
-          <Tab icon={<PersonIcon />} iconPosition="start" label="Dados Pessoais" />
-          <Tab icon={<HomeIcon />} iconPosition="start" label="Endereço" />
-          <Tab icon={<PhotoIcon />} iconPosition="start" label="Foto / Social" />
-          <Tab icon={<SecurityIcon />} iconPosition="start" label="Segurança" />
+          <Tab
+            wrapped
+            icon={<PersonIcon />}
+            iconPosition="start"
+            label="Dados Pessoais"
+            sx={{ fontSize: { xs: 11, sm: 13 } }}
+          />
+          <Tab
+            wrapped
+            icon={<HomeIcon />}
+            iconPosition="start"
+            label="Endereço"
+            sx={{ fontSize: { xs: 11, sm: 13 } }}
+          />
+          <Tab
+            wrapped
+            icon={<PhotoIcon />}
+            iconPosition="start"
+            label="Foto / Social"
+            sx={{ fontSize: { xs: 11, sm: 13 } }}
+          />
+          <Tab
+            wrapped
+            icon={<SecurityIcon />}
+            iconPosition="start"
+            label="Segurança"
+            sx={{ fontSize: { xs: 11, sm: 13 } }}
+          />
         </Tabs>
 
         {/* Dados Pessoais */}
