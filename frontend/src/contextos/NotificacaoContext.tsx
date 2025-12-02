@@ -229,6 +229,7 @@ export const NotificacaoProvider: React.FC<NotificacaoProviderProps> = ({
           autoHideDuration={autoHideDuration ?? undefined}
           onClose={handleClose}
           anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
+          sx={{ mt: 8 }} // desloca o toast para baixo da AppBar
           TransitionComponent={props => <Slide {...props} direction="left" />}
           TransitionProps={{ onExited: handleExited }}
         >
