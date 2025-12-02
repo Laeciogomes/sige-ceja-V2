@@ -177,11 +177,14 @@ const PerfilPage: React.FC = () => {
   const [uploadingAvatar, setUploadingAvatar] = useState(false)
   const fileInputGaleriaRef = useRef<HTMLInputElement | null>(null)
   const [cameraAberta, setCameraAberta] = useState(false)
-  const [cameraFacing, setCameraFacing] = useState<'user' | 'environment'>(
-    'user',
-  )
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
+
+  // lista de câmeras para alternar (frontal / traseira, etc.)
+  const [cameraDevices, setCameraDevices] = useState<MediaDeviceInfo[]>([])
+  const [currentCameraIndex, setCurrentCameraIndex] = useState<number | null>(
+    null,
+  )
 
   // Senha
   const [senhaData, setSenhaData] = useState({ atual: '', nova: '', conf: '' })
@@ -358,7 +361,7 @@ const PerfilPage: React.FC = () => {
     },
   })
 
-  // --------- Lógica da câmera (com frente/traseira) ---------
+  // --------- Lógica da câmera (com troca de dispositivo) ---------
 
   const stopStream = () => {
     if (streamRef.current) {
@@ -370,76 +373,98 @@ const PerfilPage: React.FC = () => {
     }
   }
 
-  const startCamera = async (
-    facing: 'user' | 'environment',
-  ): Promise<boolean> => {
+  const anexarStreamNoVideo = async (stream: MediaStream) => {
+    if (!videoRef.current) return
+    try {
+      ;(videoRef.current as any).srcObject = stream
+      await videoRef.current
+        .play()
+        .catch(err => console.warn('[PerfilPage] video.play() falhou:', err))
+    } catch (e) {
+      console.error('[PerfilPage] erro ao anexar stream no vídeo:', e)
+    }
+  }
+
+  const listarCameras = async (): Promise<MediaDeviceInfo[]> => {
+    if (!navigator.mediaDevices?.enumerateDevices) return []
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices()
+      const videos = devices.filter(d => d.kind === 'videoinput')
+      setCameraDevices(videos)
+      return videos
+    } catch (e) {
+      console.warn('[PerfilPage] erro em enumerateDevices:', e)
+      return []
+    }
+  }
+
+  const abrirCamera = async () => {
     if (!navigator.mediaDevices?.getUserMedia) {
       showToast('warning', 'Navegador sem suporte a câmera.')
-      console.error(
-        '[PerfilPage] navigator.mediaDevices.getUserMedia indisponível',
-      )
-      return false
+      return
     }
 
     try {
-      console.log('[PerfilPage] Solicitando acesso à câmera, facing:', facing)
-      let stream: MediaStream
-
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: facing },
-        })
-      } catch (e) {
-        console.warn(
-          '[PerfilPage] Erro com facingMode:',
-          facing,
-          ' - tentando vídeo genérico:',
-          e,
-        )
-        stream = await navigator.mediaDevices.getUserMedia({ video: true })
-      }
+      // Abre câmera padrão
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true })
 
       stopStream()
       streamRef.current = stream
+      await anexarStreamNoVideo(stream)
 
-      if (videoRef.current) {
-        try {
-          ;(videoRef.current as any).srcObject = stream
-          await videoRef.current
-            .play()
-            .catch(err =>
-              console.warn('[PerfilPage] video.play() falhou:', err),
-            )
-        } catch (e) {
-          console.error(
-            '[PerfilPage] erro ao associar stream ao vídeo (startCamera):',
-            e,
-          )
-        }
+      // Descobre as câmeras disponíveis (frontal / traseira, etc.)
+      const videos = await listarCameras()
+      if (videos.length > 0) {
+        const track = stream.getVideoTracks()[0]
+        const settings = track.getSettings()
+        const idx = videos.findIndex(d => d.deviceId === settings.deviceId)
+        setCurrentCameraIndex(idx >= 0 ? idx : 0)
       }
 
-      return true
+      setCameraAberta(true)
     } catch (e) {
       console.error('[PerfilPage] erro ao acessar câmera:', e)
       showToast(
         'error',
         'Erro ao acessar câmera. Verifique permissões, HTTPS/localhost e se outra aplicação não está usando a câmera.',
       )
-      return false
     }
   }
 
-  // Abre a câmera com o facing atual
-  const abrirCamera = async () => {
-    const ok = await startCamera(cameraFacing)
-    if (ok) setCameraAberta(true)
-  }
-
-  // Alterna entre frontal e traseira enquanto o modal está aberto
   const alternarCamera = async () => {
-    const novoFacing = cameraFacing === 'user' ? 'environment' : 'user'
-    setCameraFacing(novoFacing)
-    await startCamera(novoFacing)
+    if (!navigator.mediaDevices?.getUserMedia) {
+      showToast('warning', 'Navegador sem suporte a câmera.')
+      return
+    }
+
+    const devices =
+      cameraDevices.length > 0 ? cameraDevices : await listarCameras()
+
+    if (!devices || devices.length <= 1) {
+      showToast(
+        'warning',
+        'Este dispositivo parece ter apenas uma câmera disponível.',
+      )
+      return
+    }
+
+    const atual = currentCameraIndex ?? 0
+    const proximo = (atual + 1) % devices.length
+    const device = devices[proximo]
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { deviceId: { exact: device.deviceId } },
+      })
+
+      stopStream()
+      streamRef.current = stream
+      await anexarStreamNoVideo(stream)
+      setCurrentCameraIndex(proximo)
+    } catch (e) {
+      console.error('[PerfilPage] erro ao alternar câmera:', e)
+      showToast('error', 'Não foi possível alternar a câmera.')
+    }
   }
 
   const fecharCamera = () => {
@@ -655,10 +680,20 @@ const PerfilPage: React.FC = () => {
           {form.name.charAt(0)}
         </Avatar>
         <Box sx={{ flexGrow: 1, minWidth: 0 }}>
-          <Typography variant="h6" fontWeight={700} noWrap>
+          <Typography
+            variant="h6"
+            fontWeight={700}
+            noWrap
+            sx={{ maxWidth: { xs: '100%', sm: 260 } }}
+          >
             {form.name}
           </Typography>
-          <Typography variant="body2" sx={{ opacity: 0.9 }} noWrap>
+          <Typography
+            variant="body2"
+            sx={{ opacity: 0.9 }}
+            noWrap
+            style={{ wordBreak: 'break-all' }}
+          >
             {form.email}
           </Typography>
           <Chip
@@ -1105,19 +1140,12 @@ const PerfilPage: React.FC = () => {
               ref={el => {
                 videoRef.current = el
                 if (el && streamRef.current) {
-                  try {
-                    ;(el as any).srcObject = streamRef.current
-                    el
-                      .play()
-                      .catch(err =>
-                        console.warn('[PerfilPage] video.play() falhou:', err),
-                      )
-                  } catch (e) {
-                    console.error(
-                      '[PerfilPage] erro ao associar stream ao vídeo (ref):',
-                      e,
+                  ;(el as any).srcObject = streamRef.current
+                  el
+                    .play()
+                    .catch(err =>
+                      console.warn('[PerfilPage] video.play() falhou:', err),
                     )
-                  }
                 }
               }}
               autoPlay
