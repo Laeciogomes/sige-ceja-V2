@@ -702,6 +702,7 @@ const PerfilPage: React.FC = () => {
         elevation={0}
         sx={{
           width: '100%',
+          mx: { xs: 0.5, sm: 0 },   // margem lateral em telas pequenas
           p: { xs: 2, sm: 3 },
           mb: 3,
           display: 'flex',
@@ -758,6 +759,7 @@ const PerfilPage: React.FC = () => {
         variant="outlined"
         sx={{
           width: '100%',
+          mx: { xs: 0.5, sm: 0 },  // mesma margem do header
           borderRadius: 3,
           overflow: 'hidden',
           boxSizing: 'border-box',
@@ -779,28 +781,28 @@ const PerfilPage: React.FC = () => {
             icon={<PersonIcon />}
             iconPosition="start"
             label="Dados Pessoais"
-            sx={{ fontSize: { xs: 11, sm: 13 } }}
+            sx={{ fontSize: { xs: 11, sm: 13 }, minHeight: 48 }}
           />
           <Tab
             wrapped
             icon={<HomeIcon />}
             iconPosition="start"
             label="Endereço"
-            sx={{ fontSize: { xs: 11, sm: 13 } }}
+            sx={{ fontSize: { xs: 11, sm: 13 }, minHeight: 48 }}
           />
           <Tab
             wrapped
             icon={<PhotoIcon />}
             iconPosition="start"
             label="Foto / Social"
-            sx={{ fontSize: { xs: 11, sm: 13 } }}
+            sx={{ fontSize: { xs: 11, sm: 13 }, minHeight: 48 }}
           />
           <Tab
             wrapped
             icon={<SecurityIcon />}
             iconPosition="start"
             label="Segurança"
-            sx={{ fontSize: { xs: 11, sm: 13 } }}
+            sx={{ fontSize: { xs: 11, sm: 13 }, minHeight: 48 }}
           />
         </Tabs>
 
