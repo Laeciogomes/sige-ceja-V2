@@ -631,9 +631,9 @@ const PerfilPage: React.FC = () => {
     return (
       <Box
         sx={{
-          maxWidth: 1600,
+          maxWidth: 1200,
           mx: 'auto',
-          p: { xs: 0, md: 1 },
+          p: { xs: 1.5, md: 2 },
           minHeight: '60vh',
           display: 'flex',
           justifyContent: 'center',
@@ -650,9 +650,9 @@ const PerfilPage: React.FC = () => {
     return (
       <Box
         sx={{
-          maxWidth: 1600,
+          maxWidth: 1200,
           mx: 'auto',
-          p: { xs: 0, md: 1 },
+          p: { xs: 1.5, md: 2 },
           minHeight: '60vh',
           display: 'flex',
           justifyContent: 'center',
@@ -667,15 +667,15 @@ const PerfilPage: React.FC = () => {
     )
   }
 
-  // --------- Render (mesmo container da Dashboard) ---------
+  // --------- Render (levemente mais estreito que a Dashboard) ---------
 
   return (
     <Box
       sx={{
-        maxWidth: 1600,
+        maxWidth: 1200,        // menor que o 1600 da Dashboard -> passa a sensação de “um pouco menor”
         mx: 'auto',
-        p: { xs: 0, md: 1 },
-        pb: 10,
+        p: { xs: 1.5, md: 2 }, // cria margem lateral visível em celular
+        pb: 8,
         boxSizing: 'border-box',
       }}
     >
@@ -703,7 +703,7 @@ const PerfilPage: React.FC = () => {
         elevation={0}
         sx={{
           width: '100%',
-          p: { xs: 2, sm: 3 },
+          p: { xs: 1.5, sm: 2.5 },
           mb: 3,
           display: 'flex',
           flexDirection: { xs: 'column', sm: 'row' },
@@ -718,8 +718,8 @@ const PerfilPage: React.FC = () => {
         <Avatar
           src={form.foto_url || undefined}
           sx={{
-            width: 80,
-            height: 80,
+            width: 72,
+            height: 72,
             border: '3px solid white',
             boxShadow: 2,
             bgcolor: theme.palette.primary.dark,
@@ -729,15 +729,15 @@ const PerfilPage: React.FC = () => {
         </Avatar>
         <Box sx={{ flexGrow: 1, minWidth: 0 }}>
           <Typography
-            variant="h6"
+            variant="subtitle1"
             fontWeight={700}
-            sx={{ wordBreak: 'break-word' }}
+            sx={{ wordBreak: 'break-word', fontSize: { xs: 16, sm: 18 } }}
           >
             {form.name}
           </Typography>
           <Typography
             variant="body2"
-            sx={{ opacity: 0.9, wordBreak: 'break-all' }}
+            sx={{ opacity: 0.9, wordBreak: 'break-all', fontSize: { xs: 12, sm: 13 } }}
           >
             {form.email}
           </Typography>
@@ -780,28 +780,28 @@ const PerfilPage: React.FC = () => {
             icon={<PersonIcon />}
             iconPosition="start"
             label="Dados Pessoais"
-            sx={{ fontSize: { xs: 11, sm: 13 }, minHeight: 48 }}
+            sx={{ fontSize: { xs: 11, sm: 13 }, minHeight: 44 }}
           />
           <Tab
             wrapped
             icon={<HomeIcon />}
             iconPosition="start"
             label="Endereço"
-            sx={{ fontSize: { xs: 11, sm: 13 }, minHeight: 48 }}
+            sx={{ fontSize: { xs: 11, sm: 13 }, minHeight: 44 }}
           />
           <Tab
             wrapped
             icon={<PhotoIcon />}
             iconPosition="start"
             label="Foto / Social"
-            sx={{ fontSize: { xs: 11, sm: 13 }, minHeight: 48 }}
+            sx={{ fontSize: { xs: 11, sm: 13 }, minHeight: 44 }}
           />
           <Tab
             wrapped
             icon={<SecurityIcon />}
             iconPosition="start"
             label="Segurança"
-            sx={{ fontSize: { xs: 11, sm: 13 }, minHeight: 48 }}
+            sx={{ fontSize: { xs: 11, sm: 13 }, minHeight: 44 }}
           />
         </Tabs>
 
@@ -1016,7 +1016,7 @@ const PerfilPage: React.FC = () => {
                 </Typography>
                 <Avatar
                   src={form.foto_url || undefined}
-                  sx={{ width: 120, height: 120, mx: 'auto', mb: 2 }}
+                  sx={{ width: 110, height: 110, mx: 'auto', mb: 2 }}
                 />
                 <Stack
                   direction={{ xs: 'column', sm: 'row' }}
