@@ -1,4 +1,4 @@
-// src/paginas/Dashboard/DashboardPage.tsx
+// src/paginas/painel-administracao/DashboardPage.tsx
 import React from 'react'
 import {
   Box,

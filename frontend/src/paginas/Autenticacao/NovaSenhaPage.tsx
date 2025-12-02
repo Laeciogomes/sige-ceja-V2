@@ -24,368 +24,319 @@ import { useTema } from '../../contextos/TemaContext'
 
 const NovaSenhaPage: React.FC = () => {
   const { supabase } = useSupabase()
-  const { sucesso, erro } = useNotificacao()
+  const { sucesso: toastSucesso, erro: toastErro, info: toastInfo } =
+    useNotificacao()
   const { modo, alternarModo } = useTema()
+  const ehDark = modo === 'dark'
   const navigate = useNavigate()
 
-  const ehDark = modo === 'dark'
-
   const [senha, setSenha] = useState('')
-  const [confirmacao, setConfirmacao] = useState('')
-  const [mostrarSenha1, setMostrarSenha1] = useState(false)
-  const [mostrarSenha2, setMostrarSenha2] = useState(false)
-  const [loading, setLoading] = useState(false)
-
-  // Controle da sessão de recuperação
-  const [checandoSessao, setChecandoSessao] = useState(true)
-  const [sessaoPronta, setSessaoPronta] = useState(false)
+  const [confirmacaoSenha, setConfirmacaoSenha] = useState('')
+  const [mostrandoSenha, setMostrandoSenha] = useState(false)
+  const [carregando, setCarregando] = useState(false)
+  const [mensagem, setMensagem] = useState<string | null>(null)
+  const [tokenValido, setTokenValido] = useState(false)
 
   useEffect(() => {
-    console.log('NovaSenhaPage montada – rota /nova-senha ativa')
-    console.log('URL atual:', window.location.href)
+    const url = new URL(window.location.href)
+    const tokenHash = url.hash
+
+    if (!tokenHash.includes('access_token')) {
+      setMensagem(
+        'Link inválido ou expirado. Solicite uma nova redefinição de senha.',
+      )
+      setTokenValido(false)
+      return
+    }
+
+    setTokenValido(true)
+    setMensagem(
+      'Informe e confirme sua nova senha para concluir a redefinição.',
+    )
   }, [])
 
-  useEffect(() => {
-    const prepararSessaoRecuperacao = async () => {
-      if (!supabase) {
-        erro(
-          'Serviço de autenticação indisponível no momento.',
-          'Falha interna',
-          8000,
-        )
-        setChecandoSessao(false)
-        return
-      }
-
-      try {
-        // 1) Já tem sessão ativa?
-        const { data: sessaoData } = await supabase.auth.getSession()
-        if (sessaoData.session) {
-          setSessaoPronta(true)
-          return
-        }
-
-        // 2) Recupera tokens do hash da URL (#access_token=...&refresh_token=...)
-        const hash = window.location.hash.startsWith('#')
-          ? window.location.hash.substring(1)
-          : window.location.hash
-
-        const params = new URLSearchParams(hash)
-        const access_token = params.get('access_token')
-        const refresh_token = params.get('refresh_token')
-
-        if (!access_token || !refresh_token) {
-          console.error('Tokens de recuperação ausentes no hash:', hash)
-          erro(
-            'Link de redefinição inválido ou expirado. Solicite um novo link de recuperação.',
-            'Link inválido',
-            9000,
-          )
-          return
-        }
-
-        // 3) Força a sessão no Supabase
-        const { error: erroSessao } = await supabase.auth.setSession({
-          access_token,
-          refresh_token,
-        })
-
-        if (erroSessao) {
-          console.error('Erro ao ativar sessão de recuperação:', erroSessao)
-          erro(
-            'Não foi possível validar o link de redefinição. Solicite um novo link.',
-            'Sessão inválida',
-            9000,
-          )
-          return
-        }
-
-        // 4) Limpa o hash da URL (remove access_token/refresh_token da barra)
-        window.history.replaceState(
-          {},
-          document.title,
-          window.location.pathname + window.location.search,
-        )
-
-        setSessaoPronta(true)
-      } catch (e) {
-        console.error('Exceção ao preparar sessão de recuperação:', e)
-        erro(
-          'Ocorreu um erro ao preparar a redefinição de senha. Gere um novo link e tente novamente.',
-          'Erro na sessão de recuperação',
-          9000,
-        )
-      } finally {
-        setChecandoSessao(false)
-      }
-    }
-
-    prepararSessaoRecuperacao()
-  }, [supabase, erro])
-
-  const handleMouseDownPassword = (event: React.MouseEvent<HTMLButtonElement>) => {
-    event.preventDefault()
-  }
-
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
+  event.preventDefault()
+  setMensagem(null)
 
-    // Evita submit enquanto ainda valida o link ou já está processando
-    if (checandoSessao || loading) return
-
-    const s1 = senha.trim()
-    const s2 = confirmacao.trim()
-
-    if (!s1 || !s2) {
-      erro('Preencha os dois campos de senha.', 'Campos obrigatórios', 6000)
-      return
-    }
-
-    if (s1.length < 8) {
-      erro(
-        'A nova senha deve ter pelo menos 8 caracteres.',
-        'Senha muito curta',
-        6000,
-      )
-      return
-    }
-
-    if (s1 !== s2) {
-      erro('As senhas informadas não coincidem.', 'Confirmação incorreta', 6000)
-      return
-    }
-
-    if (!supabase) {
-      erro(
-        'Serviço de autenticação indisponível no momento.',
-        'Falha interna',
-        7000,
-      )
-      return
-    }
-
-    if (!sessaoPronta) {
-      erro(
-        'A sessão de recuperação não está ativa. Abra novamente o link enviado para seu e-mail ou solicite um novo.',
-        'Sessão ausente',
-        9000,
-      )
-      return
-    }
-
-    setLoading(true)
-
-    try {
-      // 1) Atualiza a senha
-      const { error } = await supabase.auth.updateUser({ password: s1 })
-
-      if (error) {
-        console.error('Erro ao atualizar senha:', error)
-        erro(
-          'Não foi possível atualizar a senha. Tente novamente com o mesmo link ou gere um novo.',
-          'Erro ao redefinir senha',
-          8000,
-        )
-        return
-      }
-
-      // 2) Faz logout para evitar cair direto no dashboard
-      await supabase.auth.signOut()
-
-      // 3) Feedback e redirecionamento para login
-      sucesso(
-        'Senha atualizada com sucesso. Faça login novamente com sua nova senha.',
-        'Senha redefinida',
-        5000,
-      )
-      navigate('/login', { replace: true })
-    } catch (e) {
-      console.error('Exceção ao atualizar senha:', e)
-      erro(
-        'Ocorreu um erro inesperado ao atualizar a senha.',
-        'Erro inesperado',
-        8000,
-      )
-    } finally {
-      setLoading(false)
-    }
+  if (!tokenValido) {
+    toastErro(
+      'Link inválido ou expirado.',
+      'Solicite uma nova redefinição de senha.',
+    )
+    return
   }
 
-  const carregandoGeral = checandoSessao || loading
+  if (!senha || !confirmacaoSenha) {
+    const msg = 'Preencha os campos de nova senha e confirmação.'
+    setMensagem(msg)
+    toastErro(msg, 'Campos obrigatórios', 5000)
+    return
+  }
+
+  if (senha !== confirmacaoSenha) {
+    const msg = 'As senhas não conferem. Verifique e tente novamente.'
+    setMensagem(msg)
+    toastErro(msg, 'Senhas diferentes', 5000)
+    return
+  }
+
+  if (senha.length < 6) {
+    const msg = 'A senha deve ter pelo menos 6 caracteres.'
+    setMensagem(msg)
+    toastErro(msg, 'Senha muito curta', 5000)
+    return
+  }
+
+  // 🔴 Aqui garantimos para o TypeScript que supabase não é nulo
+  if (!supabase) {
+    const msg =
+      'Sessão inválida. Não foi possível acessar o serviço de autenticação.'
+    setMensagem(msg)
+    toastErro(msg, 'Sessão inválida', 5000)
+    return
+  }
+
+  try {
+    setCarregando(true)
+
+    const {
+      data: { session },
+      error: sessionError,
+    } = await supabase.auth.getSession()
+
+    if (sessionError || !session) {
+      setMensagem(
+        'Sessão de redefinição não encontrada. Abra novamente o link enviado por e-mail.',
+      )
+      toastErro(
+        'Sessão de redefinição expirada ou inválida.',
+        'Tente abrir novamente o link enviado por e-mail.',
+      )
+      return
+    }
+
+    const { error: updateError } = await supabase.auth.updateUser({
+      password: senha,
+    })
+
+    if (updateError) {
+      console.error('Erro ao atualizar senha:', updateError)
+      setMensagem(
+        updateError.message ||
+          'Não foi possível atualizar a senha. Tente novamente mais tarde.',
+      )
+      toastErro(
+        updateError.message ||
+          'Não foi possível atualizar a senha. Tente novamente mais tarde.',
+        'Erro ao atualizar senha',
+      )
+      return
+    }
+
+    toastSucesso(
+      'Senha atualizada com sucesso.',
+      'Você já pode entrar com sua nova senha.',
+      6000,
+    )
+
+    navigate('/login', { replace: true })
+  } catch (error: any) {
+    console.error('Erro inesperado ao redefinir senha:', error)
+    const msg =
+      error?.message ||
+      'Ocorreu um erro inesperado ao tentar redefinir sua senha.'
+    setMensagem(msg)
+    toastErro(msg, 'Erro inesperado', 6000)
+  } finally {
+    setCarregando(false)
+  }
+}
+
+
+  const handleClickMostrarSenha = () => {
+    setMostrandoSenha(prev => !prev)
+  }
+
+  const handleMouseDownSenha = (event: React.MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault()
+  }
+
+  const desabilitado = carregando || !tokenValido
 
   return (
     <AuthLayout>
       <Box
         sx={{
           width: '100%',
-          py: { xs: 2, md: 3 },
+          maxWidth: 480,
+          mx: 'auto',
+          bgcolor: theme =>
+            theme.palette.mode === 'dark'
+              ? 'background.paper'
+              : 'rgba(255,255,255,0.95)',
+          borderRadius: 3,
+          boxShadow: theme =>
+            theme.palette.mode === 'dark'
+              ? '0 16px 45px rgba(0,0,0,0.8)'
+              : '0 16px 45px rgba(0,0,0,0.12)',
+          p: 4,
+          position: 'relative',
+          overflow: 'hidden',
         }}
       >
-        {/* Cabeçalho */}
-        <Box sx={{ mb: 2.5 }}>
-          <Box
-            sx={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              mb: 1,
-            }}
+        {/* Botão de tema no canto */}
+        <Box
+          sx={{
+            position: 'absolute',
+            top: 8,
+            right: 8,
+            zIndex: 2,
+          }}
+        >
+          <Tooltip
+            title={
+              ehDark ? 'Alternar para tema claro' : 'Alternar para tema escuro'
+            }
           >
-            <Box
+            <IconButton
+              size="small"
+              onClick={alternarModo}
               sx={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 1,
+                bgcolor: theme =>
+                  theme.palette.mode === 'dark'
+                    ? 'rgba(255,255,255,0.06)'
+                    : 'rgba(0,0,0,0.02)',
               }}
             >
-              <LockResetIcon color="primary" sx={{ fontSize: 32 }} />
-              <Typography component="h1" variant="h5" sx={{ fontWeight: 'bold' }}>
-                Definir nova senha
-              </Typography>
-            </Box>
+              {ehDark ? (
+                <LightModeRoundedIcon fontSize="small" />
+              ) : (
+                <DarkModeRoundedIcon fontSize="small" />
+              )}
+            </IconButton>
+          </Tooltip>
+        </Box>
 
-            <Tooltip title={ehDark ? 'Modo claro' : 'Modo escuro'}>
-              <IconButton
-                aria-label="alternar tema claro/escuro"
-                onClick={alternarModo}
-                size="medium"
-                sx={{
-                  bgcolor: 'action.hover',
-                  borderRadius: 999,
-                  '&:hover': {
-                    bgcolor: 'action.selected',
-                  },
-                }}
-              >
-                {ehDark ? (
-                  <LightModeRoundedIcon fontSize="small" color="warning" />
-                ) : (
-                  <DarkModeRoundedIcon fontSize="small" color="primary" />
-                )}
-              </IconButton>
-            </Tooltip>
-          </Box>
-
-          <Typography
-            variant="body2"
-            color="text.secondary"
-            sx={{ maxWidth: 380, mx: 'auto' }}
-          >
-            Crie uma nova senha para acessar o SIGE-CEJA. Após salvar, você será
-            redirecionado para a tela de login.
+        <Box sx={{ textAlign: 'center', mb: 3, position: 'relative', zIndex: 1 }}>
+          <LockResetIcon
+            sx={{ fontSize: 40, color: 'primary.main', mb: 1.5 }}
+          />
+          <Typography variant="h5" sx={{ fontWeight: 800, mb: 0.5 }}>
+            Definir nova senha
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            Crie uma nova senha para sua conta. Ela será usada para acessar o
+            SIGE-CEJA.
           </Typography>
         </Box>
 
-        {/* Validação do link de redefinição */}
-        {checandoSessao ? (
-          <Box
+        <Box
+          component="form"
+          onSubmit={handleSubmit}
+          noValidate
+          sx={{ position: 'relative', zIndex: 1 }}
+        >
+          <TextField
+            margin="normal"
+            required
+            fullWidth
+            name="senha"
+            label="Nova senha"
+            type={mostrandoSenha ? 'text' : 'password'}
+            id="senha"
+            autoComplete="new-password"
+            value={senha}
+            onChange={e => setSenha(e.target.value)}
+            disabled={desabilitado}
+            InputProps={{
+              endAdornment: (
+                <InputAdornment position="end">
+                  <IconButton
+                    aria-label="mostrar ou ocultar senha"
+                    onClick={handleClickMostrarSenha}
+                    onMouseDown={handleMouseDownSenha}
+                    edge="end"
+                  >
+                    {mostrandoSenha ? (
+                      <VisibilityOff fontSize="small" />
+                    ) : (
+                      <Visibility fontSize="small" />
+                    )}
+                  </IconButton>
+                </InputAdornment>
+              ),
+            }}
+          />
+
+          <TextField
+            margin="normal"
+            required
+            fullWidth
+            name="confirmacaoSenha"
+            label="Confirmar nova senha"
+            type={mostrandoSenha ? 'text' : 'password'}
+            id="confirmacaoSenha"
+            autoComplete="new-password"
+            value={confirmacaoSenha}
+            onChange={e => setConfirmacaoSenha(e.target.value)}
+            disabled={desabilitado}
+          />
+
+          {mensagem && (
+            <Typography
+              variant="body2"
+              color="text.secondary"
+              sx={{ mt: 1, mb: 1, textAlign: 'center' }}
+            >
+              {mensagem}
+            </Typography>
+          )}
+
+          <Button
+            type="submit"
+            fullWidth
+            variant="contained"
+            disabled={desabilitado}
+            startIcon={
+              carregando ? (
+                <CircularProgress color="inherit" size={18} />
+              ) : (
+                <LockResetIcon />
+              )
+            }
             sx={{
-              mt: 4,
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              gap: 2,
+              mt: 2,
+              mb: 1,
+              py: 1.2,
+              fontWeight: 700,
+              textTransform: 'none',
             }}
           >
-            <CircularProgress />
-            <Typography variant="body2" color="text.secondary">
-              Validando link de redefinição de senha...
-            </Typography>
-          </Box>
-        ) : (
-          <Box
-            component="form"
-            noValidate
-            onSubmit={handleSubmit}
-            sx={{ mt: 0.5 }}
+            {carregando ? 'Atualizando senha...' : 'Atualizar senha'}
+          </Button>
+
+          <Button
+            fullWidth
+            variant="text"
+            sx={{ mt: 0.5, textTransform: 'none' }}
+            onClick={() => {
+              toastInfo('Você será redirecionado para a tela de login.')
+              navigate('/login')
+            }}
           >
-            <TextField
-              margin="normal"
-              required
-              fullWidth
-              name="nova-senha"
-              label="Nova senha"
-              type={mostrarSenha1 ? 'text' : 'password'}
-              id="nova-senha"
-              autoComplete="new-password"
-              value={senha}
-              onChange={e => setSenha(e.target.value)}
-              InputProps={{
-                endAdornment: (
-                  <InputAdornment position="end">
-                    <IconButton
-                      aria-label="alternar visibilidade da nova senha"
-                      onClick={() => setMostrarSenha1(v => !v)}
-                      onMouseDown={handleMouseDownPassword}
-                      edge="end"
-                    >
-                      {mostrarSenha1 ? <VisibilityOff /> : <Visibility />}
-                    </IconButton>
-                  </InputAdornment>
-                ),
-              }}
-            />
+            Voltar para o login
+          </Button>
 
-            <TextField
-              margin="normal"
-              required
-              fullWidth
-              name="confirmacao-senha"
-              label="Confirmar nova senha"
-              type={mostrarSenha2 ? 'text' : 'password'}
-              id="confirmacao-senha"
-              autoComplete="new-password"
-              value={confirmacao}
-              onChange={e => setConfirmacao(e.target.value)}
-              InputProps={{
-                endAdornment: (
-                  <InputAdornment position="end">
-                    <IconButton
-                      aria-label="alternar visibilidade da confirmação de senha"
-                      onClick={() => setMostrarSenha2(v => !v)}
-                      onMouseDown={handleMouseDownPassword}
-                      edge="end"
-                    >
-                      {mostrarSenha2 ? <VisibilityOff /> : <Visibility />}
-                    </IconButton>
-                  </InputAdornment>
-                ),
-              }}
-            />
-
-            <Button
-              type="submit"
-              fullWidth
-              disabled={carregandoGeral}
-              variant="contained"
-              sx={{
-                mt: 3,
-                mb: 1.5,
-                py: 1.1,
-                borderRadius: 2,
-                textTransform: 'none',
-                fontWeight: 600,
-              }}
-            >
-              {loading ? (
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <CircularProgress size={18} />
-                  <span>Atualizando senha...</span>
-                </Box>
-              ) : (
-                'Salvar nova senha'
-              )}
-            </Button>
-
-            <Typography
-              variant="caption"
-              color="text.secondary"
-              sx={{ display: 'block', textAlign: 'center' }}
-            >
-              Por segurança, escolha uma senha forte e não a compartilhe com ninguém.
-            </Typography>
-          </Box>
-        )}
+          <Typography
+            variant="caption"
+            color="text.secondary"
+            sx={{ display: 'block', textAlign: 'center' }}
+          >
+            Por segurança, escolha uma senha forte e não a compartilhe com
+            ninguém.
+          </Typography>
+        </Box>
       </Box>
     </AuthLayout>
   )

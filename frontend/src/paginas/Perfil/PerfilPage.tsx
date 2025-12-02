@@ -20,12 +20,15 @@ import {
   TextField,
   Typography,
   useTheme,
-  GridLegacy as Grid,
-  Snackbar,
-  useMediaQuery,
 } from '@mui/material'
-
 import {
+  Edit as EditIcon,
+  Save as SaveIcon,
+  Close as CloseIcon,
+  Email as EmailIcon,
+  Phone as PhoneIcon,
+  LocationCity as LocationCityIcon,
+  Map as MapIcon,
   Image as ImageIcon,
   PhotoCamera,
   Visibility,
@@ -40,1196 +43,826 @@ import {
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 
 import { useAuth } from '../../contextos/AuthContext'
+import { useNotificacao } from '../../hooks/useNotificacao'
 import { useSupabase } from '../../contextos/SupabaseContext'
 
-// ---------------- Tipagens ----------------
-
-type UsuarioPerfil = {
+type PerfilApiResponse = {
   id: string
-  id_tipo_usuario: number
-  name: string
-  username: string | null
-  email: string
-  data_nascimento: string | null
-  sexo: string | null
-  cpf: string | null
-  rg: string | null
-  celular: string | null
-  logradouro: string | null
-  numero_endereco: string | null
-  bairro: string | null
-  municipio: string | null
-  ponto_referencia: string | null
-  raca: string | null
-  foto_url: string | null
-  facebook_url: string | null
-  instagram_url: string | null
-  status: string
-  created_at: string
-  updated_at: string
+  nome: string
+  email: string | null
+  telefone?: string | null
+  cidade?: string | null
+  estado?: string | null
+  endereco?: string | null
+  papel?: string | null
+  foto_url?: string | null
 }
 
-type FormPerfil = {
-  name: string
-  username: string
-  email: string
-  data_nascimento: string
-  sexo: string
-  cpf: string
-  rg: string
-  celular: string
-  logradouro: string
-  numero_endereco: string
-  bairro: string
-  municipio: string
-  ponto_referencia: string
-  raca: string
-  foto_url: string
-  facebook_url: string
-  instagram_url: string
-}
-
-interface TabPanelProps {
-  children?: React.ReactNode
-  index: number
-  value: number
-}
-
-function TabPanel(props: TabPanelProps) {
-  const { children, value, index, ...other } = props
-  return (
-    <div
-      role="tabpanel"
-      hidden={value !== index}
-      {...other}
-      style={{ width: '100%' }}
-    >
-      {value === index && <Box sx={{ py: 3 }}>{children}</Box>}
-    </div>
-  )
-}
-
-const masks = {
-  cpf: (v: string) =>
-    v
-      .replace(/\D/g, '')
-      .replace(/(\d{3})(\d)/, '$1.$2')
-      .replace(/(\d{3})(\d)/, '$1.$2')
-      .replace(/(\d{3})(\d{1,2})/, '$1-$2')
-      .substring(0, 14),
-  celular: (v: string) =>
-    v
-      .replace(/\D/g, '')
-      .replace(/(\d{2})(\d)/, '($1) $2')
-      .replace(/(\d{5})(\d)/, '$1-$2')
-      .substring(0, 15),
-}
-
-const mapTipoUsuario: Record<number, string> = {
-  1: 'Diretor',
-  2: 'Professor',
-  3: 'Coordenador',
-  4: 'Secretário',
-  5: 'Aluno',
-  6: 'Administrador',
-}
-
-const slugify = (value: string) =>
-  value
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-zA-Z0-9._-]/g, '_')
-
-type ToastSeverity = 'success' | 'error' | 'warning'
-
-// ---------------- Componente principal ----------------
+type AbaPerfil = 'dados' | 'seguranca' | 'foto'
 
 const PerfilPage: React.FC = () => {
   const theme = useTheme()
-  const isSmall = useMediaQuery(theme.breakpoints.down('sm'))
-
   const { usuario } = useAuth()
   const { supabase } = useSupabase()
+  const { sucesso: toastSucesso, erro: toastErro, info: toastInfo } =
+    useNotificacao()
   const queryClient = useQueryClient()
 
-  const [tabValue, setTabValue] = useState(0)
-  const [form, setForm] = useState<FormPerfil | null>(null)
+  const [abaAtiva, setAbaAtiva] = useState<AbaPerfil>('dados')
 
-  // Toast
-  const [toast, setToast] = useState<{
-    open: boolean
-    message: string
-    severity: ToastSeverity
-  } | null>(null)
+  const [editando, setEditando] = useState(false)
+  const [nome, setNome] = useState('')
+  const [telefone, setTelefone] = useState('')
+  const [cidade, setCidade] = useState('')
+  const [estado, setEstado] = useState('')
+  const [endereco, setEndereco] = useState('')
+  const [senhaAtual, setSenhaAtual] = useState('')
+  const [novaSenha, setNovaSenha] = useState('')
+  const [confirmacaoSenha, setConfirmacaoSenha] = useState('')
+  const [mostrarSenhaAtual, setMostrarSenhaAtual] = useState(false)
+  const [mostrarNovaSenha, setMostrarNovaSenha] = useState(false)
+  const [mostrarConfirmacaoSenha, setMostrarConfirmacaoSenha] = useState(false)
+  const [fotoPreview, setFotoPreview] = useState<string | null>(null)
+  const [fotoArquivo, setFotoArquivo] = useState<File | null>(null)
+  const [modalExcluirFotoAberto, setModalExcluirFotoAberto] = useState(false)
 
-  const showToast = (severity: ToastSeverity, message: string) => {
-    setToast({ open: true, severity, message })
-  }
-  const handleCloseToast = () => {
-    setToast(prev => (prev ? { ...prev, open: false } : prev))
-  }
+  const inputFotoRef = useRef<HTMLInputElement | null>(null)
 
-  // Upload avatar
-  const [uploadingAvatar, setUploadingAvatar] = useState(false)
-  const fileInputGaleriaRef = useRef<HTMLInputElement | null>(null)
-  const fileInputCameraMobileRef = useRef<HTMLInputElement | null>(null)
-
-  // Câmera desktop (WebRTC)
-  const [cameraAberta, setCameraAberta] = useState(false)
-  const videoRef = useRef<HTMLVideoElement | null>(null)
-  const streamRef = useRef<MediaStream | null>(null)
-  const [cameraErro, setCameraErro] = useState<string | null>(null)
-  const [videoDevices, setVideoDevices] = useState<MediaDeviceInfo[]>([])
-  const [currentDeviceId, setCurrentDeviceId] = useState<string | null>(null)
-
-  // Senha
-  const [senhaData, setSenhaData] = useState({ atual: '', nova: '', conf: '' })
-  const [mostrarSenhas, setMostrarSenhas] = useState({
-    atual: false,
-    nova: false,
-    conf: false,
-  })
-  const [loadingSenha, setLoadingSenha] = useState(false)
-
-  // --------- Query perfil ---------
+  const userId = usuario?.id
 
   const {
     data: perfil,
-    isLoading,
-    isError,
-  } = useQuery({
-    queryKey: ['perfil-usuario', usuario?.id],
-    enabled: !!usuario && !!supabase,
-    queryFn: async (): Promise<UsuarioPerfil | null> => {
-      if (!usuario || !supabase) return null
+    isLoading: carregandoPerfil,
+    isError: erroPerfil,
+  } = useQuery<PerfilApiResponse | null>({
+    queryKey: ['perfil', userId],
+    enabled: !!userId && !!supabase,
+    queryFn: async () => {
+      if (!supabase || !userId) return null
       const { data, error } = await supabase
         .from('usuarios')
-        .select('*')
-        .eq('id', usuario.id)
-        .maybeSingle()
+        .select('id, nome, email, telefone, cidade, estado, endereco, foto_url')
+        .eq('id', userId)
+        .maybeSingle<PerfilApiResponse>()
 
-      if (error) throw error
+      if (error) {
+        console.error('Erro ao carregar perfil:', error)
+        throw error
+      }
+
       return data
     },
   })
 
   useEffect(() => {
     if (perfil) {
-      setForm({
-        name: perfil.name ?? '',
-        username: perfil.username ?? '',
-        email: perfil.email ?? '',
-        data_nascimento: perfil.data_nascimento ?? '',
-        sexo: perfil.sexo ?? '',
-        cpf: perfil.cpf ?? '',
-        rg: perfil.rg ?? '',
-        celular: perfil.celular ?? '',
-        logradouro: perfil.logradouro ?? '',
-        numero_endereco: perfil.numero_endereco ?? '',
-        bairro: perfil.bairro ?? '',
-        municipio: perfil.municipio ?? '',
-        ponto_referencia: perfil.ponto_referencia ?? '',
-        raca: perfil.raca ?? '',
-        foto_url: perfil.foto_url ?? '',
-        facebook_url: perfil.facebook_url ?? '',
-        instagram_url: perfil.instagram_url ?? '',
-      })
+      setNome(perfil.nome || '')
+      setTelefone(perfil.telefone || '')
+      setCidade(perfil.cidade || '')
+      setEstado(perfil.estado || '')
+      setEndereco(perfil.endereco || '')
+      setFotoPreview(perfil.foto_url || null)
     }
   }, [perfil])
 
-  useEffect(() => {
-    if (isError) {
-      showToast('error', 'Erro ao carregar os dados do perfil.')
-    }
-  }, [isError])
-
-  useEffect(() => {
-    if (toast?.open) {
-      const audioMap: Record<ToastSeverity, string> = {
-        success: '/sons/toast-sucesso.mp3',
-        warning: '/sons/toast-aviso.mp3',
-        error: '/sons/toast-erro.mp3',
-      }
-      const src = audioMap[toast.severity]
-      if (src) {
-        const audio = new Audio(src)
-        audio.play().catch(() => {})
-      }
-    }
-  }, [toast])
-
-  // --------- Handlers formulário ---------
-
-  const handleTabChange = (_: React.SyntheticEvent, newValue: number) =>
-    setTabValue(newValue)
-
-  const handleChange =
-    (campo: keyof FormPerfil) => (event: React.ChangeEvent<HTMLInputElement>) => {
-      let valor = event.target.value
-      if (campo === 'cpf') valor = masks.cpf(valor)
-      if (campo === 'celular') valor = masks.celular(valor)
-      setForm(prev => (prev ? { ...prev, [campo]: valor } : prev))
-    }
-
-  // --------- Mutation salvar perfil ---------
-
-  const mutation = useMutation({
-    mutationFn: async (dados: FormPerfil) => {
-      if (!usuario || !supabase) throw new Error('Erro de conexão com Supabase.')
-
-      const payload = {
-        ...dados,
-        data_nascimento: dados.data_nascimento || null,
-        sexo: dados.sexo || null,
-        cpf: dados.cpf || null,
-        rg: dados.rg || null,
-        celular: dados.celular || null,
-        logradouro: dados.logradouro || null,
-        numero_endereco: dados.numero_endereco || null,
-        bairro: dados.bairro || null,
-        municipio: dados.municipio || null,
-        ponto_referencia: dados.ponto_referencia || null,
-        raca: dados.raca || null,
-        foto_url: dados.foto_url || null,
-        facebook_url: dados.facebook_url || null,
-        instagram_url: dados.instagram_url || null,
-        updated_at: new Date().toISOString(),
+  const atualizarPerfilMutation = useMutation({
+    mutationFn: async (dados: Partial<PerfilApiResponse>) => {
+      if (!supabase || !userId) {
+        throw new Error('Sessão inválida. Faça login novamente.')
       }
 
-      const { data, error } = await supabase
+      const { error } = await supabase
         .from('usuarios')
-        .update(payload)
-        .eq('id', usuario.id)
-        .select('*')
+        .update({
+          nome: dados.nome,
+          telefone: dados.telefone,
+          cidade: dados.cidade,
+          estado: dados.estado,
+          endereco: dados.endereco,
+        })
+        .eq('id', userId)
 
-      if (error) throw error
-      if (!data || data.length === 0) {
-        throw new Error(
-          `Nenhum registro foi atualizado na tabela "usuarios" para o id ${usuario.id}.`,
-        )
+      if (error) {
+        throw error
       }
-
-      return data[0] as UsuarioPerfil
     },
-    onSuccess: data => {
-      setForm({
-        name: data.name ?? '',
-        username: data.username ?? '',
-        email: data.email ?? '',
-        data_nascimento: data.data_nascimento ?? '',
-        sexo: (data.sexo as string) ?? '',
-        cpf: data.cpf ?? '',
-        rg: data.rg ?? '',
-        celular: data.celular ?? '',
-        logradouro: data.logradouro ?? '',
-        numero_endereco: data.numero_endereco ?? '',
-        bairro: data.bairro ?? '',
-        municipio: data.municipio ?? '',
-        ponto_referencia: data.ponto_referencia ?? '',
-        raca: data.raca ?? '',
-        foto_url: data.foto_url ?? '',
-        facebook_url: data.facebook_url ?? '',
-        instagram_url: data.instagram_url ?? '',
-      })
-      showToast('success', 'Perfil atualizado com sucesso!')
-      queryClient.invalidateQueries({ queryKey: ['perfil-usuario', usuario?.id] })
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['perfil', userId] })
+      toastSucesso('Perfil atualizado com sucesso.')
+      setEditando(false)
     },
     onError: (error: any) => {
-      console.error('[PerfilPage] erro ao salvar perfil', error)
-      showToast(
-        'error',
+      console.error('Erro ao atualizar perfil:', error)
+      toastErro(
         error?.message ||
-          'Erro ao salvar perfil. Verifique os dados e tente novamente.',
+          'Não foi possível atualizar seu perfil. Tente novamente mais tarde.',
       )
     },
   })
 
-  // --------- Câmera desktop (WebRTC) ---------
-
-  const stopStream = () => {
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop())
-      streamRef.current = null
-    }
-    if (videoRef.current) {
-      ;(videoRef.current as any).srcObject = null
-    }
-  }
-
-  const abrirCameraDesktop = () => {
-    const isLocalhost =
-      window.location.hostname === 'localhost' ||
-      window.location.hostname === '127.0.0.1'
-
-    if (!window.isSecureContext && !isLocalhost) {
-      showToast(
-        'warning',
-        'Para usar a câmera, acesse o sistema via HTTPS ou em localhost.',
-      )
-      return
-    }
-
-    setCameraErro(null)
-    setCameraAberta(true)
-  }
-
-  const fecharCamera = () => {
-    setCameraAberta(false)
-    setCameraErro(null)
-    stopStream()
-  }
-
-  const alternarCamera = () => {
-    if (videoDevices.length < 2) {
-      showToast(
-        'warning',
-        'Não há outra câmera disponível neste dispositivo para alternar.',
-      )
-      return
-    }
-
-    const atualIndex = videoDevices.findIndex(d => d.deviceId === currentDeviceId)
-    const proximoIndex =
-      atualIndex === -1
-        ? 1
-        : (atualIndex + 1) % videoDevices.length
-
-    setCurrentDeviceId(videoDevices[proximoIndex].deviceId)
-  }
-
-  useEffect(() => {
-    const iniciarCamera = async () => {
-      if (!cameraAberta || isSmall) return
-
-      if (!navigator.mediaDevices?.getUserMedia) {
-        const msg = 'Navegador sem suporte a câmera.'
-        setCameraErro(msg)
-        showToast('warning', msg)
-        return
+  const atualizarSenhaMutation = useMutation({
+    mutationFn: async (dados: {
+      senhaAtual: string
+      novaSenha: string
+    }) => {
+      if (!supabase) {
+        throw new Error('Sessão inválida. Faça login novamente.')
       }
 
-      try {
-        stopStream()
+      const { data: sessionData, error: sessionError } =
+        await supabase.auth.getSession()
 
-        const constraints: MediaStreamConstraints = currentDeviceId
-          ? {
-              video: {
-                deviceId: { exact: currentDeviceId },
-              } as any,
-            }
-          : { video: true }
-
-        const stream = await navigator.mediaDevices.getUserMedia(constraints)
-        streamRef.current = stream
-
-        if (!videoDevices.length) {
-          const devices = await navigator.mediaDevices.enumerateDevices()
-          const vids = devices.filter(d => d.kind === 'videoinput')
-          setVideoDevices(vids)
-
-          const track = stream.getVideoTracks()[0]
-          const settings = track.getSettings()
-          if (settings.deviceId) {
-            setCurrentDeviceId(settings.deviceId)
-          }
-        }
-
-        if (videoRef.current) {
-          ;(videoRef.current as any).srcObject = stream
-          try {
-            await videoRef.current.play()
-          } catch (err) {
-            console.warn('[PerfilPage] video.play() falhou:', err)
-          }
-        }
-
-        setCameraErro(null)
-      } catch (e: any) {
-        console.error('[PerfilPage] erro ao acessar câmera:', e)
-
-        let msg = 'Erro ao acessar câmera.'
-        const name = e?.name || e?.constructor?.name
-
-        if (name === 'NotAllowedError' || name === 'SecurityError') {
-          msg =
-            'Permissão de câmera negada ou bloqueada. Verifique as permissões do navegador.'
-        } else if (name === 'NotFoundError' || name === 'OverconstrainedError') {
-          msg = 'Nenhuma câmera compatível foi encontrada neste dispositivo.'
-        } else if (
-          window.location.protocol !== 'https:' &&
-          window.location.hostname !== 'localhost'
-        ) {
-          msg = 'A câmera exige HTTPS ou localhost. Verifique a URL de acesso.'
-        }
-
-        setCameraErro(msg)
-        showToast('error', msg)
-      }
-    }
-
-    iniciarCamera()
-
-    return () => {
-      if (!cameraAberta) {
-        stopStream()
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cameraAberta, currentDeviceId, isSmall])
-
-  useEffect(() => {
-    return () => {
-      stopStream()
-    }
-  }, [])
-
-  const capturarFotoDaCamera = () => {
-    if (!videoRef.current || !form) return
-    const video = videoRef.current
-
-    const videoWidth = video.videoWidth || 0
-    const videoHeight = video.videoHeight || 0
-
-    if (!videoWidth || !videoHeight) {
-      showToast(
-        'warning',
-        'A câmera ainda está iniciando. Aguarde 1–2 segundos antes de tirar a foto.',
-      )
-      return
-    }
-
-    const canvas = document.createElement('canvas')
-    canvas.width = videoWidth
-    canvas.height = videoHeight
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return
-
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
-
-    canvas.toBlob(
-      blob => {
-        if (!blob) return
-        uploadAvatar(
-          new File([blob], 'foto-camera.jpg', { type: 'image/jpeg' }),
+      if (sessionError || !sessionData.session || !sessionData.session.user) {
+        throw new Error(
+          'Sessão expirada. Faça login novamente para atualizar sua senha.',
         )
-        fecharCamera()
-      },
-      'image/jpeg',
-      0.9,
+      }
+
+      const { data: loginData, error: loginError } =
+        await supabase.auth.signInWithPassword({
+          email: sessionData.session.user.email ?? '',
+          password: dados.senhaAtual,
+        })
+
+      if (loginError || !loginData.session) {
+        throw new Error('Senha atual incorreta.')
+      }
+
+      const { error: updateError } = await supabase.auth.updateUser({
+        password: dados.novaSenha,
+      })
+
+      if (updateError) {
+        throw updateError
+      }
+    },
+    onSuccess: () => {
+      toastSucesso('Senha atualizada com sucesso.')
+      setSenhaAtual('')
+      setNovaSenha('')
+      setConfirmacaoSenha('')
+    },
+    onError: (error: any) => {
+      console.error('Erro ao atualizar senha:', error)
+      toastErro(
+        error?.message ||
+          'Não foi possível atualizar sua senha. Tente novamente mais tarde.',
+      )
+    },
+  })
+
+  const atualizarFotoMutation = useMutation({
+    mutationFn: async (arquivo: File | null) => {
+      if (!supabase || !userId) {
+        throw new Error('Sessão inválida. Faça login novamente.')
+      }
+
+      if (!arquivo) {
+        const { error: updateError } = await supabase
+          .from('usuarios')
+          .update({ foto_url: null })
+          .eq('id', userId)
+
+        if (updateError) {
+          throw updateError
+        }
+        return null
+      }
+
+      if (arquivo.size > 2 * 1024 * 1024) {
+        throw new Error('A foto deve ter no máximo 2MB.')
+      }
+
+      const extensao = arquivo.name.split('.').pop()
+      const nomeArquivo = `avatar-${userId}.${extensao}`
+
+      const { error: uploadError } = await supabase.storage
+        .from('avatars')
+        .upload(nomeArquivo, arquivo, {
+          cacheControl: '3600',
+          upsert: true,
+        })
+
+      if (uploadError) {
+        throw uploadError
+      }
+
+      const { data: publicURLData } = supabase.storage
+        .from('avatars')
+        .getPublicUrl(nomeArquivo)
+
+      const novaFotoUrl = publicURLData.publicUrl
+
+      const { error: updateError } = await supabase
+        .from('usuarios')
+        .update({ foto_url: novaFotoUrl })
+        .eq('id', userId)
+
+      if (updateError) {
+        throw updateError
+      }
+
+      return novaFotoUrl
+    },
+    onSuccess: async novaFotoUrl => {
+      await queryClient.invalidateQueries({ queryKey: ['perfil', userId] })
+      setFotoPreview(novaFotoUrl || null)
+      setFotoArquivo(null)
+      toastSucesso(
+        novaFotoUrl
+          ? 'Foto de perfil atualizada com sucesso.'
+          : 'Foto de perfil removida com sucesso.',
+      )
+    },
+    onError: (error: any) => {
+      console.error('Erro ao atualizar foto:', error)
+      toastErro(
+        error?.message ||
+          'Não foi possível atualizar sua foto de perfil. Tente novamente mais tarde.',
+      )
+    },
+  })
+
+  const handleSalvarDados = () => {
+    if (!perfil) return
+    atualizarPerfilMutation.mutate({
+      id: perfil.id,
+      nome,
+      telefone,
+      cidade,
+      estado,
+      endereco,
+    })
+  }
+
+  const handleSalvarSenha = () => {
+    if (!senhaAtual || !novaSenha || !confirmacaoSenha) {
+      toastInfo(
+        'Preencha todos os campos de senha para continuar.',
+        'Campos obrigatórios',
+      )
+      return
+    }
+
+    if (novaSenha !== confirmacaoSenha) {
+      toastErro(
+        'A nova senha e a confirmação não conferem.',
+        'Verifique os campos de senha.',
+      )
+      return
+    }
+
+    if (novaSenha.length < 6) {
+      toastErro(
+        'A nova senha deve ter pelo menos 6 caracteres.',
+        'Senha muito curta.',
+      )
+      return
+    }
+
+    atualizarSenhaMutation.mutate({
+      senhaAtual,
+      novaSenha,
+    })
+  }
+
+  const handleSelecionarFoto = () => {
+    inputFotoRef.current?.click()
+  }
+
+  const handleFotoChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    if (!file.type.startsWith('image/')) {
+      toastErro(
+        'Selecione um arquivo de imagem válido.',
+        'Formato de arquivo inválido',
+      )
+      return
+    }
+
+    setFotoArquivo(file)
+    const reader = new FileReader()
+    reader.onload = e => {
+      setFotoPreview(e.target?.result as string)
+    }
+    reader.readAsDataURL(file)
+  }
+
+  const handleSalvarFoto = () => {
+    if (fotoArquivo) {
+      atualizarFotoMutation.mutate(fotoArquivo)
+    }
+  }
+
+  const handleRemoverFoto = () => {
+    setModalExcluirFotoAberto(true)
+  }
+
+  const confirmarRemoverFoto = () => {
+    setModalExcluirFotoAberto(false)
+    atualizarFotoMutation.mutate(null)
+  }
+
+  const avatarInicial = (perfil?.nome || 'U').charAt(0).toUpperCase()
+
+  if (!usuario) {
+    return (
+      <Box sx={{ p: 3 }}>
+        <Alert severity="warning">
+          Você precisa estar autenticado para acessar a página de perfil.
+        </Alert>
+      </Box>
     )
   }
 
-  // --------- Upload avatar ---------
-
-  const uploadAvatar = async (file: File) => {
-    if (!supabase || !usuario || !form) return
-
-    setUploadingAvatar(true)
-
-    try {
-      if (file.size > 5 * 1024 * 1024) {
-        showToast('warning', 'Tamanho máximo permitido para a foto é 5MB.')
-        return
-      }
-
-      const bucket = 'avatars'
-      const ext = (file.name.split('.').pop() || 'jpg').toLowerCase()
-      const caminho = `${slugify(usuario.email || 'user')}/${Date.now()}.${ext}`
-
-      const { data: uploadData, error: upErr } = await supabase.storage
-        .from(bucket)
-        .upload(caminho, file, {
-          cacheControl: '3600',
-          upsert: true,
-          contentType: file.type || `image/${ext}`,
-        })
-
-      if (upErr) {
-        console.error('[uploadAvatar] erro Supabase Storage:', upErr)
-        throw upErr
-      }
-
-      console.log('[uploadAvatar] upload OK:', uploadData)
-
-      const { data: publicUrlData } = supabase.storage
-        .from(bucket)
-        .getPublicUrl(caminho)
-
-      const foto_url = publicUrlData.publicUrl
-      const novoForm: FormPerfil = { ...form, foto_url }
-
-      setForm(novoForm)
-      mutation.mutate(novoForm)
-      showToast('success', 'Foto de perfil atualizada!')
-    } catch (e: any) {
-      console.error('[uploadAvatar] erro geral:', e)
-      const msg =
-        e?.message ||
-        e?.error_description ||
-        'Erro ao enviar foto. Verifique as permissões do Storage.'
-      showToast('error', msg)
-    } finally {
-      setUploadingAvatar(false)
-    }
-  }
-
-  const handleCliqueCamera = () => {
-    if (isSmall) {
-      fileInputCameraMobileRef.current?.click()
-    } else {
-      abrirCameraDesktop()
-    }
-  }
-
-  // --------- Alteração de senha ---------
-
-  const handleAlterarSenha = async () => {
-    if (!supabase || !usuario) return
-
-    if (!senhaData.atual || !senhaData.nova || !senhaData.conf) {
-      showToast('warning', 'Preencha todos os campos de senha.')
-      return
-    }
-
-    if (senhaData.nova !== senhaData.conf) {
-      showToast('warning', 'A confirmação da senha não confere.')
-      return
-    }
-
-    if (senhaData.nova.length < 6) {
-      showToast('warning', 'A nova senha deve ter pelo menos 6 caracteres.')
-      return
-    }
-
-    setLoadingSenha(true)
-    try {
-      const { error: loginError } = await supabase.auth.signInWithPassword({
-        email: usuario.email!,
-        password: senhaData.atual,
-      })
-      if (loginError) throw new Error('Senha atual incorreta.')
-
-      const { error: upError } = await supabase.auth.updateUser({
-        password: senhaData.nova,
-      })
-      if (upError) throw upError
-
-      showToast('success', 'Senha alterada com sucesso!')
-      setSenhaData({ atual: '', nova: '', conf: '' })
-    } catch (e: any) {
-      showToast('error', e.message || 'Erro ao alterar a senha.')
-    } finally {
-      setLoadingSenha(false)
-    }
-  }
-
-  // --------- Loading / erro global ---------
-
-  if (isLoading || !form || !perfil) {
+  if (carregandoPerfil) {
     return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', mt: 10 }}>
+      <Box
+        sx={{
+          p: 3,
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+        }}
+      >
         <CircularProgress />
       </Box>
     )
   }
 
-  if (isError) {
+  if (erroPerfil) {
     return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', mt: 10 }}>
-        <Alert severity="error">Erro ao carregar perfil.</Alert>
+      <Box sx={{ p: 3 }}>
+        <Alert severity="error">
+          Não foi possível carregar seus dados de perfil. Tente novamente mais
+          tarde.
+        </Alert>
       </Box>
     )
   }
 
-  // --------- Render ---------
+  if (!perfil) {
+    return (
+      <Box sx={{ p: 3 }}>
+        <Alert severity="warning">
+          Nenhum dado de perfil encontrado. Entre em contato com a Secretaria.
+        </Alert>
+      </Box>
+    )
+  }
+
+  const bloqueado = atualizarPerfilMutation.isPending
 
   return (
-    <Box
-      sx={{
-        maxWidth: 1000,
-        mx: 'auto',
-        pb: 8,                         // mais espaço no fim pra não “colidir” com a barra do navegador
-        px: { xs: 1.5, sm: 2, md: 2 }, // margem lateral em telas pequenas
-      }}
-    >
-      {/* Toast */}
-      {toast && toast.open && (
-        <Snackbar
-          open={true}
-          autoHideDuration={4000}
-          onClose={handleCloseToast}
-          anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
-        >
-          <Alert
-            onClose={handleCloseToast}
-            severity={toast.severity}
-            variant="filled"
-            sx={{ width: '100%' }}
-          >
-            {toast.message}
-          </Alert>
-        </Snackbar>
-      )}
+    <Box sx={{ maxWidth: 960, mx: 'auto', p: { xs: 2, md: 3 } }}>
+      <Typography variant="h5" sx={{ fontWeight: 800, mb: 2 }}>
+        Meu perfil
+      </Typography>
 
-      {/* Header */}
       <Paper
         elevation={0}
         sx={{
-          p: { xs: 2, sm: 3 },
-          mb: 3,
-          mx: { xs: 0.5, sm: 1 },      // “entra” um pouco para não encostar na borda da tela
-          display: 'flex',
-          flexDirection: { xs: 'column', sm: 'row' },
-          alignItems: { xs: 'flex-start', sm: 'center' },
-          gap: 2,
-          bgcolor: theme.palette.primary.main,
-          color: 'white',
+          p: 3,
           borderRadius: 3,
+          border: `1px solid ${theme.palette.divider}`,
         }}
       >
-        <Avatar
-          src={form.foto_url || undefined}
-          sx={{
-            width: 80,
-            height: 80,
-            border: '3px solid white',
-            boxShadow: 2,
-            bgcolor: theme.palette.primary.dark,
-          }}
+        {/* Cabeçalho com foto e nome */}
+        <Stack
+          direction={{ xs: 'column', md: 'row' }}
+          spacing={3}
+          alignItems={{ xs: 'flex-start', md: 'center' }}
         >
-          {form.name.charAt(0)}
-        </Avatar>
-        <Box sx={{ flexGrow: 1, minWidth: 0 }}>
-          <Typography
-            variant="h6"
-            fontWeight={700}
-            sx={{ wordBreak: 'break-word' }}
+          <Box sx={{ position: 'relative' }}>
+            <Avatar
+              src={fotoPreview || undefined}
+              alt={perfil.nome}
+              sx={{
+                width: 120,
+                height: 120,
+                bgcolor: theme.palette.primary.main,
+                fontSize: 48,
+              }}
+            >
+              {!fotoPreview && avatarInicial}
+            </Avatar>
+
+            <IconButton
+              color="primary"
+              size="small"
+              onClick={handleSelecionarFoto}
+              sx={{
+                position: 'absolute',
+                bottom: 0,
+                right: 0,
+                bgcolor: 'background.paper',
+                boxShadow: 1,
+              }}
+            >
+              <PhotoCamera fontSize="small" />
+            </IconButton>
+
+            <input
+              ref={inputFotoRef}
+              type="file"
+              accept="image/*"
+              style={{ display: 'none' }}
+              onChange={handleFotoChange}
+            />
+          </Box>
+
+          <Box sx={{ flexGrow: 1 }}>
+            <Typography variant="h6" sx={{ fontWeight: 700 }}>
+              {perfil.nome}
+            </Typography>
+
+            <Stack direction="row" spacing={1} sx={{ my: 1, flexWrap: 'wrap' }}>
+              <Chip
+                icon={<PersonIcon />}
+                label={usuario.papel ?? 'Usuário'}
+                size="small"
+                color="primary"
+                variant="outlined"
+              />
+
+              {perfil.cidade && perfil.estado && (
+                <Chip
+                  icon={<LocationCityIcon />}
+                  label={`${perfil.cidade} - ${perfil.estado}`}
+                  size="small"
+                  variant="outlined"
+                />
+              )}
+            </Stack>
+
+            <Typography variant="body2" color="text.secondary">
+              Aqui você pode atualizar suas informações pessoais, de contato e
+              segurança da conta.
+            </Typography>
+
+            <Box sx={{ mt: 2 }}>
+              <Button
+                variant={editando ? 'outlined' : 'contained'}
+                startIcon={editando ? <CloseIcon /> : <EditIcon />}
+                onClick={() => setEditando(prev => !prev)}
+                size="small"
+                sx={{ mr: 1 }}
+              >
+                {editando ? 'Cancelar edição' : 'Editar dados'}
+              </Button>
+              {editando && (
+                <Button
+                  variant="contained"
+                  startIcon={
+                    atualizarPerfilMutation.isPending ? (
+                      <CircularProgress color="inherit" size={18} />
+                    ) : (
+                      <SaveIcon />
+                    )
+                  }
+                  onClick={handleSalvarDados}
+                  size="small"
+                  disabled={atualizarPerfilMutation.isPending}
+                >
+                  {atualizarPerfilMutation.isPending
+                    ? 'Salvando...'
+                    : 'Salvar alterações'}
+                </Button>
+              )}
+            </Box>
+          </Box>
+        </Stack>
+
+        <Box sx={{ mt: 3 }}>
+          <Tabs
+            value={abaAtiva}
+            onChange={(_e, v) => setAbaAtiva(v)}
+            variant="scrollable"
+            scrollButtons="auto"
           >
-            {form.name}
-          </Typography>
-          <Typography
-            variant="body2"
-            sx={{ opacity: 0.9, wordBreak: 'break-all' }}
-          >
-            {form.email}
-          </Typography>
-          <Chip
-            label={mapTipoUsuario[perfil.id_tipo_usuario] || 'Usuário'}
-            size="small"
-            sx={{
-              mt: 1,
-              bgcolor: 'rgba(255,255,255,0.2)',
-              color: 'white',
-              fontWeight: 600,
-            }}
-          />
+            <Tab icon={<PersonIcon />} label="Dados pessoais" value="dados" />
+            <Tab icon={<SecurityIcon />} label="Segurança" value="seguranca" />
+            <Tab icon={<ImageIcon />} label="Foto de perfil" value="foto" />
+          </Tabs>
+
+          {abaAtiva === 'dados' && (
+            <Box sx={{ mt: 3 }}>
+              <Stack spacing={2}>
+                <TextField
+                  label="Nome completo"
+                  value={nome}
+                  onChange={e => setNome(e.target.value)}
+                  fullWidth
+                  disabled={!editando || bloqueado}
+                  InputProps={{
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <PersonIcon fontSize="small" />
+                      </InputAdornment>
+                    ),
+                  }}
+                />
+
+                <TextField
+                  label="E-mail"
+                  value={perfil.email ?? ''}
+                  fullWidth
+                  disabled
+                  InputProps={{
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <EmailIcon fontSize="small" />
+                      </InputAdornment>
+                    ),
+                  }}
+                />
+
+                <Stack
+                  direction={{ xs: 'column', md: 'row' }}
+                  spacing={2}
+                >
+                  <TextField
+                    label="Telefone"
+                    value={telefone}
+                    onChange={e => setTelefone(e.target.value)}
+                    fullWidth
+                    disabled={!editando || bloqueado}
+                    InputProps={{
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <PhoneIcon fontSize="small" />
+                        </InputAdornment>
+                      ),
+                    }}
+                  />
+
+                  <TextField
+                    label="Cidade"
+                    value={cidade}
+                    onChange={e => setCidade(e.target.value)}
+                    fullWidth
+                    disabled={!editando || bloqueado}
+                    InputProps={{
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <LocationCityIcon fontSize="small" />
+                        </InputAdornment>
+                      ),
+                    }}
+                  />
+
+                  <TextField
+                    label="Estado"
+                    value={estado}
+                    onChange={e => setEstado(e.target.value)}
+                    fullWidth
+                    disabled={!editando || bloqueado}
+                    InputProps={{
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <MapIcon fontSize="small" />
+                        </InputAdornment>
+                      ),
+                    }}
+                  />
+                </Stack>
+
+                <TextField
+                  label="Endereço"
+                  value={endereco}
+                  onChange={e => setEndereco(e.target.value)}
+                  fullWidth
+                  disabled={!editando || bloqueado}
+                  multiline
+                  minRows={2}
+                  InputProps={{
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <HomeIcon fontSize="small" />
+                      </InputAdornment>
+                    ),
+                  }}
+                />
+              </Stack>
+            </Box>
+          )}
+
+          {abaAtiva === 'seguranca' && (
+            <Box sx={{ mt: 3 }}>
+              <Stack spacing={2}>
+                <Alert severity="info">
+                  Por segurança, sua senha não é exibida. Para alterá-la, preencha
+                  os campos abaixo.
+                </Alert>
+
+                <TextField
+                  label="Senha atual"
+                  type={mostrarSenhaAtual ? 'text' : 'password'}
+                  value={senhaAtual}
+                  onChange={e => setSenhaAtual(e.target.value)}
+                  fullWidth
+                  InputProps={{
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <SecurityIcon fontSize="small" />
+                      </InputAdornment>
+                    ),
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <IconButton
+                          onClick={() =>
+                            setMostrarSenhaAtual(prev => !prev)
+                          }
+                        >
+                          {mostrarSenhaAtual ? (
+                            <VisibilityOff fontSize="small" />
+                          ) : (
+                            <Visibility fontSize="small" />
+                          )}
+                        </IconButton>
+                      </InputAdornment>
+                    ),
+                  }}
+                />
+
+                <Stack
+                  direction={{ xs: 'column', md: 'row' }}
+                  spacing={2}
+                >
+                  <TextField
+                    label="Nova senha"
+                    type={mostrarNovaSenha ? 'text' : 'password'}
+                    value={novaSenha}
+                    onChange={e => setNovaSenha(e.target.value)}
+                    fullWidth
+                    InputProps={{
+                      endAdornment: (
+                        <InputAdornment position="end">
+                          <IconButton
+                            onClick={() =>
+                              setMostrarNovaSenha(prev => !prev)
+                            }
+                          >
+                            {mostrarNovaSenha ? (
+                              <VisibilityOff fontSize="small" />
+                            ) : (
+                              <Visibility fontSize="small" />
+                            )}
+                          </IconButton>
+                        </InputAdornment>
+                      ),
+                    }}
+                  />
+
+                  <TextField
+                    label="Confirmar nova senha"
+                    type={mostrarConfirmacaoSenha ? 'text' : 'password'}
+                    value={confirmacaoSenha}
+                    onChange={e => setConfirmacaoSenha(e.target.value)}
+                    fullWidth
+                    InputProps={{
+                      endAdornment: (
+                        <InputAdornment position="end">
+                          <IconButton
+                            onClick={() =>
+                              setMostrarConfirmacaoSenha(prev => !prev)
+                            }
+                          >
+                            {mostrarConfirmacaoSenha ? (
+                              <VisibilityOff fontSize="small" />
+                            ) : (
+                              <Visibility fontSize="small" />
+                            )}
+                          </IconButton>
+                        </InputAdornment>
+                      ),
+                    }}
+                  />
+                </Stack>
+
+                <Box>
+                  <Button
+                    variant="contained"
+                    startIcon={
+                      atualizarSenhaMutation.isPending ? (
+                        <CircularProgress color="inherit" size={18} />
+                      ) : (
+                        <SaveIcon />
+                      )
+                    }
+                    onClick={handleSalvarSenha}
+                    disabled={atualizarSenhaMutation.isPending}
+                  >
+                    {atualizarSenhaMutation.isPending
+                      ? 'Atualizando senha...'
+                      : 'Atualizar senha'}
+                  </Button>
+                </Box>
+              </Stack>
+            </Box>
+          )}
+
+          {abaAtiva === 'foto' && (
+            <Box sx={{ mt: 3 }}>
+              <Stack spacing={2}>
+                <Alert severity="info">
+                  Selecione uma foto com boa iluminação e enquadramento do rosto.
+                  O tamanho máximo é de 2MB.
+                </Alert>
+
+                <Box
+                  sx={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 2,
+                  }}
+                >
+                  <Avatar
+                    src={fotoPreview || undefined}
+                    alt={perfil.nome}
+                    sx={{
+                      width: 120,
+                      height: 120,
+                      bgcolor: theme.palette.primary.main,
+                      fontSize: 48,
+                    }}
+                  >
+                    {!fotoPreview && avatarInicial}
+                  </Avatar>
+
+                  <Stack spacing={1}>
+                    <Button
+                      variant="outlined"
+                      startIcon={<PhotoIcon />}
+                      onClick={handleSelecionarFoto}
+                    >
+                      Selecionar foto
+                    </Button>
+                    {fotoArquivo && (
+                      <Typography variant="caption" color="text.secondary">
+                        Arquivo selecionado: {fotoArquivo.name}
+                      </Typography>
+                    )}
+                    <Stack direction="row" spacing={1}>
+                      <Button
+                        variant="contained"
+                        startIcon={
+                          atualizarFotoMutation.isPending ? (
+                            <CircularProgress color="inherit" size={18} />
+                          ) : (
+                            <SaveIcon />
+                          )
+                        }
+                        onClick={handleSalvarFoto}
+                        disabled={!fotoArquivo || atualizarFotoMutation.isPending}
+                      >
+                        {atualizarFotoMutation.isPending
+                          ? 'Salvando foto...'
+                          : 'Salvar foto'}
+                      </Button>
+                      {fotoPreview && (
+                        <Button
+                          variant="outlined"
+                          color="error"
+                          startIcon={<CameraswitchIcon />}
+                          onClick={handleRemoverFoto}
+                        >
+                          Remover foto
+                        </Button>
+                      )}
+                    </Stack>
+                  </Stack>
+                </Box>
+              </Stack>
+            </Box>
+          )}
         </Box>
       </Paper>
 
-      {/* Abas + conteúdo principal em um card separado */}
-      <Paper
-        variant="outlined"
-        sx={{
-          mx: { xs: 0.5, sm: 1 },
-          borderRadius: 3,
-          overflow: 'hidden',
-        }}
+      <Dialog
+        open={modalExcluirFotoAberto}
+        onClose={() => setModalExcluirFotoAberto(false)}
       >
-        <Tabs
-          value={tabValue}
-          onChange={handleTabChange}
-          variant={isSmall ? 'fullWidth' : 'scrollable'}
-          scrollButtons={isSmall ? false : 'auto'}
-          sx={{
-            borderBottom: 1,
-            borderColor: 'divider',
-            bgcolor: theme.palette.background.default,
-          }}
-        >
-          <Tab icon={<PersonIcon />} iconPosition="start" label="Dados Pessoais" />
-          <Tab icon={<HomeIcon />} iconPosition="start" label="Endereço" />
-          <Tab icon={<PhotoIcon />} iconPosition="start" label="Foto / Social" />
-          <Tab icon={<SecurityIcon />} iconPosition="start" label="Segurança" />
-        </Tabs>
-
-        {/* Dados Pessoais */}
-        <TabPanel value={tabValue} index={0}>
-          <Box
-            component="form"
-            onSubmit={e => {
-              e.preventDefault()
-              if (form) mutation.mutate(form)
-            }}
-            sx={{ px: { xs: 1.5, md: 3 } }}
-          >
-            <Grid container spacing={2}>
-              <Grid item xs={12} md={6}>
-                <TextField
-                  fullWidth
-                  label="Nome Completo"
-                  value={form.name}
-                  onChange={handleChange('name')}
-                  required
-                />
-              </Grid>
-              <Grid item xs={12} md={6}>
-                <TextField
-                  fullWidth
-                  label="Nome de Usuário"
-                  value={form.username}
-                  onChange={handleChange('username')}
-                  helperText="Como você será identificado no sistema."
-                />
-              </Grid>
-              <Grid item xs={12} md={6}>
-                <TextField
-                  fullWidth
-                  label="E-mail"
-                  value={form.email}
-                  disabled
-                  helperText="E-mail de login (não editável aqui)."
-                />
-              </Grid>
-              <Grid item xs={12} sm={6} md={3}>
-                <TextField
-                  fullWidth
-                  label="CPF"
-                  value={form.cpf}
-                  onChange={handleChange('cpf')}
-                  placeholder="000.000.000-00"
-                />
-              </Grid>
-              <Grid item xs={12} sm={6} md={3}>
-                <TextField
-                  fullWidth
-                  label="RG"
-                  value={form.rg}
-                  onChange={handleChange('rg')}
-                />
-              </Grid>
-              <Grid item xs={12} sm={6} md={3}>
-                <TextField
-                  fullWidth
-                  label="Celular"
-                  value={form.celular}
-                  onChange={handleChange('celular')}
-                  placeholder="(00) 00000-0000"
-                />
-              </Grid>
-              <Grid item xs={12} sm={6} md={3}>
-                <TextField
-                  fullWidth
-                  type="date"
-                  label="Nascimento"
-                  value={form.data_nascimento}
-                  onChange={handleChange('data_nascimento')}
-                  InputLabelProps={{ shrink: true }}
-                />
-              </Grid>
-              <Grid item xs={12} sm={6} md={3}>
-                <TextField
-                  select
-                  fullWidth
-                  label="Sexo"
-                  value={form.sexo}
-                  onChange={handleChange('sexo')}
-                  SelectProps={{ native: true }}
-                >
-                  <option value="">Selecione</option>
-                  <option value="Masculino">Masculino</option>
-                  <option value="Feminino">Feminino</option>
-                  <option value="Outro">Outro</option>
-                </TextField>
-              </Grid>
-              <Grid item xs={12} sm={6} md={3}>
-                <TextField
-                  select
-                  fullWidth
-                  label="Raça"
-                  value={form.raca}
-                  onChange={handleChange('raca')}
-                  SelectProps={{ native: true }}
-                >
-                  <option value="">Selecione</option>
-                  <option value="Branca">Branca</option>
-                  <option value="Preta">Preta</option>
-                  <option value="Parda">Parda</option>
-                  <option value="Amarela">Amarela</option>
-                  <option value="Indígena">Indígena</option>
-                </TextField>
-              </Grid>
-              <Grid item xs={12} sx={{ mt: 1 }}>
-                <Button
-                  variant="contained"
-                  type="submit"
-                  size="large"
-                  fullWidth
-                  disabled={mutation.isPending}
-                >
-                  {mutation.isPending ? 'Salvando...' : 'Salvar Dados Pessoais'}
-                </Button>
-              </Grid>
-            </Grid>
-          </Box>
-        </TabPanel>
-
-        {/* Endereço */}
-        <TabPanel value={tabValue} index={1}>
-          <Box
-            component="form"
-            onSubmit={e => {
-              e.preventDefault()
-              if (form) mutation.mutate(form)
-            }}
-            sx={{ px: { xs: 1.5, md: 3 } }}
-          >
-            <Grid container spacing={2}>
-              <Grid item xs={12} md={6}>
-                <TextField
-                  fullWidth
-                  label="Logradouro"
-                  value={form.logradouro}
-                  onChange={handleChange('logradouro')}
-                />
-              </Grid>
-              <Grid item xs={12} sm={6} md={2}>
-                <TextField
-                  fullWidth
-                  label="Número"
-                  value={form.numero_endereco}
-                  onChange={handleChange('numero_endereco')}
-                />
-              </Grid>
-              <Grid item xs={12} sm={6} md={4}>
-                <TextField
-                  fullWidth
-                  label="Bairro"
-                  value={form.bairro}
-                  onChange={handleChange('bairro')}
-                />
-              </Grid>
-              <Grid item xs={12} sm={6} md={4}>
-                <TextField
-                  fullWidth
-                  label="Município"
-                  value={form.municipio}
-                  onChange={handleChange('municipio')}
-                />
-              </Grid>
-              <Grid item xs={12} sm={6} md={8}>
-                <TextField
-                  fullWidth
-                  label="Ponto de Referência"
-                  value={form.ponto_referencia}
-                  onChange={handleChange('ponto_referencia')}
-                />
-              </Grid>
-              <Grid item xs={12} sx={{ mt: 1 }}>
-                <Button
-                  variant="contained"
-                  type="submit"
-                  size="large"
-                  fullWidth
-                  disabled={mutation.isPending}
-                >
-                  {mutation.isPending ? 'Salvando...' : 'Salvar Endereço'}
-                </Button>
-              </Grid>
-            </Grid>
-          </Box>
-        </TabPanel>
-
-        {/* Foto & Social */}
-        <TabPanel value={tabValue} index={2}>
-          <Box sx={{ px: { xs: 1.5, md: 3 } }}>
-            <Grid container spacing={3}>
-              <Grid item xs={12} md={4} sx={{ textAlign: 'center' }}>
-                <Typography variant="subtitle2" gutterBottom>
-                  Foto de Perfil
-                </Typography>
-                <Avatar
-                  src={form.foto_url || undefined}
-                  sx={{ width: 120, height: 120, mx: 'auto', mb: 2 }}
-                />
-                <Stack
-                  direction={{ xs: 'column', sm: 'row' }}
-                  justifyContent="center"
-                  spacing={1}
-                  sx={{ '& > button': { flex: 1 } }}
-                >
-                  <Button
-                    variant="outlined"
-                    size="small"
-                    onClick={() => fileInputGaleriaRef.current?.click()}
-                    startIcon={<ImageIcon />}
-                  >
-                    Galeria
-                  </Button>
-                  <Button
-                    variant="outlined"
-                    size="small"
-                    onClick={handleCliqueCamera}
-                    startIcon={<PhotoCamera />}
-                  >
-                    Câmera
-                  </Button>
-                </Stack>
-                {uploadingAvatar && (
-                  <Typography variant="caption">Enviando...</Typography>
-                )}
-
-                {/* Galeria */}
-                <input
-                  ref={fileInputGaleriaRef}
-                  type="file"
-                  hidden
-                  accept="image/*"
-                  onChange={e => {
-                    if (e.target.files?.[0]) uploadAvatar(e.target.files[0])
-                  }}
-                />
-
-                {/* Câmera nativa (mobile) */}
-                <input
-                  ref={fileInputCameraMobileRef}
-                  type="file"
-                  hidden
-                  accept="image/*"
-                  capture="environment"
-                  onChange={e => {
-                    if (e.target.files?.[0]) uploadAvatar(e.target.files[0])
-                  }}
-                />
-              </Grid>
-
-              <Grid item xs={12} md={8}>
-                <Stack spacing={2}>
-                  <TextField
-                    label="Instagram"
-                    value={form.instagram_url}
-                    onChange={handleChange('instagram_url')}
-                    fullWidth
-                    placeholder="https://instagram.com/..."
-                  />
-                  <TextField
-                    label="Facebook"
-                    value={form.facebook_url}
-                    onChange={handleChange('facebook_url')}
-                    fullWidth
-                    placeholder="https://facebook.com/..."
-                  />
-                  <Button
-                    variant="contained"
-                    onClick={() => form && mutation.mutate(form)}
-                    sx={{ width: { xs: '100%', sm: 'fit-content' } }}
-                    disabled={mutation.isPending}
-                  >
-                    {mutation.isPending ? 'Salvando...' : 'Salvar Foto & Social'}
-                  </Button>
-                </Stack>
-              </Grid>
-            </Grid>
-          </Box>
-        </TabPanel>
-
-        {/* Segurança */}
-        <TabPanel value={tabValue} index={3}>
-          <Box
-            component="form"
-            sx={{ maxWidth: 500, px: { xs: 1.5, md: 3 } }}
-            onSubmit={e => {
-              e.preventDefault()
-              handleAlterarSenha()
-            }}
-          >
-            <input
-              type="text"
-              name="username"
-              autoComplete="username"
-              value={form.email}
-              readOnly
-              style={{ display: 'none' }}
-            />
-
-            <Alert severity="info" sx={{ mb: 3 }}>
-              Para sua segurança, informe sua senha atual para definir uma nova.
-            </Alert>
-            <Stack spacing={2}>
-              <TextField
-                label="Senha Atual"
-                type={mostrarSenhas.atual ? 'text' : 'password'}
-                value={senhaData.atual}
-                autoComplete="current-password"
-                onChange={e =>
-                  setSenhaData({ ...senhaData, atual: e.target.value })
-                }
-                InputProps={{
-                  endAdornment: (
-                    <InputAdornment position="end">
-                      <IconButton
-                        onClick={() =>
-                          setMostrarSenhas({
-                            ...mostrarSenhas,
-                            atual: !mostrarSenhas.atual,
-                          })
-                        }
-                      >
-                        {mostrarSenhas.atual ? (
-                          <VisibilityOff />
-                        ) : (
-                          <Visibility />
-                        )}
-                      </IconButton>
-                    </InputAdornment>
-                  ),
-                }}
-              />
-              <TextField
-                label="Nova Senha"
-                type={mostrarSenhas.nova ? 'text' : 'password'}
-                value={senhaData.nova}
-                autoComplete="new-password"
-                onChange={e =>
-                  setSenhaData({ ...senhaData, nova: e.target.value })
-                }
-                InputProps={{
-                  endAdornment: (
-                    <InputAdornment position="end">
-                      <IconButton
-                        onClick={() =>
-                          setMostrarSenhas({
-                            ...mostrarSenhas,
-                            nova: !mostrarSenhas.nova,
-                          })
-                        }
-                      >
-                        {mostrarSenhas.nova ? (
-                          <VisibilityOff />
-                        ) : (
-                          <Visibility />
-                        )}
-                      </IconButton>
-                    </InputAdornment>
-                  ),
-                }}
-              />
-              <TextField
-                label="Confirmar Senha"
-                type={mostrarSenhas.conf ? 'text' : 'password'}
-                value={senhaData.conf}
-                autoComplete="new-password"
-                onChange={e =>
-                  setSenhaData({ ...senhaData, conf: e.target.value })
-                }
-                InputProps={{
-                  endAdornment: (
-                    <InputAdornment position="end">
-                      <IconButton
-                        onClick={() =>
-                          setMostrarSenhas({
-                            ...mostrarSenhas,
-                            conf: !mostrarSenhas.conf,
-                          })
-                        }
-                      >
-                        {mostrarSenhas.conf ? (
-                          <VisibilityOff />
-                        ) : (
-                          <Visibility />
-                        )}
-                      </IconButton>
-                    </InputAdornment>
-                  ),
-                }}
-              />
-              <Button
-                variant="contained"
-                color="warning"
-                type="submit"
-                disabled={loadingSenha}
-                sx={{ width: { xs: '100%', sm: 'fit-content' } }}
-              >
-                {loadingSenha ? 'Alterando...' : 'Alterar Senha'}
-              </Button>
-            </Stack>
-          </Box>
-        </TabPanel>
-      </Paper>
-
-      {/* Modal da câmera - apenas desktop */}
-      {!isSmall && (
-        <Dialog
-          open={cameraAberta}
-          onClose={fecharCamera}
-          fullWidth
-          maxWidth="sm"
-        >
-          <DialogTitle>Usar câmera</DialogTitle>
-          <DialogContent>
-            <Box
-              sx={{
-                mt: 1,
-                borderRadius: 2,
-                overflow: 'hidden',
-                bgcolor: 'black',
-                height: { xs: 260, sm: 320 },
-                position: 'relative',
-              }}
-            >
-              <video
-                ref={videoRef}
-                autoPlay
-                muted
-                playsInline
-                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-              />
-              {cameraErro && (
-                <Box
-                  sx={{
-                    position: 'absolute',
-                    inset: 0,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    px: 2,
-                    textAlign: 'center',
-                    color: 'white',
-                    bgcolor: 'rgba(0,0,0,0.6)',
-                  }}
-                >
-                  <Typography variant="body2">{cameraErro}</Typography>
-                </Box>
-              )}
-            </Box>
-          </DialogContent>
-          <DialogActions
-            sx={{
-              justifyContent: 'space-between',
-              flexWrap: 'wrap',
-              gap: 1,
-              px: 3,
-              pb: 2,
-            }}
-          >
-            <Button onClick={fecharCamera}>Cancelar</Button>
-
-            <Button
-              onClick={alternarCamera}
-              startIcon={<CameraswitchIcon />}
-              disabled={videoDevices.length < 2}
-            >
-              Trocar câmera
-            </Button>
-
-            <Button variant="contained" onClick={capturarFotoDaCamera}>
-              Tirar foto
-            </Button>
-          </DialogActions>
-        </Dialog>
-      )}
+        <DialogTitle>Remover foto de perfil</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2">
+            Tem certeza de que deseja remover sua foto de perfil? Você poderá
+            adicionar outra foto mais tarde.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setModalExcluirFotoAberto(false)}>
+            Cancelar
+          </Button>
+          <Button onClick={confirmarRemoverFoto} color="error">
+            Remover
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   )
 }
 
-export { PerfilPage }
 export default PerfilPage

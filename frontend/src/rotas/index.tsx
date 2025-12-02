@@ -1,22 +1,28 @@
 // src/rotas/index.tsx
+
 import React from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 
 import { RootLayout } from '../layouts/RootLayout'
 import { LoginPage } from '../paginas/Autenticacao/LoginPage'
 import { NovaSenhaPage } from '../paginas/Autenticacao/NovaSenhaPage'
-import { DashboardPage } from '../paginas/Dashboard/DashboardPage'
+
+// ATENÇÃO: Dashboard agora está na pasta painel-administracao
+import { DashboardPage } from '../paginas/painel-administracao/DashboardPage'
+
 import { PaginaSimples } from '../paginas/PaginaSimples'
 import PerfilPage from '../paginas/Perfil/PerfilPage'
 import ConfiguracoesPage from '../paginas/Configuracoes/ConfiguracoesPage'
 import { useAuth } from '../contextos/AuthContext'
 import { RotaPorPapel } from '../componentes/navegacao/RotaPorPapel'
 
-import SecretariaLayout from '../paginas/Secretaria/SecretariaLayout'
-import SecretariaUsuariosPage from '../paginas/Secretaria/SecretariaUsuariosPage'
-import SecretariaTurmasPage from '../paginas/Secretaria/SecretariaTurmasPage'
-import SecretariaMatriculasPage from '../paginas/Secretaria/SecretariaMatriculasPage'
-import SecretariaRelatoriosFichasPage from '../paginas/Secretaria/SecretariaRelatoriosFichasPage'
+// ATENÇÃO: páginas de Secretaria agora estão em painel-secretaria
+import SecretariaLayout from '../paginas/painel-secretaria/SecretariaLayout'
+import SecretariaUsuariosPage from '../paginas/painel-secretaria/SecretariaUsuariosPage'
+import SecretariaTurmasPage from '../paginas/painel-secretaria/SecretariaTurmasPage'
+import SecretariaMatriculasPage from '../paginas/painel-secretaria/SecretariaMatriculasPage'
+import SecretariaRelatoriosFichasPage from '../paginas/painel-secretaria/SecretariaRelatoriosFichasPage'
+
 
 export const AppRoutes: React.FC = () => {
   const { usuario } = useAuth()

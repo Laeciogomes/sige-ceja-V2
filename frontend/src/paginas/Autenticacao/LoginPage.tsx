@@ -63,183 +63,167 @@ const LoginPage: React.FC = () => {
     }
   }, [])
 
-  // Salva e-mail / lembrar usuário
+  // Salva e-mail se "lembrar de mim" estiver marcado
   useEffect(() => {
     try {
-      localStorage.setItem(
-        LOGIN_HINT_KEY,
-        JSON.stringify({ email, rememberMe }),
-      )
+      const payload = JSON.stringify({
+        email,
+        rememberMe,
+      })
+      localStorage.setItem(LOGIN_HINT_KEY, payload)
     } catch {
       // ignora
     }
   }, [email, rememberMe])
 
-  const handleClickShowPassword = () => {
-    setShowPassword(show => !show)
-  }
-
-  const handleMouseDownPassword = (event: React.MouseEvent<HTMLButtonElement>) => {
-    event.preventDefault()
-  }
-
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-
-    if (loading) return
-
     setErro(null)
-    setLoading(true)
+
+    const emailTrim = email.trim()
+
+    if (!emailTrim || !senha) {
+      const msg = 'Informe e-mail e senha para continuar.'
+      setErro(msg)
+      toastErro(msg, 'Campos obrigatórios', 5000)
+      return
+    }
 
     try {
-      const emailTrim = email.trim()
-
-      if (!emailTrim || !senha) {
-        const msg = 'Informe e-mail e senha para continuar.'
-        setErro(msg)
-        toastErro(msg, 'Campos obrigatórios', 5000)
-        return
-      }
+      setLoading(true)
 
       await login(emailTrim, senha, rememberMe)
 
-      toastSucesso('Login realizado com sucesso.', 'Bem-vindo(a) ao SIGE-CEJA', 3000)
+      toastSucesso(
+        'Login realizado com sucesso.',
+        'Bem-vindo(a) ao SIGE-CEJA',
+        3000,
+      )
+
       navigate('/', { replace: true })
-    } catch (e: any) {
-      const msg =
-        (e && typeof e === 'object' && 'message' in e && (e as any).message) ||
-        'Não foi possível realizar o login. Verifique suas credenciais ou tente novamente.'
+    } catch (error: any) {
+      console.error('Erro ao fazer login:', error)
+      const mensagemErro =
+        error?.message ||
+        'Não foi possível entrar. Verifique seus dados e tente novamente.'
 
-      const mensagem = String(msg)
-      setErro(mensagem)
-      toastErro(mensagem, 'Falha no login', 6000)
-
-      // Log detalhado no console para debug
-      // eslint-disable-next-line no-console
-      console.error('[LoginPage] Erro ao efetuar login:', e)
+      setErro(mensagemErro)
+      toastErro(mensagemErro, 'Falha no login', 8000)
     } finally {
       setLoading(false)
     }
   }
 
-  // Futuro: URL da foto de perfil quando o "lembrar usuário" tiver imagem
-  const rememberedUserImageUrl: string | null = null
-  const mostrarNomeUsuario = rememberMe && !!email.trim()
+  const handleClickMostrarSenha = () => {
+    setShowPassword(prev => !prev)
+  }
+
+  const handleMouseDownSenha = (event: React.MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault()
+  }
+
+  const handleEsqueciSenha = () => {
+    setModalRecuperarAberta(true)
+  }
+
+  const desabilitado = loading
 
   return (
     <AuthLayout>
-      {/* Wrapper interno para controlar melhor o espaçamento vertical */}
       <Box
         sx={{
           width: '100%',
-          py: { xs: 2, md: 3 },
+          maxWidth: 420,
+          mx: 'auto',
+          bgcolor: theme =>
+            theme.palette.mode === 'dark'
+              ? 'background.paper'
+              : 'rgba(255,255,255,0.95)',
+          borderRadius: 3,
+          boxShadow: theme =>
+            theme.palette.mode === 'dark'
+              ? '0 16px 45px rgba(0,0,0,0.8)'
+              : '0 16px 45px rgba(0,0,0,0.12)',
+          p: 4,
+          position: 'relative',
+          overflow: 'hidden',
         }}
       >
-        {/* Cabeçalho do card direito (avatar + título + toggle de tema) */}
+        {/* Botão de tema no canto */}
         <Box
           sx={{
-            textAlign: 'center',
-            mt: { xs: 0.5, md: 1.5 },
-            mb: 2.5,
+            position: 'absolute',
+            top: 8,
+            right: 8,
+            zIndex: 2,
           }}
         >
-          <Box
-            sx={{
-              mb: 1.5,
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              gap: 0.75,
-            }}
+          <Tooltip
+            title={
+              ehDark ? 'Alternar para tema claro' : 'Alternar para tema escuro'
+            }
           >
-            <Avatar
+            <IconButton
+              size="small"
+              onClick={alternarModo}
               sx={{
-                width: 76,
-                height: 76,
-                bgcolor: 'primary.main',
-                color: 'primary.contrastText',
-                boxShadow: 4,
-                border: theme => `4px solid ${theme.palette.background.paper}`,
+                bgcolor: theme =>
+                  theme.palette.mode === 'dark'
+                    ? 'rgba(255,255,255,0.06)'
+                    : 'rgba(0,0,0,0.02)',
               }}
-              src={rememberedUserImageUrl || undefined}
             >
-              {!rememberedUserImageUrl && <PersonIcon sx={{ fontSize: 34 }} />}
-            </Avatar>
-            {mostrarNomeUsuario && (
-              <Typography variant="body2" color="text.secondary" noWrap>
-                {email}
-              </Typography>
-            )}
-          </Box>
+              {ehDark ? (
+                <LightModeRoundedIcon fontSize="small" />
+              ) : (
+                <DarkModeRoundedIcon fontSize="small" />
+              )}
+            </IconButton>
+          </Tooltip>
+        </Box>
 
-          {/* Linha com título + ícone de tema bem visível */}
-          <Box
+        <Box sx={{ textAlign: 'center', mb: 3, position: 'relative', zIndex: 1 }}>
+          <Avatar
             sx={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 1.25,
-              mb: 0.25,
+              bgcolor: 'primary.main',
+              width: 64,
+              height: 64,
+              mx: 'auto',
+              mb: 1.5,
             }}
           >
-            <Typography component="h1" variant="h5" sx={{ fontWeight: 'bold' }}>
-              Acessar o sistema
-            </Typography>
-
-            <Tooltip title={ehDark ? 'Modo claro' : 'Modo escuro'}>
-              <IconButton
-                aria-label="alternar tema claro/escuro"
-                onClick={alternarModo}
-                size="medium"
-                sx={{
-                  bgcolor: 'action.hover',
-                  borderRadius: 999,
-                  '&:hover': {
-                    bgcolor: 'action.selected',
-                  },
-                }}
-              >
-                {ehDark ? (
-                  <LightModeRoundedIcon fontSize="small" color="warning" />
-                ) : (
-                  <DarkModeRoundedIcon fontSize="small" color="primary" />
-                )}
-              </IconButton>
-            </Tooltip>
-          </Box>
-
-          <Typography
-            variant="body2"
-            color="text.secondary"
-            sx={{ maxWidth: 380, mx: 'auto' }}
-          >
-            Utilize suas credenciais institucionais para entrar no SIGE-CEJA.
+            <PersonIcon sx={{ fontSize: 30 }} />
+          </Avatar>
+          <Typography variant="h5" sx={{ fontWeight: 800, mb: 0.5 }}>
+            Entrar no SIGE-CEJA
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            Acesse com seu e-mail institucional e senha.
           </Typography>
         </Box>
 
-        {/* Formulário */}
         <Box
           component="form"
-          noValidate
           onSubmit={handleSubmit}
-          sx={{ mt: 0.5 }}
+          noValidate
+          sx={{ position: 'relative', zIndex: 1 }}
         >
           <TextField
             margin="normal"
             required
             fullWidth
             id="email"
-            label="Endereço de e-mail"
+            label="E-mail"
             name="email"
             autoComplete="email"
             autoFocus
             value={email}
             onChange={e => setEmail(e.target.value)}
-            error={!!erro}
+            disabled={desabilitado}
             InputProps={{
               startAdornment: (
                 <InputAdornment position="start">
-                  <MailOutlineIcon color="action" />
+                  <MailOutlineIcon fontSize="small" />
                 </InputAdornment>
               ),
             }}
@@ -249,30 +233,33 @@ const LoginPage: React.FC = () => {
             margin="normal"
             required
             fullWidth
-            name="password"
+            name="senha"
             label="Senha"
             type={showPassword ? 'text' : 'password'}
-            id="password"
+            id="senha"
             autoComplete="current-password"
             value={senha}
             onChange={e => setSenha(e.target.value)}
-            error={!!erro}
-            helperText={erro || ' '}
+            disabled={desabilitado}
             InputProps={{
               startAdornment: (
                 <InputAdornment position="start">
-                  <KeyOutlinedIcon color="action" />
+                  <KeyOutlinedIcon fontSize="small" />
                 </InputAdornment>
               ),
               endAdornment: (
                 <InputAdornment position="end">
                   <IconButton
-                    aria-label="alternar visibilidade da senha"
-                    onClick={handleClickShowPassword}
-                    onMouseDown={handleMouseDownPassword}
+                    aria-label="mostrar ou ocultar senha"
+                    onClick={handleClickMostrarSenha}
+                    onMouseDown={handleMouseDownSenha}
                     edge="end"
                   >
-                    {showPassword ? <VisibilityOff /> : <Visibility />}
+                    {showPassword ? (
+                      <VisibilityOff fontSize="small" />
+                    ) : (
+                      <Visibility fontSize="small" />
+                    )}
                   </IconButton>
                 </InputAdornment>
               ),
@@ -281,69 +268,69 @@ const LoginPage: React.FC = () => {
 
           <Box
             sx={{
-              mt: 0.5,
-              mb: 1,
               display: 'flex',
-              alignItems: 'center',
               justifyContent: 'space-between',
+              alignItems: 'center',
+              mt: 1,
+              mb: 2,
             }}
           >
             <FormControlLabel
               control={
                 <Checkbox
-                  color="primary"
                   checked={rememberMe}
                   onChange={e => setRememberMe(e.target.checked)}
+                  color="primary"
+                  disabled={desabilitado}
                 />
               }
-              label="Lembrar usuário"
+              label="Lembrar de mim neste dispositivo"
             />
-
             <Link
-              href="#"
-              variant="body2"
-              sx={{ fontSize: 13 }}
-              onClick={e => {
-                e.preventDefault()
-                setModalRecuperarAberta(true)
-              }}
+              component="button"
+              type="button"
+              onClick={handleEsqueciSenha}
+              sx={{ fontSize: '0.85rem' }}
+              disabled={desabilitado}
             >
               Esqueceu a senha?
             </Link>
           </Box>
 
+          {erro && (
+            <Box sx={{ mb: 2 }}>
+              <Typography
+                variant="body2"
+                color="error"
+                sx={{ fontWeight: 500, textAlign: 'center' }}
+              >
+                {erro}
+              </Typography>
+            </Box>
+          )}
+
           <Button
             type="submit"
             fullWidth
-            disabled={loading}
             variant="contained"
-            startIcon={!loading ? <LoginIcon /> : undefined}
+            disabled={desabilitado}
+            startIcon={
+              desabilitado ? (
+                <CircularProgress color="inherit" size={18} />
+              ) : (
+                <LoginIcon />
+              )
+            }
             sx={{
-              mt: 2,
-              mb: 1.5,
-              py: 1.1,
-              borderRadius: 2,
+              mt: 1,
+              mb: 2,
+              py: 1.2,
+              fontWeight: 700,
               textTransform: 'none',
-              fontWeight: 600,
             }}
           >
-            {loading ? (
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <CircularProgress size={18} />
-                <span>Entrando...</span>
-              </Box>
-            ) : (
-              'Entrar'
-            )}
+            {desabilitado ? <span>Entrando...</span> : <span>Entrar</span>}
           </Button>
-
-          <Typography
-            variant="caption"
-            color="text.secondary"
-            sx={{ display: 'block', textAlign: 'center' }}
-          >
-            Acesso restrito a usuários autorizados.
-          </Typography>
         </Box>
       </Box>
 
