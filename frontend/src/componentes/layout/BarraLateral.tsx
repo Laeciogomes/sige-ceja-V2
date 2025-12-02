@@ -1,4 +1,4 @@
-// frontend/src/componentes/layout/BarraLateral.tsx
+// src/componentes/layout/BarraLateral.tsx
 import React from 'react'
 import {
   List,
@@ -9,8 +9,8 @@ import {
   useTheme,
 } from '@mui/material'
 import { useLocation, useNavigate } from 'react-router-dom'
-// Importa a configuração do menu que você já tem
 import { itensMenu, type ItemMenuConfig } from '../../config/menu'
+import { useAuth } from '../../contextos/AuthContext'
 
 interface BarraLateralProps {
   aberta: boolean
@@ -20,86 +20,106 @@ const BarraLateral: React.FC<BarraLateralProps> = ({ aberta }) => {
   const theme = useTheme()
   const navigate = useNavigate()
   const location = useLocation()
+  const { usuario } = useAuth()
 
-  // Função auxiliar para verificar rota ativa
   const rotaAtiva = (caminho: string) => {
     if (caminho === '/') return location.pathname === '/'
     return location.pathname.startsWith(caminho)
   }
 
-  // Definições de cores (Laranja da identidade visual)
   const laranja = '#F7941D'
-
-  const hoverBg =
-    theme.palette.mode === 'dark'
-      ? 'rgba(247, 148, 29, 0.25)'
-      : 'rgba(247, 148, 29, 0.12)'
-
   const ativoBg =
-    theme.palette.mode === 'dark'
-      ? 'rgba(247, 148, 29, 0.35)'
-      : 'rgba(247, 148, 29, 0.18)'
+    theme.palette.mode === 'light'
+      ? 'rgba(247, 148, 29, 0.12)'
+      : 'rgba(247, 148, 29, 0.22)'
+  const hoverBg =
+    theme.palette.mode === 'light'
+      ? 'rgba(247, 148, 29, 0.08)'
+      : 'rgba(247, 148, 29, 0.16)'
+
+  const itensVisiveis: ItemMenuConfig[] = React.useMemo(() => {
+    // Enquanto não houver papel carregado, mostra só Dashboard
+    if (!usuario?.papel) {
+      return itensMenu.filter(item => item.caminho === '/')
+    }
+
+    const papelAtual = usuario.papel
+
+    return itensMenu.filter(item => {
+      // Dashboard sempre visível
+      if (item.caminho === '/') return true
+
+      // Se o item não exige papel específico, libera
+      if (!item.papeisPermitidos) return true
+
+      // Aqui TypeScript já sabe que papelAtual é definido
+      return item.papeisPermitidos.includes(papelAtual)
+    })
+  }, [usuario])
 
   return (
-    <List sx={{ py: 1 }}>
-      {itensMenu.map((item: ItemMenuConfig) => {
+    <List
+      sx={{
+        py: 1,
+        px: aberta ? 1 : 0.5,
+      }}
+    >
+      {itensVisiveis.map((item: ItemMenuConfig) => {
         const ativo = rotaAtiva(item.caminho)
 
-        return (
-          <Tooltip
+        const conteudo = (
+          <ListItemButton
             key={item.caminho}
-            title={!aberta ? item.rotulo : ''} // Mostra tooltip apenas se fechado
-            placement="right"
-            arrow
-          >
-            <ListItemButton
-              selected={ativo}
-              onClick={() => navigate(item.caminho)}
-              sx={{
-                px: aberta ? 2.5 : 1, // Padding dinâmico
-                justifyContent: aberta ? 'flex-start' : 'center', // Centraliza ícone se fechado
-                borderRadius: 2,
-                mb: 0.5, // Pequeno espaço entre itens
-                transition: theme.transitions.create(
-                  ['background-color', 'transform', 'padding'],
-                  { duration: theme.transitions.duration.shortest },
-                ),
-                bgcolor: ativo ? ativoBg : 'transparent',
-                '&:hover': {
-                  bgcolor: hoverBg,
-                  transform: 'translateX(2px)',
+            selected={ativo}
+            onClick={() => navigate(item.caminho)}
+            sx={{
+              my: 0.2,
+              borderRadius: 2,
+              transition: theme.transitions.create(
+                ['background-color', 'transform'],
+                {
+                  duration: theme.transitions.duration.shortest,
                 },
+              ),
+              bgcolor: ativo ? ativoBg : 'transparent',
+              '&:hover': {
+                bgcolor: hoverBg,
+                transform: 'translateX(2px)',
+              },
+            }}
+          >
+            <ListItemIcon
+              sx={{
+                minWidth: aberta ? 36 : 'auto',
+                mr: aberta ? 1.5 : 0,
+                justifyContent: 'center',
+                color: ativo ? laranja : theme.palette.text.secondary,
               }}
             >
-              {/* Ícone */}
-              <ListItemIcon
-                sx={{
-                  minWidth: aberta ? 36 : 'auto',
-                  mr: aberta ? 1.5 : 0,
-                  justifyContent: 'center',
-                  color: ativo ? laranja : theme.palette.text.secondary,
-                }}
-              >
-                {item.icone}
-              </ListItemIcon>
+              {item.icone}
+            </ListItemIcon>
 
-              {/* Texto (Só renderiza se estiver aberto para performance e layout) */}
+            {aberta && (
               <ListItemText
                 primary={item.rotulo}
                 primaryTypographyProps={{
-                  variant: 'body2',
-                  sx: { fontWeight: ativo ? 600 : 400 },
-                }}
-                sx={{
-                  display: aberta ? 'block' : 'none',
-                  opacity: aberta ? 1 : 0,
+                  fontSize: 14,
+                  fontWeight: ativo ? 700 : 500,
                   whiteSpace: 'nowrap',
-                  '& .MuiListItemText-primary': {
-                    color: ativo ? laranja : theme.palette.text.primary,
-                  },
+                  color: ativo ? laranja : theme.palette.text.primary,
                 }}
               />
-            </ListItemButton>
+            )}
+          </ListItemButton>
+        )
+
+        if (aberta) {
+          return conteudo
+        }
+
+        return (
+          <Tooltip key={item.caminho} title={item.rotulo} placement="right">
+            {conteudo}
           </Tooltip>
         )
       })}

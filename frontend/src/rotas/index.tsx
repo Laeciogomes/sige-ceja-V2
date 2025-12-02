@@ -10,6 +10,13 @@ import { PaginaSimples } from '../paginas/PaginaSimples'
 import PerfilPage from '../paginas/Perfil/PerfilPage'
 import ConfiguracoesPage from '../paginas/Configuracoes/ConfiguracoesPage'
 import { useAuth } from '../contextos/AuthContext'
+import { RotaPorPapel } from '../componentes/navegacao/RotaPorPapel'
+
+import SecretariaLayout from '../paginas/Secretaria/SecretariaLayout'
+import SecretariaUsuariosPage from '../paginas/Secretaria/SecretariaUsuariosPage'
+import SecretariaTurmasPage from '../paginas/Secretaria/SecretariaTurmasPage'
+import SecretariaMatriculasPage from '../paginas/Secretaria/SecretariaMatriculasPage'
+import SecretariaRelatoriosFichasPage from '../paginas/Secretaria/SecretariaRelatoriosFichasPage'
 
 export const AppRoutes: React.FC = () => {
   const { usuario } = useAuth()
@@ -33,11 +40,30 @@ export const AppRoutes: React.FC = () => {
           autenticado ? <RootLayout /> : <Navigate to="/login" replace />
         }
       >
+        {/* Dashboard geral */}
         <Route index element={<DashboardPage />} />
+
+        {/* SECRETARIA – apenas SECRETARIA e ADMIN */}
         <Route
           path="secretaria"
-          element={<PaginaSimples titulo="Secretaria" />}
-        />
+          element={
+            <RotaPorPapel papeisPermitidos={['SECRETARIA', 'ADMIN']}>
+              <SecretariaLayout />
+            </RotaPorPapel>
+          }
+        >
+          {/* Ao acessar /secretaria, cai em Matrículas por padrão */}
+          <Route index element={<Navigate to="matriculas" replace />} />
+          <Route path="usuarios" element={<SecretariaUsuariosPage />} />
+          <Route path="turmas" element={<SecretariaTurmasPage />} />
+          <Route path="matriculas" element={<SecretariaMatriculasPage />} />
+          <Route
+            path="relatorios-fichas"
+            element={<SecretariaRelatoriosFichasPage />}
+          />
+        </Route>
+
+        {/* Outras áreas ainda em construção */}
         <Route
           path="professores"
           element={<PaginaSimples titulo="Professores" />}
