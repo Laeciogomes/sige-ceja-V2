@@ -631,7 +631,9 @@ const PerfilPage: React.FC = () => {
     return (
       <Box
         sx={{
-          width: '100%',
+          maxWidth: 1600,
+          mx: 'auto',
+          p: { xs: 0, md: 1 },
           minHeight: '60vh',
           display: 'flex',
           justifyContent: 'center',
@@ -648,12 +650,13 @@ const PerfilPage: React.FC = () => {
     return (
       <Box
         sx={{
-          width: '100%',
+          maxWidth: 1600,
+          mx: 'auto',
+          p: { xs: 0, md: 1 },
           minHeight: '60vh',
           display: 'flex',
           justifyContent: 'center',
           alignItems: 'center',
-          px: 2,
           boxSizing: 'border-box',
         }}
       >
@@ -664,18 +667,16 @@ const PerfilPage: React.FC = () => {
     )
   }
 
-  // --------- Render ---------
+  // --------- Render (mesmo container da Dashboard) ---------
 
   return (
     <Box
       sx={{
-        width: '100%',
-        maxWidth: 1000,
+        maxWidth: 1600,
         mx: 'auto',
-        px: { xs: 1.5, sm: 2, md: 2 },
+        p: { xs: 0, md: 1 },
         pb: 10,
         boxSizing: 'border-box',
-        overflowX: 'hidden',
       }}
     >
       {/* Toast */}
@@ -702,7 +703,6 @@ const PerfilPage: React.FC = () => {
         elevation={0}
         sx={{
           width: '100%',
-          mx: { xs: 0.5, sm: 0 },   // margem lateral em telas pequenas
           p: { xs: 2, sm: 3 },
           mb: 3,
           display: 'flex',
@@ -759,7 +759,6 @@ const PerfilPage: React.FC = () => {
         variant="outlined"
         sx={{
           width: '100%',
-          mx: { xs: 0.5, sm: 0 },  // mesma margem do header
           borderRadius: 3,
           overflow: 'hidden',
           boxSizing: 'border-box',
@@ -815,7 +814,7 @@ const PerfilPage: React.FC = () => {
               if (form) mutation.mutate(form)
             }}
             sx={{
-              px: { xs: 1.5, md: 3 },
+              px: { xs: 2, md: 3 },
               width: '100%',
               boxSizing: 'border-box',
             }}
@@ -940,7 +939,7 @@ const PerfilPage: React.FC = () => {
               if (form) mutation.mutate(form)
             }}
             sx={{
-              px: { xs: 1.5, md: 3 },
+              px: { xs: 2, md: 3 },
               width: '100%',
               boxSizing: 'border-box',
             }}
@@ -1005,7 +1004,7 @@ const PerfilPage: React.FC = () => {
         <TabPanel value={tabValue} index={2}>
           <Box
             sx={{
-              px: { xs: 1.5, md: 3 },
+              px: { xs: 2, md: 3 },
               width: '100%',
               boxSizing: 'border-box',
             }}
@@ -1105,7 +1104,7 @@ const PerfilPage: React.FC = () => {
           <Box
             component="form"
             sx={{
-              px: { xs: 1.5, md: 3 },
+              px: { xs: 2, md: 3 },
               pb: 2,
               width: '100%',
               maxWidth: 500,
