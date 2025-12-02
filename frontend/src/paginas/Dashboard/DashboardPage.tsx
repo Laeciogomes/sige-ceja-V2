@@ -511,7 +511,7 @@ const DashboardPage: React.FC = () => {
             fontWeight={800}
             sx={{ color: 'text.primary', mb: 0.5 }}
           >
-            Olá, {primeiroNome}! 👋
+            Olá, {primeiroNome}
           </Typography>
           <Stack direction="row" alignItems="center" spacing={1}>
             <CalendarTodayIcon sx={{ fontSize: 16, color: 'text.secondary' }} />
