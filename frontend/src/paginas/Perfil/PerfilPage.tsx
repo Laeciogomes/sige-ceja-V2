@@ -22,6 +22,7 @@ import {
   useTheme,
   GridLegacy as Grid,
   Snackbar,
+  useMediaQuery,
 } from '@mui/material'
 
 import {
@@ -33,8 +34,8 @@ import {
   Home as HomeIcon,
   Security as SecurityIcon,
   PhotoCameraFront as PhotoIcon,
+  Cameraswitch as CameraswitchIcon,
 } from '@mui/icons-material'
-import CameraswitchIcon from '@mui/icons-material/Cameraswitch'
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 
@@ -88,8 +89,6 @@ type FormPerfil = {
   instagram_url: string
 }
 
-// ---------------- Tabs / helpers ----------------
-
 interface TabPanelProps {
   children?: React.ReactNode
   index: number
@@ -141,16 +140,14 @@ const slugify = (value: string) =>
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/[^a-zA-Z0-9._-]/g, '_')
 
-// Toast local
 type ToastSeverity = 'success' | 'error' | 'warning'
-
-// tipo de câmera (para web)
-type TipoCamera = 'user' | 'environment'
 
 // ---------------- Componente principal ----------------
 
 const PerfilPage: React.FC = () => {
   const theme = useTheme()
+  const isSmall = useMediaQuery(theme.breakpoints.down('sm'))
+
   const { usuario } = useAuth()
   const { supabase } = useSupabase()
   const queryClient = useQueryClient()
@@ -172,30 +169,18 @@ const PerfilPage: React.FC = () => {
     setToast(prev => (prev ? { ...prev, open: false } : prev))
   }
 
-  // Detecção simples de mobile (pra decidir entre câmera nativa x webcam)
-  const [isMobile, setIsMobile] = useState(false)
-  useEffect(() => {
-    if (typeof navigator !== 'undefined') {
-      setIsMobile(
-        /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
-          navigator.userAgent,
-        ),
-      )
-    }
-  }, [])
-
-  // Upload / câmera
+  // Upload avatar
   const [uploadingAvatar, setUploadingAvatar] = useState(false)
   const fileInputGaleriaRef = useRef<HTMLInputElement | null>(null)
-  const cameraInputRef = useRef<HTMLInputElement | null>(null)
+  const fileInputCameraMobileRef = useRef<HTMLInputElement | null>(null)
 
-  // Webcam (desktop)
+  // Câmera desktop (WebRTC)
   const [cameraAberta, setCameraAberta] = useState(false)
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
-  const [tipoCamera, setTipoCamera] = useState<TipoCamera>('user')
-  const [cameraDevices, setCameraDevices] = useState<MediaDeviceInfo[]>([])
-  const [cameraIndex, setCameraIndex] = useState(0)
+  const [cameraErro, setCameraErro] = useState<string | null>(null)
+  const [videoDevices, setVideoDevices] = useState<MediaDeviceInfo[]>([])
+  const [currentDeviceId, setCurrentDeviceId] = useState<string | null>(null)
 
   // Senha
   const [senhaData, setSenhaData] = useState({ atual: '', nova: '', conf: '' })
@@ -206,7 +191,7 @@ const PerfilPage: React.FC = () => {
   })
   const [loadingSenha, setLoadingSenha] = useState(false)
 
-  // --------- Query: carregar perfil ---------
+  // --------- Query perfil ---------
 
   const {
     data: perfil,
@@ -253,10 +238,11 @@ const PerfilPage: React.FC = () => {
   }, [perfil])
 
   useEffect(() => {
-    if (isError) showToast('error', 'Erro ao carregar os dados do perfil.')
+    if (isError) {
+      showToast('error', 'Erro ao carregar os dados do perfil.')
+    }
   }, [isError])
 
-  // Som dos toasts
   useEffect(() => {
     if (toast?.open) {
       const audioMap: Record<ToastSeverity, string> = {
@@ -285,13 +271,11 @@ const PerfilPage: React.FC = () => {
       setForm(prev => (prev ? { ...prev, [campo]: valor } : prev))
     }
 
-  // --------- Mutation: salvar perfil ---------
+  // --------- Mutation salvar perfil ---------
 
   const mutation = useMutation({
     mutationFn: async (dados: FormPerfil) => {
-      if (!usuario || !supabase) {
-        throw new Error('Erro de conexão com Supabase.')
-      }
+      if (!usuario || !supabase) throw new Error('Erro de conexão com Supabase.')
 
       const payload = {
         ...dados,
@@ -321,8 +305,7 @@ const PerfilPage: React.FC = () => {
       if (error) throw error
       if (!data || data.length === 0) {
         throw new Error(
-          `Nenhum registro foi atualizado na tabela "usuarios" para o id ${usuario.id}. ` +
-            'Verifique se as policies de RLS permitem UPDATE.',
+          `Nenhum registro foi atualizado na tabela "usuarios" para o id ${usuario.id}.`,
         )
       }
 
@@ -348,11 +331,8 @@ const PerfilPage: React.FC = () => {
         facebook_url: data.facebook_url ?? '',
         instagram_url: data.instagram_url ?? '',
       })
-
       showToast('success', 'Perfil atualizado com sucesso!')
-      queryClient.invalidateQueries({
-        queryKey: ['perfil-usuario', usuario?.id],
-      })
+      queryClient.invalidateQueries({ queryKey: ['perfil-usuario', usuario?.id] })
     },
     onError: (error: any) => {
       console.error('[PerfilPage] erro ao salvar perfil', error)
@@ -364,9 +344,9 @@ const PerfilPage: React.FC = () => {
     },
   })
 
-  // --------- CÂMERA (web) ---------
+  // --------- Câmera desktop (WebRTC) ---------
 
-  const limparStream = () => {
+  const stopStream = () => {
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(track => track.stop())
       streamRef.current = null
@@ -376,143 +356,155 @@ const PerfilPage: React.FC = () => {
     }
   }
 
-  useEffect(() => {
-    return () => {
-      limparStream()
-    }
-  }, [])
+  const abrirCameraDesktop = () => {
+    const isLocalhost =
+      window.location.hostname === 'localhost' ||
+      window.location.hostname === '127.0.0.1'
 
-  const atualizarListaCameras = async () => {
-    try {
-      if (!navigator.mediaDevices?.enumerateDevices) return
-      const devices = await navigator.mediaDevices.enumerateDevices()
-      const videos = devices.filter(
-        d => d.kind === 'videoinput',
-      ) as MediaDeviceInfo[]
-      setCameraDevices(videos)
-      if (videos.length > 0 && cameraIndex >= videos.length) {
-        setCameraIndex(0)
-      }
-    } catch (e) {
-      console.warn('[PerfilPage] erro ao listar câmeras:', e)
-    }
-  }
-
-  const iniciarStream = async (options?: {
-    facing?: TipoCamera
-    deviceId?: string
-  }) => {
-    if (!navigator.mediaDevices?.getUserMedia) {
-      showToast('warning', 'Navegador sem suporte a câmera.')
-      console.error('[PerfilPage] getUserMedia indisponível')
+    if (!window.isSecureContext && !isLocalhost) {
+      showToast(
+        'warning',
+        'Para usar a câmera, acesse o sistema via HTTPS ou em localhost.',
+      )
       return
     }
 
-    try {
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach(t => t.stop())
-        streamRef.current = null
-      }
-
-      const videoConstraints: MediaTrackConstraints = {}
-
-      if (options?.deviceId) {
-        videoConstraints.deviceId = { exact: options.deviceId }
-      } else if (options?.facing) {
-        videoConstraints.facingMode = options.facing
-      }
-
-      let stream: MediaStream
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: Object.keys(videoConstraints).length
-            ? videoConstraints
-            : true,
-        } as MediaStreamConstraints)
-      } catch (e) {
-        console.warn(
-          '[PerfilPage] getUserMedia com constraints específicas falhou, usando vídeo genérico:',
-          e,
-        )
-        stream = await navigator.mediaDevices.getUserMedia({ video: true })
-      }
-
-      streamRef.current = stream
-
-      if (videoRef.current) {
-        try {
-          ;(videoRef.current as any).srcObject = stream
-          await videoRef.current
-            .play()
-            .catch(err =>
-              console.warn('[PerfilPage] video.play() falhou:', err),
-            )
-        } catch (e) {
-          console.error(
-            '[PerfilPage] erro ao associar stream ao vídeo:',
-            e,
-          )
-        }
-      }
-
-      if (!cameraDevices.length) {
-        atualizarListaCameras()
-      }
-    } catch (e) {
-      console.error('[PerfilPage] erro ao acessar câmera:', e)
-      showToast(
-        'error',
-        'Erro ao acessar câmera. Verifique permissões do navegador e se está em HTTPS ou localhost.',
-      )
-      limparStream()
-    }
-  }
-
-  // DESKTOP: sempre abre modal e tenta iniciar stream
-  const abrirCameraWeb = async () => {
+    setCameraErro(null)
     setCameraAberta(true)
-    await iniciarStream({ facing: tipoCamera })
-  }
-
-  const alternarCamera = async () => {
-    if (cameraDevices.length >= 2) {
-      const novoIndex = (cameraIndex + 1) % cameraDevices.length
-      setCameraIndex(novoIndex)
-      const deviceId = cameraDevices[novoIndex].deviceId
-      await iniciarStream({ deviceId })
-    } else {
-      const novo = tipoCamera === 'user' ? 'environment' : 'user'
-      setTipoCamera(novo)
-      await iniciarStream({ facing: novo })
-    }
   }
 
   const fecharCamera = () => {
     setCameraAberta(false)
-    limparStream()
+    setCameraErro(null)
+    stopStream()
   }
+
+  const alternarCamera = () => {
+    if (videoDevices.length < 2) {
+      showToast(
+        'warning',
+        'Não há outra câmera disponível neste dispositivo para alternar.',
+      )
+      return
+    }
+
+    const atualIndex = videoDevices.findIndex(d => d.deviceId === currentDeviceId)
+    const proximoIndex =
+      atualIndex === -1
+        ? 1
+        : (atualIndex + 1) % videoDevices.length
+
+    setCurrentDeviceId(videoDevices[proximoIndex].deviceId)
+  }
+
+  useEffect(() => {
+    const iniciarCamera = async () => {
+      if (!cameraAberta || isSmall) return
+
+      if (!navigator.mediaDevices?.getUserMedia) {
+        const msg = 'Navegador sem suporte a câmera.'
+        setCameraErro(msg)
+        showToast('warning', msg)
+        return
+      }
+
+      try {
+        stopStream()
+
+        const constraints: MediaStreamConstraints = currentDeviceId
+          ? {
+              video: {
+                deviceId: { exact: currentDeviceId },
+              } as any,
+            }
+          : { video: true }
+
+        const stream = await navigator.mediaDevices.getUserMedia(constraints)
+        streamRef.current = stream
+
+        if (!videoDevices.length) {
+          const devices = await navigator.mediaDevices.enumerateDevices()
+          const vids = devices.filter(d => d.kind === 'videoinput')
+          setVideoDevices(vids)
+
+          const track = stream.getVideoTracks()[0]
+          const settings = track.getSettings()
+          if (settings.deviceId) {
+            setCurrentDeviceId(settings.deviceId)
+          }
+        }
+
+        if (videoRef.current) {
+          ;(videoRef.current as any).srcObject = stream
+          try {
+            await videoRef.current.play()
+          } catch (err) {
+            console.warn('[PerfilPage] video.play() falhou:', err)
+          }
+        }
+
+        setCameraErro(null)
+      } catch (e: any) {
+        console.error('[PerfilPage] erro ao acessar câmera:', e)
+
+        let msg = 'Erro ao acessar câmera.'
+        const name = e?.name || e?.constructor?.name
+
+        if (name === 'NotAllowedError' || name === 'SecurityError') {
+          msg =
+            'Permissão de câmera negada ou bloqueada. Verifique as permissões do navegador.'
+        } else if (name === 'NotFoundError' || name === 'OverconstrainedError') {
+          msg = 'Nenhuma câmera compatível foi encontrada neste dispositivo.'
+        } else if (
+          window.location.protocol !== 'https:' &&
+          window.location.hostname !== 'localhost'
+        ) {
+          msg = 'A câmera exige HTTPS ou localhost. Verifique a URL de acesso.'
+        }
+
+        setCameraErro(msg)
+        showToast('error', msg)
+      }
+    }
+
+    iniciarCamera()
+
+    return () => {
+      if (!cameraAberta) {
+        stopStream()
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cameraAberta, currentDeviceId, isSmall])
+
+  useEffect(() => {
+    return () => {
+      stopStream()
+    }
+  }, [])
 
   const capturarFotoDaCamera = () => {
     if (!videoRef.current || !form) return
     const video = videoRef.current
-    const w = video.videoWidth || 0
-    const h = video.videoHeight || 0
 
-    if (!w || !h) {
+    const videoWidth = video.videoWidth || 0
+    const videoHeight = video.videoHeight || 0
+
+    if (!videoWidth || !videoHeight) {
       showToast(
         'warning',
-        'A câmera ainda está iniciando. Aguarde 1–2 segundos e tente novamente.',
+        'A câmera ainda está iniciando. Aguarde 1–2 segundos antes de tirar a foto.',
       )
       return
     }
 
     const canvas = document.createElement('canvas')
-    canvas.width = w
-    canvas.height = h
+    canvas.width = videoWidth
+    canvas.height = videoHeight
     const ctx = canvas.getContext('2d')
     if (!ctx) return
 
-    ctx.drawImage(video, 0, 0, w, h)
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
 
     canvas.toBlob(
       blob => {
@@ -527,7 +519,7 @@ const PerfilPage: React.FC = () => {
     )
   }
 
-  // --------- Upload de avatar (galeria + nativo mobile + webcam desktop) ---------
+  // --------- Upload avatar ---------
 
   const uploadAvatar = async (file: File) => {
     if (!supabase || !usuario || !form) return
@@ -581,6 +573,14 @@ const PerfilPage: React.FC = () => {
     }
   }
 
+  const handleCliqueCamera = () => {
+    if (isSmall) {
+      fileInputCameraMobileRef.current?.click()
+    } else {
+      abrirCameraDesktop()
+    }
+  }
+
   // --------- Alteração de senha ---------
 
   const handleAlterarSenha = async () => {
@@ -623,7 +623,7 @@ const PerfilPage: React.FC = () => {
     }
   }
 
-  // --------- Estados de carregamento / erro global ---------
+  // --------- Loading / erro global ---------
 
   if (isLoading || !form || !perfil) {
     return (
@@ -648,12 +648,11 @@ const PerfilPage: React.FC = () => {
       sx={{
         maxWidth: 1000,
         mx: 'auto',
-        pb: 5,
-        px: { xs: 1.5, sm: 2, md: 0 },
-        overflowX: 'hidden',
+        pb: 8,                         // mais espaço no fim pra não “colidir” com a barra do navegador
+        px: { xs: 1.5, sm: 2, md: 2 }, // margem lateral em telas pequenas
       }}
     >
-      {/* Toast flutuante */}
+      {/* Toast */}
       {toast && toast.open && (
         <Snackbar
           open={true}
@@ -672,19 +671,20 @@ const PerfilPage: React.FC = () => {
         </Snackbar>
       )}
 
-      {/* Header Visual */}
+      {/* Header */}
       <Paper
         elevation={0}
         sx={{
           p: { xs: 2, sm: 3 },
           mb: 3,
+          mx: { xs: 0.5, sm: 1 },      // “entra” um pouco para não encostar na borda da tela
           display: 'flex',
           flexDirection: { xs: 'column', sm: 'row' },
           alignItems: { xs: 'flex-start', sm: 'center' },
           gap: 2,
           bgcolor: theme.palette.primary.main,
           color: 'white',
-          borderRadius: 2,
+          borderRadius: 3,
         }}
       >
         <Avatar
@@ -726,13 +726,20 @@ const PerfilPage: React.FC = () => {
         </Box>
       </Paper>
 
-      {/* Sistema de Abas */}
-      <Paper variant="outlined" sx={{ overflow: 'hidden' }}>
+      {/* Abas + conteúdo principal em um card separado */}
+      <Paper
+        variant="outlined"
+        sx={{
+          mx: { xs: 0.5, sm: 1 },
+          borderRadius: 3,
+          overflow: 'hidden',
+        }}
+      >
         <Tabs
           value={tabValue}
           onChange={handleTabChange}
-          variant="scrollable"
-          scrollButtons="auto"
+          variant={isSmall ? 'fullWidth' : 'scrollable'}
+          scrollButtons={isSmall ? false : 'auto'}
           sx={{
             borderBottom: 1,
             borderColor: 'divider',
@@ -741,11 +748,11 @@ const PerfilPage: React.FC = () => {
         >
           <Tab icon={<PersonIcon />} iconPosition="start" label="Dados Pessoais" />
           <Tab icon={<HomeIcon />} iconPosition="start" label="Endereço" />
-          <Tab icon={<PhotoIcon />} iconPosition="start" label="Foto & Social" />
+          <Tab icon={<PhotoIcon />} iconPosition="start" label="Foto / Social" />
           <Tab icon={<SecurityIcon />} iconPosition="start" label="Segurança" />
         </Tabs>
 
-        {/* --- ABA 1: DADOS PESSOAIS --- */}
+        {/* Dados Pessoais */}
         <TabPanel value={tabValue} index={0}>
           <Box
             component="form"
@@ -753,7 +760,7 @@ const PerfilPage: React.FC = () => {
               e.preventDefault()
               if (form) mutation.mutate(form)
             }}
-            sx={{ px: { xs: 1, md: 2 } }}
+            sx={{ px: { xs: 1.5, md: 3 } }}
           >
             <Grid container spacing={2}>
               <Grid item xs={12} md={6}>
@@ -866,7 +873,7 @@ const PerfilPage: React.FC = () => {
           </Box>
         </TabPanel>
 
-        {/* --- ABA 2: ENDEREÇO --- */}
+        {/* Endereço */}
         <TabPanel value={tabValue} index={1}>
           <Box
             component="form"
@@ -874,7 +881,7 @@ const PerfilPage: React.FC = () => {
               e.preventDefault()
               if (form) mutation.mutate(form)
             }}
-            sx={{ px: { xs: 1, md: 2 } }}
+            sx={{ px: { xs: 1.5, md: 3 } }}
           >
             <Grid container spacing={2}>
               <Grid item xs={12} md={6}>
@@ -932,9 +939,9 @@ const PerfilPage: React.FC = () => {
           </Box>
         </TabPanel>
 
-        {/* --- ABA 3: FOTO & SOCIAL --- */}
+        {/* Foto & Social */}
         <TabPanel value={tabValue} index={2}>
-          <Box sx={{ px: { xs: 1, md: 2 } }}>
+          <Box sx={{ px: { xs: 1.5, md: 3 } }}>
             <Grid container spacing={3}>
               <Grid item xs={12} md={4} sx={{ textAlign: 'center' }}>
                 <Typography variant="subtitle2" gutterBottom>
@@ -961,11 +968,7 @@ const PerfilPage: React.FC = () => {
                   <Button
                     variant="outlined"
                     size="small"
-                    onClick={
-                      isMobile
-                        ? () => cameraInputRef.current?.click()
-                        : abrirCameraWeb
-                    }
+                    onClick={handleCliqueCamera}
                     startIcon={<PhotoCamera />}
                   >
                     Câmera
@@ -982,24 +985,23 @@ const PerfilPage: React.FC = () => {
                   hidden
                   accept="image/*"
                   onChange={e => {
-                    const file = e.target.files?.[0]
-                    if (file) uploadAvatar(file)
+                    if (e.target.files?.[0]) uploadAvatar(e.target.files[0])
                   }}
                 />
 
                 {/* Câmera nativa (mobile) */}
                 <input
-                  ref={cameraInputRef}
+                  ref={fileInputCameraMobileRef}
                   type="file"
                   hidden
                   accept="image/*"
                   capture="environment"
                   onChange={e => {
-                    const file = e.target.files?.[0]
-                    if (file) uploadAvatar(file)
+                    if (e.target.files?.[0]) uploadAvatar(e.target.files[0])
                   }}
                 />
               </Grid>
+
               <Grid item xs={12} md={8}>
                 <Stack spacing={2}>
                   <TextField
@@ -1030,17 +1032,16 @@ const PerfilPage: React.FC = () => {
           </Box>
         </TabPanel>
 
-        {/* --- ABA 4: SEGURANÇA --- */}
+        {/* Segurança */}
         <TabPanel value={tabValue} index={3}>
           <Box
             component="form"
-            sx={{ maxWidth: 500, px: { xs: 1, md: 2 } }}
+            sx={{ maxWidth: 500, px: { xs: 1.5, md: 3 } }}
             onSubmit={e => {
               e.preventDefault()
               handleAlterarSenha()
             }}
           >
-            {/* campo oculto para autocomplete de username */}
             <input
               type="text"
               name="username"
@@ -1155,73 +1156,77 @@ const PerfilPage: React.FC = () => {
         </TabPanel>
       </Paper>
 
-      {/* Modal da câmera (web / desktop) */}
-      <Dialog
-        open={cameraAberta}
-        onClose={fecharCamera}
-        fullWidth
-        maxWidth="sm"
-      >
-        <DialogTitle
-          sx={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            pr: 1,
-          }}
+      {/* Modal da câmera - apenas desktop */}
+      {!isSmall && (
+        <Dialog
+          open={cameraAberta}
+          onClose={fecharCamera}
+          fullWidth
+          maxWidth="sm"
         >
-          Usar câmera
-          <IconButton
-            size="small"
-            onClick={alternarCamera}
-            aria-label="Trocar câmera frontal/traseira"
-          >
-            <CameraswitchIcon />
-          </IconButton>
-        </DialogTitle>
-        <DialogContent>
-          <Box
+          <DialogTitle>Usar câmera</DialogTitle>
+          <DialogContent>
+            <Box
+              sx={{
+                mt: 1,
+                borderRadius: 2,
+                overflow: 'hidden',
+                bgcolor: 'black',
+                height: { xs: 260, sm: 320 },
+                position: 'relative',
+              }}
+            >
+              <video
+                ref={videoRef}
+                autoPlay
+                muted
+                playsInline
+                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+              />
+              {cameraErro && (
+                <Box
+                  sx={{
+                    position: 'absolute',
+                    inset: 0,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    px: 2,
+                    textAlign: 'center',
+                    color: 'white',
+                    bgcolor: 'rgba(0,0,0,0.6)',
+                  }}
+                >
+                  <Typography variant="body2">{cameraErro}</Typography>
+                </Box>
+              )}
+            </Box>
+          </DialogContent>
+          <DialogActions
             sx={{
-              mt: 1,
-              borderRadius: 2,
-              overflow: 'hidden',
-              bgcolor: 'black',
-              height: { xs: 260, sm: 320 },
+              justifyContent: 'space-between',
+              flexWrap: 'wrap',
+              gap: 1,
+              px: 3,
+              pb: 2,
             }}
           >
-            <video
-              ref={el => {
-                videoRef.current = el
-                if (el && streamRef.current) {
-                  try {
-                    ;(el as any).srcObject = streamRef.current
-                    el
-                      .play()
-                      .catch(err =>
-                        console.warn('[PerfilPage] video.play() falhou:', err),
-                      )
-                  } catch (e) {
-                    console.error(
-                      '[PerfilPage] erro ao associar stream ao vídeo:',
-                      e,
-                    )
-                  }
-                }
-              }}
-              autoPlay
-              muted
-              playsInline
-              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-            />
-          </Box>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={fecharCamera}>Cancelar</Button>
-          <Button variant="contained" onClick={capturarFotoDaCamera}>
-            Tirar foto
-          </Button>
-        </DialogActions>
-      </Dialog>
+            <Button onClick={fecharCamera}>Cancelar</Button>
+
+            <Button
+              onClick={alternarCamera}
+              startIcon={<CameraswitchIcon />}
+              disabled={videoDevices.length < 2}
+            >
+              Trocar câmera
+            </Button>
+
+            <Button variant="contained" onClick={capturarFotoDaCamera}>
+              Tirar foto
+            </Button>
+          </DialogActions>
+        </Dialog>
+      )}
     </Box>
   )
 }
