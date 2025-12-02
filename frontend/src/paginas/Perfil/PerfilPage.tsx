@@ -39,7 +39,6 @@ import {
   PhotoCameraFront as PhotoIcon,
   Cameraswitch as CameraswitchIcon,
 } from '@mui/icons-material'
-
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 
 import { useAuth } from '../../contextos/AuthContext'
@@ -48,7 +47,7 @@ import { useSupabase } from '../../contextos/SupabaseContext'
 
 type PerfilApiResponse = {
   id: string
-  nome: string
+  name: string
   email: string | null
   telefone?: string | null
   cidade?: string | null
@@ -99,12 +98,12 @@ const PerfilPage: React.FC = () => {
     enabled: !!userId && !!supabase,
     queryFn: async () => {
       if (!supabase || !userId) return null
-      const { data, error } = await supabase
-      .from('usuarios')
-      .select('id, name:nome, email, telefone, cidade, estado, endereco, foto_url')
-      .eq('id', userId)
-      .maybeSingle<PerfilApiResponse>()
 
+      const { data, error } = await supabase
+        .from('usuarios')
+        .select('id, name, email, telefone, cidade, estado, endereco, foto_url')
+        .eq('id', userId)
+        .maybeSingle<PerfilApiResponse>()
 
       if (error) {
         console.error('Erro ao carregar perfil:', error)
@@ -117,7 +116,7 @@ const PerfilPage: React.FC = () => {
 
   useEffect(() => {
     if (perfil) {
-      setNome(perfil.nome || '')
+      setNome(perfil.name || '')
       setTelefone(perfil.telefone || '')
       setCidade(perfil.cidade || '')
       setEstado(perfil.estado || '')
@@ -133,16 +132,15 @@ const PerfilPage: React.FC = () => {
       }
 
       const { error } = await supabase
-      .from('usuarios')
-      .update({
-        name: dados.nome,
-        telefone: dados.telefone,
-        cidade: dados.cidade,
-        estado: dados.estado,
-        endereco: dados.endereco,
-      })
-      .eq('id', userId)
-
+        .from('usuarios')
+        .update({
+          name: dados.name,
+          telefone: dados.telefone,
+          cidade: dados.cidade,
+          estado: dados.estado,
+          endereco: dados.endereco,
+        })
+        .eq('id', userId)
 
       if (error) {
         throw error
@@ -163,10 +161,7 @@ const PerfilPage: React.FC = () => {
   })
 
   const atualizarSenhaMutation = useMutation({
-    mutationFn: async (dados: {
-      senhaAtual: string
-      novaSenha: string
-    }) => {
+    mutationFn: async (dados: { senhaAtual: string; novaSenha: string }) => {
       if (!supabase) {
         throw new Error('Sessão inválida. Faça login novamente.')
       }
@@ -289,7 +284,7 @@ const PerfilPage: React.FC = () => {
     if (!perfil) return
     atualizarPerfilMutation.mutate({
       id: perfil.id,
-      nome,
+      name: nome,
       telefone,
       cidade,
       estado,
@@ -367,7 +362,7 @@ const PerfilPage: React.FC = () => {
     atualizarFotoMutation.mutate(null)
   }
 
-  const avatarInicial = (perfil?.nome || 'U').charAt(0).toUpperCase()
+  const avatarInicial = (perfil?.name || 'U').charAt(0).toUpperCase()
 
   if (!usuario) {
     return (
@@ -440,7 +435,7 @@ const PerfilPage: React.FC = () => {
           <Box sx={{ position: 'relative' }}>
             <Avatar
               src={fotoPreview || undefined}
-              alt={perfil.nome}
+              alt={perfil.name}
               sx={{
                 width: 120,
                 height: 120,
@@ -477,7 +472,7 @@ const PerfilPage: React.FC = () => {
 
           <Box sx={{ flexGrow: 1 }}>
             <Typography variant="h6" sx={{ fontWeight: 700 }}>
-              {perfil.nome}
+              {perfil.name}
             </Typography>
 
             <Stack direction="row" spacing={1} sx={{ my: 1, flexWrap: 'wrap' }}>
@@ -655,8 +650,8 @@ const PerfilPage: React.FC = () => {
             <Box sx={{ mt: 3 }}>
               <Stack spacing={2}>
                 <Alert severity="info">
-                  Por segurança, sua senha não é exibida. Para alterá-la, preencha
-                  os campos abaixo.
+                  Por segurança, sua senha não é exibida. Para alterá-la,
+                  preencha os campos abaixo.
                 </Alert>
 
                 <TextField
@@ -770,8 +765,8 @@ const PerfilPage: React.FC = () => {
             <Box sx={{ mt: 3 }}>
               <Stack spacing={2}>
                 <Alert severity="info">
-                  Selecione uma foto com boa iluminação e enquadramento do rosto.
-                  O tamanho máximo é de 2MB.
+                  Selecione uma foto com boa iluminação e enquadramento do
+                  rosto. O tamanho máximo é de 2MB.
                 </Alert>
 
                 <Box
@@ -783,7 +778,7 @@ const PerfilPage: React.FC = () => {
                 >
                   <Avatar
                     src={fotoPreview || undefined}
-                    alt={perfil.nome}
+                    alt={perfil.name}
                     sx={{
                       width: 120,
                       height: 120,
@@ -818,7 +813,9 @@ const PerfilPage: React.FC = () => {
                           )
                         }
                         onClick={handleSalvarFoto}
-                        disabled={!fotoArquivo || atualizarFotoMutation.isPending}
+                        disabled={
+                          !fotoArquivo || atualizarFotoMutation.isPending
+                        }
                       >
                         {atualizarFotoMutation.isPending
                           ? 'Salvando foto...'
