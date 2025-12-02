@@ -104,7 +104,7 @@ function TabPanel(props: TabPanelProps) {
       {...other}
       style={{ width: '100%' }}
     >
-      {value === index && <Box sx={{ py: 3 }}>{children}</Box>}
+      {value === index && <Box sx={{ py: 3, width: '100%' }}>{children}</Box>}
     </div>
   )
 }
@@ -627,7 +627,15 @@ const PerfilPage: React.FC = () => {
 
   if (isLoading || !form || !perfil) {
     return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', mt: 10 }}>
+      <Box
+        sx={{
+          width: '100%',
+          minHeight: '60vh',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+        }}
+      >
         <CircularProgress />
       </Box>
     )
@@ -635,8 +643,19 @@ const PerfilPage: React.FC = () => {
 
   if (isError) {
     return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', mt: 10 }}>
-        <Alert severity="error">Erro ao carregar perfil.</Alert>
+      <Box
+        sx={{
+          width: '100%',
+          minHeight: '60vh',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          px: 2,
+        }}
+      >
+        <Alert severity="error" sx={{ width: '100%' }}>
+          Erro ao carregar perfil.
+        </Alert>
       </Box>
     )
   }
@@ -646,10 +665,12 @@ const PerfilPage: React.FC = () => {
   return (
     <Box
       sx={{
+        width: '100%',
         maxWidth: 1000,
         mx: 'auto',
-        pb: 8,                         // mais espaço no fim pra não “colidir” com a barra do navegador
-        px: { xs: 1.5, sm: 2, md: 2 }, // margem lateral em telas pequenas
+        px: { xs: 1.5, sm: 2, md: 2 },
+        pb: 10,
+        boxSizing: 'border-box',
       }}
     >
       {/* Toast */}
@@ -675,9 +696,9 @@ const PerfilPage: React.FC = () => {
       <Paper
         elevation={0}
         sx={{
+          width: '100%',
           p: { xs: 2, sm: 3 },
           mb: 3,
-          mx: { xs: 0.5, sm: 1 },      // “entra” um pouco para não encostar na borda da tela
           display: 'flex',
           flexDirection: { xs: 'column', sm: 'row' },
           alignItems: { xs: 'flex-start', sm: 'center' },
@@ -685,6 +706,7 @@ const PerfilPage: React.FC = () => {
           bgcolor: theme.palette.primary.main,
           color: 'white',
           borderRadius: 3,
+          boxSizing: 'border-box',
         }}
       >
         <Avatar
@@ -726,13 +748,14 @@ const PerfilPage: React.FC = () => {
         </Box>
       </Paper>
 
-      {/* Abas + conteúdo principal em um card separado */}
+      {/* Card principal com abas e conteúdo */}
       <Paper
         variant="outlined"
         sx={{
-          mx: { xs: 0.5, sm: 1 },
+          width: '100%',
           borderRadius: 3,
           overflow: 'hidden',
+          boxSizing: 'border-box',
         }}
       >
         <Tabs
@@ -760,9 +783,13 @@ const PerfilPage: React.FC = () => {
               e.preventDefault()
               if (form) mutation.mutate(form)
             }}
-            sx={{ px: { xs: 1.5, md: 3 } }}
+            sx={{
+              px: { xs: 1.5, md: 3 },
+              width: '100%',
+              boxSizing: 'border-box',
+            }}
           >
-            <Grid container spacing={2}>
+            <Grid container spacing={2} sx={{ width: '100%', m: 0 }}>
               <Grid item xs={12} md={6}>
                 <TextField
                   fullWidth
@@ -881,9 +908,13 @@ const PerfilPage: React.FC = () => {
               e.preventDefault()
               if (form) mutation.mutate(form)
             }}
-            sx={{ px: { xs: 1.5, md: 3 } }}
+            sx={{
+              px: { xs: 1.5, md: 3 },
+              width: '100%',
+              boxSizing: 'border-box',
+            }}
           >
-            <Grid container spacing={2}>
+            <Grid container spacing={2} sx={{ width: '100%', m: 0 }}>
               <Grid item xs={12} md={6}>
                 <TextField
                   fullWidth
@@ -941,8 +972,14 @@ const PerfilPage: React.FC = () => {
 
         {/* Foto & Social */}
         <TabPanel value={tabValue} index={2}>
-          <Box sx={{ px: { xs: 1.5, md: 3 } }}>
-            <Grid container spacing={3}>
+          <Box
+            sx={{
+              px: { xs: 1.5, md: 3 },
+              width: '100%',
+              boxSizing: 'border-box',
+            }}
+          >
+            <Grid container spacing={3} sx={{ width: '100%', m: 0 }}>
               <Grid item xs={12} md={4} sx={{ textAlign: 'center' }}>
                 <Typography variant="subtitle2" gutterBottom>
                   Foto de Perfil
@@ -1036,7 +1073,13 @@ const PerfilPage: React.FC = () => {
         <TabPanel value={tabValue} index={3}>
           <Box
             component="form"
-            sx={{ maxWidth: 500, px: { xs: 1.5, md: 3 } }}
+            sx={{
+              px: { xs: 1.5, md: 3 },
+              pb: 2,
+              width: '100%',
+              maxWidth: 500,
+              boxSizing: 'border-box',
+            }}
             onSubmit={e => {
               e.preventDefault()
               handleAlterarSenha()
@@ -1074,11 +1117,7 @@ const PerfilPage: React.FC = () => {
                           })
                         }
                       >
-                        {mostrarSenhas.atual ? (
-                          <VisibilityOff />
-                        ) : (
-                          <Visibility />
-                        )}
+                        {mostrarSenhas.atual ? <VisibilityOff /> : <Visibility />}
                       </IconButton>
                     </InputAdornment>
                   ),
@@ -1103,11 +1142,7 @@ const PerfilPage: React.FC = () => {
                           })
                         }
                       >
-                        {mostrarSenhas.nova ? (
-                          <VisibilityOff />
-                        ) : (
-                          <Visibility />
-                        )}
+                        {mostrarSenhas.nova ? <VisibilityOff /> : <Visibility />}
                       </IconButton>
                     </InputAdornment>
                   ),
@@ -1132,11 +1167,7 @@ const PerfilPage: React.FC = () => {
                           })
                         }
                       >
-                        {mostrarSenhas.conf ? (
-                          <VisibilityOff />
-                        ) : (
-                          <Visibility />
-                        )}
+                        {mostrarSenhas.conf ? <VisibilityOff /> : <Visibility />}
                       </IconButton>
                     </InputAdornment>
                   ),
