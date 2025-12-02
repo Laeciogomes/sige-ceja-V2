@@ -9,7 +9,11 @@ import {
   useTheme,
 } from '@mui/material'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { itensMenu, type ItemMenuConfig } from '../../config/menu'
+import {
+  menusPorContexto,
+  obterContextoPainel,
+  type ItemMenuConfig,
+} from '../../config/menu'
 import { useAuth } from '../../contextos/AuthContext'
 
 interface BarraLateralProps {
@@ -22,9 +26,15 @@ const BarraLateral: React.FC<BarraLateralProps> = ({ aberta }) => {
   const location = useLocation()
   const { usuario } = useAuth()
 
+  const painelAtual = obterContextoPainel(usuario?.papel, location.pathname)
+  const itensMenu: ItemMenuConfig[] = menusPorContexto[painelAtual]
+
   const rotaAtiva = (caminho: string) => {
     if (caminho === '/') return location.pathname === '/'
-    return location.pathname.startsWith(caminho)
+    return (
+      location.pathname === caminho ||
+      location.pathname.startsWith(`${caminho}/`)
+    )
   }
 
   const laranja = '#F7941D'
@@ -37,26 +47,6 @@ const BarraLateral: React.FC<BarraLateralProps> = ({ aberta }) => {
       ? 'rgba(247, 148, 29, 0.08)'
       : 'rgba(247, 148, 29, 0.16)'
 
-  const itensVisiveis: ItemMenuConfig[] = React.useMemo(() => {
-    // Enquanto não houver papel carregado, mostra só Dashboard
-    if (!usuario?.papel) {
-      return itensMenu.filter(item => item.caminho === '/')
-    }
-
-    const papelAtual = usuario.papel
-
-    return itensMenu.filter(item => {
-      // Dashboard sempre visível
-      if (item.caminho === '/') return true
-
-      // Se o item não exige papel específico, libera
-      if (!item.papeisPermitidos) return true
-
-      // Aqui TypeScript já sabe que papelAtual é definido
-      return item.papeisPermitidos.includes(papelAtual)
-    })
-  }, [usuario])
-
   return (
     <List
       sx={{
@@ -64,12 +54,12 @@ const BarraLateral: React.FC<BarraLateralProps> = ({ aberta }) => {
         px: aberta ? 1 : 0.5,
       }}
     >
-      {itensVisiveis.map((item: ItemMenuConfig) => {
+      {itensMenu.map((item: ItemMenuConfig) => {
         const ativo = rotaAtiva(item.caminho)
 
         const conteudo = (
           <ListItemButton
-            key={item.caminho}
+            key={item.id}
             selected={ativo}
             onClick={() => navigate(item.caminho)}
             sx={{
@@ -118,7 +108,7 @@ const BarraLateral: React.FC<BarraLateralProps> = ({ aberta }) => {
         }
 
         return (
-          <Tooltip key={item.caminho} title={item.rotulo} placement="right">
+          <Tooltip key={item.id} title={item.rotulo} placement="right">
             {conteudo}
           </Tooltip>
         )

@@ -1,7 +1,6 @@
 // src/rotas/index.tsx
 import React from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
-import { Box, CircularProgress } from '@mui/material'
 
 import { RootLayout } from '../layouts/RootLayout'
 import { LoginPage } from '../paginas/Autenticacao/LoginPage'
@@ -20,23 +19,8 @@ import SecretariaMatriculasPage from '../paginas/Secretaria/SecretariaMatriculas
 import SecretariaRelatoriosFichasPage from '../paginas/Secretaria/SecretariaRelatoriosFichasPage'
 
 export const AppRoutes: React.FC = () => {
-  const { usuario, carregando } = useAuth()
+  const { usuario } = useAuth()
   const autenticado = !!usuario
-
-  if (carregando) {
-    return (
-      <Box
-        sx={{
-          minHeight: '100vh',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}
-      >
-        <CircularProgress />
-      </Box>
-    )
-  }
 
   return (
     <Routes>
@@ -56,55 +40,151 @@ export const AppRoutes: React.FC = () => {
           autenticado ? <RootLayout /> : <Navigate to="/login" replace />
         }
       >
-        {/* Dashboard geral */}
+        {/* Dashboard geral (pode futuramente renderizar dashboards diferentes por papel) */}
         <Route index element={<DashboardPage />} />
 
-        {/* SECRETARIA – apenas SECRETARIA e ADMIN */}
+        {/* SECRETARIA – Secretaria, Coordenação, Direção e Admin têm acesso */}
         <Route
           path="secretaria"
           element={
-            <RotaPorPapel papeisPermitidos={['SECRETARIA', 'ADMIN']}>
+            <RotaPorPapel
+              papeisPermitidos={[
+                'SECRETARIA',
+                'ADMIN',
+                'COORDENACAO',
+                'DIRETOR',
+              ]}
+            >
               <SecretariaLayout />
             </RotaPorPapel>
           }
         >
-          {/* Ao acessar /secretaria, cai em Matrículas por padrão */}
+          {/* Por enquanto, mantém Matrículas como página padrão */}
           <Route index element={<Navigate to="matriculas" replace />} />
           <Route path="usuarios" element={<SecretariaUsuariosPage />} />
           <Route path="turmas" element={<SecretariaTurmasPage />} />
+          <Route
+            path="salas"
+            element={<PaginaSimples titulo="Gerenciar salas" />}
+          />
+          <Route
+            path="disciplinas"
+            element={<PaginaSimples titulo="Gerenciar disciplinas" />}
+          />
+          {/* Usando a tela de relatórios/fichas como placeholder para protocolos */}
+          <Route
+            path="protocolos"
+            element={<SecretariaRelatoriosFichasPage />}
+          />
           <Route path="matriculas" element={<SecretariaMatriculasPage />} />
           <Route
-            path="relatorios-fichas"
-            element={<SecretariaRelatoriosFichasPage />}
+            path="renovacoes"
+            element={<PaginaSimples titulo="Renovar matrícula" />}
           />
         </Route>
 
-        {/* Outras áreas ainda em construção */}
+        {/* PROFESSORES – painel do professor */}
         <Route
           path="professores"
-          element={<PaginaSimples titulo="Professores" />}
+          element={
+            <RotaPorPapel papeisPermitidos={['PROFESSOR', 'ADMIN']}>
+              <PaginaSimples titulo="Painel do Professor" />
+            </RotaPorPapel>
+          }
         />
+        <Route
+          path="professores/atendimentos"
+          element={
+            <RotaPorPapel papeisPermitidos={['PROFESSOR', 'ADMIN']}>
+              <PaginaSimples titulo="Atendimentos" />
+            </RotaPorPapel>
+          }
+        />
+        <Route
+          path="professores/acompanhamento"
+          element={
+            <RotaPorPapel papeisPermitidos={['PROFESSOR', 'ADMIN']}>
+              <PaginaSimples titulo="Acompanhamento de alunos" />
+            </RotaPorPapel>
+          }
+        />
+
+        {/* COORDENAÇÃO – tudo da secretaria + SASP e acompanhamento */}
         <Route
           path="coordenacao"
-          element={<PaginaSimples titulo="Coordenação" />}
-        />
-        <Route path="direcao" element={<PaginaSimples titulo="Direção" />} />
-        <Route
-          path="administracao"
-          element={<PaginaSimples titulo="Administração" />}
-        />
-        <Route path="alunos" element={<PaginaSimples titulo="Alunos" />} />
-        <Route
-          path="salas"
-          element={<PaginaSimples titulo="Salas de Atendimento" />}
+          element={
+            <RotaPorPapel papeisPermitidos={['COORDENACAO', 'DIRETOR', 'ADMIN']}>
+              <PaginaSimples titulo="Painel da Coordenação" />
+            </RotaPorPapel>
+          }
         />
         <Route
-          path="atendimentos"
-          element={<PaginaSimples titulo="Atendimentos" />}
+          path="coordenacao/sasp"
+          element={
+            <RotaPorPapel papeisPermitidos={['COORDENACAO', 'DIRETOR', 'ADMIN']}>
+              <PaginaSimples titulo="SASP" />
+            </RotaPorPapel>
+          }
         />
         <Route
-          path="relatorios"
-          element={<PaginaSimples titulo="Relatórios" />}
+          path="coordenacao/acompanhamento"
+          element={
+            <RotaPorPapel papeisPermitidos={['COORDENACAO', 'DIRETOR', 'ADMIN']}>
+              <PaginaSimples titulo="Acompanhamento de alunos" />
+            </RotaPorPapel>
+          }
+        />
+
+        {/* DIREÇÃO – igual à coordenação */}
+        <Route
+          path="direcao"
+          element={
+            <RotaPorPapel papeisPermitidos={['DIRETOR', 'ADMIN']}>
+              <PaginaSimples titulo="Painel da Direção" />
+            </RotaPorPapel>
+          }
+        />
+        <Route
+          path="direcao/sasp"
+          element={
+            <RotaPorPapel papeisPermitidos={['DIRETOR', 'ADMIN']}>
+              <PaginaSimples titulo="SASP" />
+            </RotaPorPapel>
+          }
+        />
+        <Route
+          path="direcao/acompanhamento"
+          element={
+            <RotaPorPapel papeisPermitidos={['DIRETOR', 'ADMIN']}>
+              <PaginaSimples titulo="Acompanhamento de alunos" />
+            </RotaPorPapel>
+          }
+        />
+
+        {/* ALUNOS – painel do aluno (placeholders) */}
+        <Route
+          path="alunos"
+          element={
+            <RotaPorPapel papeisPermitidos={['ALUNO', 'ADMIN']}>
+              <PaginaSimples titulo="Painel do Aluno" />
+            </RotaPorPapel>
+          }
+        />
+        <Route
+          path="alunos/matriculas"
+          element={
+            <RotaPorPapel papeisPermitidos={['ALUNO', 'ADMIN']}>
+              <PaginaSimples titulo="Minhas matrículas" />
+            </RotaPorPapel>
+          }
+        />
+        <Route
+          path="alunos/progresso"
+          element={
+            <RotaPorPapel papeisPermitidos={['ALUNO', 'ADMIN']}>
+              <PaginaSimples titulo="Meu progresso" />
+            </RotaPorPapel>
+          }
         />
 
         {/* CONFIGURAÇÕES (página completa de ajustes do usuário) */}
