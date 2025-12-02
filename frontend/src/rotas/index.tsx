@@ -1,6 +1,7 @@
 // src/rotas/index.tsx
 import React from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
+import { Box, CircularProgress } from '@mui/material'
 
 import { RootLayout } from '../layouts/RootLayout'
 import { LoginPage } from '../paginas/Autenticacao/LoginPage'
@@ -19,8 +20,23 @@ import SecretariaMatriculasPage from '../paginas/Secretaria/SecretariaMatriculas
 import SecretariaRelatoriosFichasPage from '../paginas/Secretaria/SecretariaRelatoriosFichasPage'
 
 export const AppRoutes: React.FC = () => {
-  const { usuario } = useAuth()
+  const { usuario, carregando } = useAuth()
   const autenticado = !!usuario
+
+  if (carregando) {
+    return (
+      <Box
+        sx={{
+          minHeight: '100vh',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        <CircularProgress />
+      </Box>
+    )
+  }
 
   return (
     <Routes>

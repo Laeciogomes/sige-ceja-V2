@@ -18,6 +18,7 @@ export type PapelUsuario =
   | 'SECRETARIA'
   | 'PROFESSOR'
   | 'ALUNO'
+  | 'AVALIADOR'
 
 type UsuarioAutenticado = {
   id: string
@@ -42,13 +43,14 @@ type AuthProviderProps = {
  * Mapeia o id_tipo_usuario (inteiro) vindo da tabela public.usuarios
  * para o enum interno PapelUsuario.
  *
- * Tabela antiga:
+ * Tabela tipos_usuario:
  * 1 = Diretor
  * 2 = Professor
  * 3 = Coordenador
  * 4 = Secretario
  * 5 = Aluno
  * 6 = Administrador
+ * 7 = Avaliador
  */
 const normalizarPapelPorId = (
   idTipoUsuario: number | null | undefined,
@@ -68,6 +70,8 @@ const normalizarPapelPorId = (
       return 'PROFESSOR'
     case 5:
       return 'ALUNO'
+    case 7:
+      return 'AVALIADOR'
     default:
       return undefined
   }
