@@ -22,6 +22,7 @@ import {
   useTheme,
   GridLegacy as Grid,
   Snackbar,
+  useMediaQuery,
 } from '@mui/material'
 
 import {
@@ -148,6 +149,7 @@ type ToastSeverity = 'success' | 'error' | 'warning'
 
 const PerfilPage: React.FC = () => {
   const theme = useTheme()
+  const isSmall = useMediaQuery(theme.breakpoints.down('sm'))
   const { usuario } = useAuth()
   const { supabase } = useSupabase()
   const queryClient = useQueryClient()
@@ -179,12 +181,9 @@ const PerfilPage: React.FC = () => {
   const [cameraAberta, setCameraAberta] = useState(false)
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
-
-  // lista de câmeras para alternar (frontal / traseira, etc.)
-  const [cameraDevices, setCameraDevices] = useState<MediaDeviceInfo[]>([])
-  const [currentCameraIndex, setCurrentCameraIndex] = useState<number | null>(
-    null,
-  )
+  const [cameraErro, setCameraErro] = useState<string | null>(null)
+  const [videoDevices, setVideoDevices] = useState<MediaDeviceInfo[]>([])
+  const [currentDeviceIndex, setCurrentDeviceIndex] = useState(0)
 
   // Senha
   const [senhaData, setSenhaData] = useState({ atual: '', nova: '', conf: '' })
@@ -310,7 +309,7 @@ const PerfilPage: React.FC = () => {
         .from('usuarios')
         .update(payload)
         .eq('id', usuario.id)
-        .select('*') // retorna array
+        .select('*')
 
       if (error) {
         throw error
@@ -361,7 +360,7 @@ const PerfilPage: React.FC = () => {
     },
   })
 
-  // --------- Lógica da câmera (com troca de dispositivo) ---------
+  // --------- Helpers de câmera ---------
 
   const stopStream = () => {
     if (streamRef.current) {
@@ -373,102 +372,133 @@ const PerfilPage: React.FC = () => {
     }
   }
 
-  const anexarStreamNoVideo = async (stream: MediaStream) => {
-    if (!videoRef.current) return
+  const startStreamForDevice = async (device?: MediaDeviceInfo) => {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      const msg = 'Navegador sem suporte a câmera.'
+      showToast('warning', msg)
+      setCameraErro(msg)
+      console.error(
+        '[PerfilPage] navigator.mediaDevices.getUserMedia indisponível',
+      )
+      return
+    }
+
     try {
-      ;(videoRef.current as any).srcObject = stream
-      await videoRef.current
-        .play()
-        .catch(err => console.warn('[PerfilPage] video.play() falhou:', err))
-    } catch (e) {
-      console.error('[PerfilPage] erro ao anexar stream no vídeo:', e)
+      setCameraErro(null)
+      stopStream()
+
+      const constraints: MediaStreamConstraints = device
+        ? { video: { deviceId: { exact: device.deviceId } } as any }
+        : { video: true }
+
+      const stream = await navigator.mediaDevices.getUserMedia(constraints)
+      streamRef.current = stream
+
+      if (videoRef.current) {
+        try {
+          ;(videoRef.current as any).srcObject = stream
+          await videoRef.current
+            .play()
+            .catch(e =>
+              console.warn(
+                '[PerfilPage] video.play() falhou após getUserMedia:',
+                e,
+              ),
+            )
+        } catch (e) {
+          console.error(
+            '[PerfilPage] erro ao associar stream ao vídeo (startStreamForDevice):',
+            e,
+          )
+        }
+      }
+    } catch (e: any) {
+      console.error('[PerfilPage] erro ao acessar câmera:', e)
+
+      let msg = 'Erro ao acessar câmera.'
+      const name = e?.name || e?.constructor?.name
+
+      if (name === 'NotAllowedError' || name === 'SecurityError') {
+        msg =
+          'Permissão de câmera negada ou bloqueada pelo navegador. Verifique as permissões do site.'
+      } else if (name === 'NotFoundError' || name === 'OverconstrainedError') {
+        msg = 'Nenhuma câmera compatível foi encontrada neste dispositivo.'
+      } else if (
+        window.location.protocol !== 'https:' &&
+        window.location.hostname !== 'localhost'
+      ) {
+        msg = 'A câmera exige HTTPS ou localhost. Verifique a URL de acesso.'
+      }
+
+      setCameraErro(msg)
+      showToast('error', msg)
     }
   }
 
-  const listarCameras = async (): Promise<MediaDeviceInfo[]> => {
+  const listarVideoDevices = async (): Promise<MediaDeviceInfo[]> => {
     if (!navigator.mediaDevices?.enumerateDevices) return []
-    try {
-      const devices = await navigator.mediaDevices.enumerateDevices()
-      const videos = devices.filter(d => d.kind === 'videoinput')
-      setCameraDevices(videos)
-      return videos
-    } catch (e) {
-      console.warn('[PerfilPage] erro em enumerateDevices:', e)
-      return []
-    }
+    const devices = await navigator.mediaDevices.enumerateDevices()
+    return devices.filter(d => d.kind === 'videoinput')
   }
 
   const abrirCamera = async () => {
-    if (!navigator.mediaDevices?.getUserMedia) {
-      showToast('warning', 'Navegador sem suporte a câmera.')
-      return
-    }
+    setCameraAberta(true)
 
     try {
-      // Abre câmera padrão
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true })
+      // abre com qualquer câmera (garante permissão)
+      await startStreamForDevice()
 
-      stopStream()
-      streamRef.current = stream
-      await anexarStreamNoVideo(stream)
-
-      // Descobre as câmeras disponíveis (frontal / traseira, etc.)
-      const videos = await listarCameras()
-      if (videos.length > 0) {
-        const track = stream.getVideoTracks()[0]
-        const settings = track.getSettings()
-        const idx = videos.findIndex(d => d.deviceId === settings.deviceId)
-        setCurrentCameraIndex(idx >= 0 ? idx : 0)
+      const devices = await listarVideoDevices()
+      if (!devices.length) {
+        const msg = 'Nenhuma câmera de vídeo encontrada.'
+        setCameraErro(msg)
+        showToast('error', msg)
+        return
       }
 
-      setCameraAberta(true)
+      setVideoDevices(devices)
+
+      const track = streamRef.current?.getVideoTracks()[0]
+      const currentDeviceId = track?.getSettings().deviceId
+      let idx = 0
+      if (currentDeviceId) {
+        const foundIndex = devices.findIndex(d => d.deviceId === currentDeviceId)
+        if (foundIndex >= 0) idx = foundIndex
+      }
+      setCurrentDeviceIndex(idx)
     } catch (e) {
-      console.error('[PerfilPage] erro ao acessar câmera:', e)
-      showToast(
-        'error',
-        'Erro ao acessar câmera. Verifique permissões, HTTPS/localhost e se outra aplicação não está usando a câmera.',
-      )
+      console.error('[PerfilPage] erro em abrirCamera', e)
     }
   }
 
-  const alternarCamera = async () => {
-    if (!navigator.mediaDevices?.getUserMedia) {
-      showToast('warning', 'Navegador sem suporte a câmera.')
-      return
-    }
-
-    const devices =
-      cameraDevices.length > 0 ? cameraDevices : await listarCameras()
-
-    if (!devices || devices.length <= 1) {
-      showToast(
-        'warning',
-        'Este dispositivo parece ter apenas uma câmera disponível.',
-      )
-      return
-    }
-
-    const atual = currentCameraIndex ?? 0
-    const proximo = (atual + 1) % devices.length
-    const device = devices[proximo]
-
+  const handleTrocarCamera = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { deviceId: { exact: device.deviceId } },
-      })
+      let devices = videoDevices
+      if (!devices.length) {
+        devices = await listarVideoDevices()
+        setVideoDevices(devices)
+      }
 
-      stopStream()
-      streamRef.current = stream
-      await anexarStreamNoVideo(stream)
-      setCurrentCameraIndex(proximo)
+      if (!devices.length) {
+        const msg = 'Não há outra câmera disponível neste dispositivo.'
+        setCameraErro(msg)
+        showToast('warning', msg)
+        return
+      }
+
+      const nextIndex =
+        devices.length === 1 ? 0 : (currentDeviceIndex + 1) % devices.length
+      setCurrentDeviceIndex(nextIndex)
+
+      await startStreamForDevice(devices[nextIndex])
     } catch (e) {
-      console.error('[PerfilPage] erro ao alternar câmera:', e)
-      showToast('error', 'Não foi possível alternar a câmera.')
+      console.error('[PerfilPage] erro ao trocar câmera', e)
     }
   }
 
   const fecharCamera = () => {
     setCameraAberta(false)
+    setCameraErro(null)
     stopStream()
   }
 
@@ -506,6 +536,23 @@ const PerfilPage: React.FC = () => {
       'image/jpeg',
       0.9,
     )
+  }
+
+  const getRotuloCamera = () => {
+    const dev = videoDevices[currentDeviceIndex]
+    if (!dev) return ''
+    const label = (dev.label || '').toLowerCase()
+    if (label.includes('back') || label.includes('rear') || label.includes('traseira')) {
+      return 'Câmera traseira'
+    }
+    if (
+      label.includes('front') ||
+      label.includes('frontal') ||
+      label.includes('user')
+    ) {
+      return 'Câmera frontal'
+    }
+    return `Câmera ${currentDeviceIndex + 1}`
   }
 
   // --------- Upload de avatar ---------
@@ -622,6 +669,8 @@ const PerfilPage: React.FC = () => {
     )
   }
 
+  const cameraLabel = getRotuloCamera()
+
   // --------- Render ---------
 
   return (
@@ -680,20 +729,10 @@ const PerfilPage: React.FC = () => {
           {form.name.charAt(0)}
         </Avatar>
         <Box sx={{ flexGrow: 1, minWidth: 0 }}>
-          <Typography
-            variant="h6"
-            fontWeight={700}
-            noWrap
-            sx={{ maxWidth: { xs: '100%', sm: 260 } }}
-          >
+          <Typography variant="h6" fontWeight={700} noWrap>
             {form.name}
           </Typography>
-          <Typography
-            variant="body2"
-            sx={{ opacity: 0.9 }}
-            noWrap
-            style={{ wordBreak: 'break-all' }}
-          >
+          <Typography variant="body2" sx={{ opacity: 0.9 }} noWrap>
             {form.email}
           </Typography>
           <Chip
@@ -714,8 +753,8 @@ const PerfilPage: React.FC = () => {
         <Tabs
           value={tabValue}
           onChange={handleTabChange}
-          variant="scrollable"
-          scrollButtons="auto"
+          variant={isSmall ? 'fullWidth' : 'scrollable'}
+          scrollButtons={isSmall ? false : 'auto'}
           sx={{
             borderBottom: 1,
             borderColor: 'divider',
@@ -1134,18 +1173,29 @@ const PerfilPage: React.FC = () => {
               overflow: 'hidden',
               bgcolor: 'black',
               height: { xs: 260, sm: 320 },
+              position: 'relative',
             }}
           >
             <video
               ref={el => {
                 videoRef.current = el
                 if (el && streamRef.current) {
-                  ;(el as any).srcObject = streamRef.current
-                  el
-                    .play()
-                    .catch(err =>
-                      console.warn('[PerfilPage] video.play() falhou:', err),
+                  try {
+                    ;(el as any).srcObject = streamRef.current
+                    el
+                      .play()
+                      .catch(err =>
+                        console.warn(
+                          '[PerfilPage] video.play() falhou ao anexar stream:',
+                          err,
+                        ),
+                      )
+                  } catch (e) {
+                    console.error(
+                      '[PerfilPage] erro ao associar stream ao vídeo (ref):',
+                      e,
                     )
+                  }
                 }
               }}
               autoPlay
@@ -1153,20 +1203,51 @@ const PerfilPage: React.FC = () => {
               playsInline
               style={{ width: '100%', height: '100%', objectFit: 'cover' }}
             />
+            {cameraErro && (
+              <Box
+                sx={{
+                  position: 'absolute',
+                  inset: 0,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  px: 2,
+                  textAlign: 'center',
+                  color: 'white',
+                  bgcolor: 'rgba(0,0,0,0.6)',
+                }}
+              >
+                <Typography variant="body2">{cameraErro}</Typography>
+              </Box>
+            )}
           </Box>
         </DialogContent>
-        <DialogActions sx={{ justifyContent: 'space-between' }}>
-          <Button
-            variant="outlined"
-            size="small"
-            startIcon={<CameraswitchIcon />}
-            onClick={alternarCamera}
-          >
-            Trocar câmera
-          </Button>
-          <Box sx={{ ml: 'auto' }}>
-            <Button onClick={fecharCamera} sx={{ mr: 1 }}>
-              Cancelar
+        <DialogActions
+          sx={{
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: 1,
+            px: 3,
+            pb: 2,
+          }}
+        >
+          <Button onClick={fecharCamera}>Cancelar</Button>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            {cameraLabel && (
+              <Typography
+                variant="caption"
+                sx={{ display: { xs: 'none', sm: 'inline' } }}
+              >
+                {cameraLabel}
+              </Typography>
+            )}
+            <Button
+              variant="outlined"
+              size="small"
+              onClick={handleTrocarCamera}
+              startIcon={<CameraswitchIcon />}
+            >
+              Trocar câmera
             </Button>
             <Button variant="contained" onClick={capturarFotoDaCamera}>
               Tirar foto
