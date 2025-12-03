@@ -105,7 +105,9 @@ function TabPanel(props: TabPanelProps) {
       style={{ width: '100%' }}
     >
       {value === index && (
-        <Box sx={{ py: 3, width: '100%', boxSizing: 'border-box' }}>{children}</Box>
+        <Box sx={{ py: 3, width: '100%', boxSizing: 'border-box' }}>
+          {children}
+        </Box>
       )}
     </div>
   )
@@ -392,9 +394,7 @@ const PerfilPage: React.FC = () => {
 
     const atualIndex = videoDevices.findIndex(d => d.deviceId === currentDeviceId)
     const proximoIndex =
-      atualIndex === -1
-        ? 1
-        : (atualIndex + 1) % videoDevices.length
+      atualIndex === -1 ? 1 : (atualIndex + 1) % videoDevices.length
 
     setCurrentDeviceId(videoDevices[proximoIndex].deviceId)
   }
@@ -631,9 +631,11 @@ const PerfilPage: React.FC = () => {
     return (
       <Box
         sx={{
-          maxWidth: 720,
+          width: '100%',
+          maxWidth: 1600,
           mx: 'auto',
-          p: { xs: 1, md: 2 },
+          px: { xs: 1.5, sm: 3 },
+          py: { xs: 2, sm: 3 },
           minHeight: '60vh',
           display: 'flex',
           justifyContent: 'center',
@@ -650,9 +652,11 @@ const PerfilPage: React.FC = () => {
     return (
       <Box
         sx={{
-          maxWidth: 720,
+          width: '100%',
+          maxWidth: 1600,
           mx: 'auto',
-          p: { xs: 1, md: 2 },
+          px: { xs: 1.5, sm: 3 },
+          py: { xs: 2, sm: 3 },
           minHeight: '60vh',
           display: 'flex',
           justifyContent: 'center',
@@ -672,13 +676,24 @@ const PerfilPage: React.FC = () => {
   return (
     <Box
       sx={{
-        maxWidth: 720,
+        width: '100%',
+        maxWidth: 1600,
         mx: 'auto',
-        p: { xs: 1, md: 2 },
-        pb: 8,
+        px: { xs: 1.5, sm: 3 },
+        py: { xs: 2, sm: 3 },
         boxSizing: 'border-box',
       }}
     >
+      <Box
+        sx={{
+          maxWidth: 720,
+          mx: 'auto',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 2,
+          pb: 8,
+        }}
+      >
         {/* Toast */}
         {toast && toast.open && (
           <Snackbar
@@ -764,8 +779,9 @@ const PerfilPage: React.FC = () => {
           sx={{
             width: '100%',
             borderRadius: 3,
-            overflow: 'hidden',
             boxSizing: 'border-box',
+            overflow: 'visible',
+            minWidth: 0,
           }}
         >
           <Tabs
@@ -1304,6 +1320,7 @@ const PerfilPage: React.FC = () => {
             </DialogActions>
           </Dialog>
         )}
+      </Box>
     </Box>
   )
 }
