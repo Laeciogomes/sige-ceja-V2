@@ -149,7 +149,7 @@ type ToastSeverity = 'success' | 'error' | 'warning'
 const PerfilPage: React.FC = () => {
   const theme = useTheme()
   const isSmall = useMediaQuery(theme.breakpoints.down('sm')) // câmera
-  const isNarrow = useMediaQuery(theme.breakpoints.down('md')) // layout (tudo <= md)
+  const isNarrow = useMediaQuery(theme.breakpoints.down('md')) // layout
   const gridSpacing = isNarrow ? 0 : 2
 
   const { usuario } = useAuth()
@@ -629,8 +629,10 @@ const PerfilPage: React.FC = () => {
 
   // --------- Loading / erro global ---------
 
+  const maxContentWidth = isNarrow ? 480 : 720
+
   const containerSx = {
-    maxWidth: isNarrow ? '100%' : 720,
+    maxWidth: maxContentWidth,
     width: '100%',
     mx: 'auto',
     px: isNarrow ? 0 : 2,
@@ -665,13 +667,12 @@ const PerfilPage: React.FC = () => {
   return (
     <Box
       sx={{
-        maxWidth: isNarrow ? '100%' : 720,
+        maxWidth: maxContentWidth,
         width: '100%',
         mx: 'auto',
         px: isNarrow ? 0 : 2,
         pb: 8,
         boxSizing: 'border-box',
-        overflowX: 'hidden',
       }}
     >
       {/* Toast */}
@@ -706,7 +707,7 @@ const PerfilPage: React.FC = () => {
           gap: 2,
           bgcolor: theme.palette.primary.main,
           color: 'white',
-          borderRadius: isNarrow ? 0 : 3,
+          borderRadius: isNarrow ? 1.5 : 3,
           boxSizing: 'border-box',
         }}
       >
@@ -758,9 +759,9 @@ const PerfilPage: React.FC = () => {
         variant="outlined"
         sx={{
           width: '100%',
-          borderRadius: isNarrow ? 0 : 3,
+          borderRadius: isNarrow ? 1.5 : 3,
           boxSizing: 'border-box',
-          overflowX: 'visible',
+          overflow: 'visible',
         }}
       >
         <Tabs
