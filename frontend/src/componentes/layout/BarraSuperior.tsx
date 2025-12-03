@@ -104,35 +104,41 @@ const BarraSuperior: React.FC<BarraSuperiorProps> = ({ alternarMenuLateral }) =>
 
   // Sincroniza foto/nome/username com o hint de login, respeitando o "Lembrar-me"
   useEffect(() => {
-    if (!usuario?.email || !perfil) return
+  console.log("DEBUG BarraSuperior → usuario:", usuario)
+  console.log("DEBUG BarraSuperior → perfil:", perfil)
 
-    try {
-      const raw = localStorage.getItem(LOGIN_HINT_KEY)
-      const prev = raw ? JSON.parse(raw) : {}
+  if (!usuario?.email || !perfil) {
+    console.log("DEBUG: sem usuário ou sem perfil, cancelando persistência.")
+    return
+  }
 
-      // Se o usuário não marcou "lembrar-me" na tela de login, não persiste avatar
-      if (!prev.rememberMe) return
+  try {
+    const raw = localStorage.getItem(LOGIN_HINT_KEY)
+    console.log("DEBUG → RAW localStorage:", raw)
 
-      const emailFromStorage =
-        typeof prev.email === 'string' ? prev.email : null
+    const prev = raw ? JSON.parse(raw) : {}
 
-      // Se o e-mail salvo for de outra pessoa, zera a base para não misturar usuários
-      const payloadBase =
-        emailFromStorage && emailFromStorage !== usuario.email ? {} : prev
-
-      const payload = {
-        ...payloadBase,
-        email: usuario.email,
-        foto_url: perfil.foto_url ?? null,
-        name: perfil.name ?? null,
-        username: perfil.username ?? null,
-      }
-
-      localStorage.setItem(LOGIN_HINT_KEY, JSON.stringify(payload))
-    } catch (error) {
-      console.error('Erro ao atualizar hint de login:', error)
+    if (!prev.rememberMe) {
+      console.log("DEBUG: rememberMe = false, NÃO salvando foto.")
+      return
     }
-  }, [usuario?.email, perfil])
+
+    const payload = {
+      ...prev,
+      email: usuario.email,
+      foto_url: perfil.foto_url,
+      name: perfil.name,
+      username: perfil.username,
+    }
+
+    console.log("DEBUG → Salvando payload:", payload)
+
+    localStorage.setItem(LOGIN_HINT_KEY, JSON.stringify(payload))
+  } catch (error) {
+    console.error('Erro ao atualizar hint de login:', error)
+  }
+}, [usuario?.email, perfil])
+
 
   const ehDark = modo === 'dark'
   const menuAberto = Boolean(anchorAvatar)

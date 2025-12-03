@@ -43,12 +43,16 @@ const getStyles = (theme: Theme, ativo: boolean, isDashboard: boolean) => {
       overflow: 'hidden',
       transition: 'all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1)',
       
-      // Lógica Condicional de Estilos
+      // Estilo extra se for Dashboard (Margem abaixo)
+      ...(isDashboard && {
+         mb: 1.5, // Mais espaço após o dashboard para destacar
+      }),
+
+      // --- ESTADOS ATIVOS vs INATIVOS ---
       ...(ativo
         ? {
-            // --- ESTADOS ATIVOS ---
             background: activeBgColor,
-            color: COR_LARANJA, // Texto laranja
+            color: COR_LARANJA, 
             fontWeight: 600,
             boxShadow: `0 2px 8px ${theme.palette.mode === 'dark' ? 'rgba(0,0,0,0.2)' : 'rgba(247, 148, 29, 0.1)'}`,
             
@@ -56,7 +60,7 @@ const getStyles = (theme: Theme, ativo: boolean, isDashboard: boolean) => {
               background: `linear-gradient(90deg, ${COR_LARANJA}33 0%, ${COR_LARANJA}12 100%)`,
             },
             
-            // A barra vertical lateral (indicador visual forte)
+            // Barra lateral laranja (Indicador de Ativo)
             '&::before': {
               content: '""',
               position: 'absolute',
@@ -66,10 +70,10 @@ const getStyles = (theme: Theme, ativo: boolean, isDashboard: boolean) => {
               width: '4px',
               borderRadius: '0 4px 4px 0',
               backgroundColor: COR_LARANJA,
-              boxShadow: `0 0 6px ${COR_LARANJA}`, // Efeito neon sutil
+              boxShadow: `0 0 6px ${COR_LARANJA}`, 
             },
-            
-            // Remove o overlay cinza padrão do MUI ao clicar
+
+            // Remove fundo cinza padrão do MUI ao clicar
             '&.Mui-selected': {
                backgroundColor: activeBgColor,
                '&:hover': {
@@ -78,29 +82,23 @@ const getStyles = (theme: Theme, ativo: boolean, isDashboard: boolean) => {
             }
           }
         : {
-            // --- ESTADOS INATIVOS ---
+            // INATIVO
             color: theme.palette.text.secondary,
             '&:hover': {
               backgroundColor: hoverBgColor,
-              color: COR_LARANJA, // Texto vira laranja no hover
-              transform: 'translateX(4px)', // Animação de slide
+              color: COR_LARANJA,
+              transform: 'translateX(4px)',
               '& .MuiListItemIcon-root': {
-                color: COR_LARANJA, // Ícone vira laranja no hover
+                color: COR_LARANJA,
               }
             },
           }),
-
-      // Estilo extra se for Dashboard
-      ...(isDashboard && {
-         mb: 1,
-      }),
     },
 
     listItemIcon: {
         minWidth: 32,
         mr: 2,
         justifyContent: 'center',
-        // Se ativo, usa laranja. Se não, herda (cinza).
         color: ativo ? COR_LARANJA : 'inherit', 
         transition: 'all 0.2s ease',
         ...(ativo && { 
@@ -129,28 +127,28 @@ const ItemBarraLateral: React.FC<ItemProps> = ({ item, aberta, isDashboard = fal
   const navigate = useNavigate()
   const location = useLocation()
 
-  // --- LÓGICA DE ROTA ATIVA CORRIGIDA ---
+  // --- LÓGICA DE ROTA CORRIGIDA ---
   const rotaAtiva = (caminhoMenu: string) => {
-    const pathAtual = location.pathname
+    // Remove barra final para evitar erros (/secretaria/ vs /secretaria)
+    const pathAtual = location.pathname.replace(/\/$/, '') 
+    const pathMenu = caminhoMenu.replace(/\/$/, '')
+
+    // 1. Match Exato (Prioridade máxima)
+    // Se estou em /secretaria e o menu é /secretaria -> ATIVO
+    if (pathAtual === pathMenu) return true
+
+    // 2. Sub-rotas (Ex: /secretaria/turmas)
+    // Se o item for "Dashboard" (raiz), ele NÃO deve acender em sub-rotas para não ficar duplicado.
+    // Detectamos se é raiz pela quantidade de barras (ex: /secretaria tem profundidade baixa)
+    const ehRaiz = pathMenu.split('/').filter(Boolean).length <= 1
     
-    // 1. Correspondência exata (Dashboard ou itens raiz)
-    if (pathAtual === caminhoMenu) return true
-
-    // 2. Correspondência de sub-rotas (ex: /secretaria/usuarios/novo ativa /secretaria/usuarios)
-    // O check `caminhoMenu !== pathAtual` evita falsos positivos em rotas raiz curtas
-    if (pathAtual.startsWith(`${caminhoMenu}/`)) {
-      
-      // Correção Específica:
-      // Se o menu é "/secretaria" (Dashboard) e estamos em "/secretaria/usuarios",
-      // NÃO queremos ativar o Dashboard, queremos ativar Usuários.
-      // Então, se o item for um "Dashboard" (rota curta), exigimos match exato na regra 1.
-      const ehRotaRaiz = caminhoMenu.split('/').length <= 2 // ex: /secretaria ou /admin
-      if (ehRotaRaiz) return false
-
-      return true
+    if (ehRaiz) {
+      // Se é raiz (Dashboard) e não foi match exato (passo 1), então não é ele.
+      return false
     }
 
-    return false
+    // Para outros itens, verificamos se começa com o caminho (ex: /usuarios/novo ativa /usuarios)
+    return pathAtual.startsWith(`${pathMenu}/`)
   }
 
   const ativo = rotaAtiva(item.caminho)
@@ -158,7 +156,6 @@ const ItemBarraLateral: React.FC<ItemProps> = ({ item, aberta, isDashboard = fal
 
   const conteudoBotao = (
     <ListItemButton
-      // Usamos 'selected' para acessibilidade, mas o visual vem do 'sx' acima
       selected={ativo}
       onClick={() => navigate(item.caminho)}
       sx={styles.listItemButton}
@@ -224,21 +221,25 @@ const BarraLateral: React.FC<BarraLateralProps> = ({ aberta }) => {
         },
       }}
     >
-      {/* SEÇÃO DO DASHBOARD */}
+      {/* SEÇÃO DO DASHBOARD (SEMPRE NO TOPO) */}
       {dashboardItem && (
         <>
           <ItemBarraLateral item={dashboardItem} aberta={aberta} isDashboard />
           {outrosItens.length > 0 && (
-            <Divider sx={{ my: 1.5, mx: 2, opacity: 0.6 }} />
+            <Divider sx={{ my: 1, mx: 2, opacity: 0.6 }} />
           )}
         </>
       )}
 
-      {/* OUTROS ITENS COM GRUPOS */}
+      {/* ITENS RESTANTES AGRUPADOS */}
       {outrosItens.map((item, index) => {
         const grupoAtual = item.grupo
         const grupoAnterior = index > 0 ? outrosItens[index - 1].grupo : null
+        
+        // Exibe título do grupo apenas se estiver aberto e mudou o grupo
         const mostrarHeader = aberta && grupoAtual && grupoAtual !== grupoAnterior
+        
+        // Exibe divisor simples se estiver fechado e mudou o grupo
         const mostrarDivisorFechado = !aberta && grupoAtual !== grupoAnterior && index > 0
 
         return (
