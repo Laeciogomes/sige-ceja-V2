@@ -1,3 +1,4 @@
+// src/componentes/layout/BarraLateral.tsx
 import React from 'react'
 import {
   List,
@@ -22,14 +23,14 @@ import { useAuth } from '../../contextos/AuthContext'
 // --- CONSTANTES DE ESTILO ---
 const COR_LARANJA = '#F7941D'
 
-// Função auxiliar para gerar estilos consistentes
+// Função auxiliar para gerar estilos
 const getStyles = (theme: Theme, ativo: boolean, isDashboard: boolean) => {
   // Cor do hover (laranja translúcido)
   const hoverBgColor = theme.palette.mode === 'light'
     ? `${COR_LARANJA}14` // ~8% opacidade
     : `${COR_LARANJA}24` // ~14% opacidade
 
-  // Cor de fundo ativo (gradiente laranja)
+  // Cor de fundo quando ATIVO (gradiente laranja)
   const activeBgColor = `linear-gradient(90deg, ${COR_LARANJA}24 0%, ${COR_LARANJA}08 100%)`
 
   return {
@@ -41,21 +42,21 @@ const getStyles = (theme: Theme, ativo: boolean, isDashboard: boolean) => {
       position: 'relative',
       overflow: 'hidden',
       transition: 'all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1)',
-      // Estilo específico se for o Dashboard
-      ...(isDashboard && {
-         mb: 1, // Margem extra abaixo do dashboard
-         fontWeight: 'bold'
-      }),
-      // Estilos baseados no estado (Ativo vs Inativo)
+      
+      // Lógica Condicional de Estilos
       ...(ativo
         ? {
+            // --- ESTADOS ATIVOS ---
             background: activeBgColor,
-            color: COR_LARANJA,
-             boxShadow: `0 2px 8px ${theme.palette.mode === 'dark' ? 'rgba(0,0,0,0.2)' : 'rgba(247, 148, 29, 0.1)'}`,
+            color: COR_LARANJA, // Texto laranja
+            fontWeight: 600,
+            boxShadow: `0 2px 8px ${theme.palette.mode === 'dark' ? 'rgba(0,0,0,0.2)' : 'rgba(247, 148, 29, 0.1)'}`,
+            
             '&:hover': {
               background: `linear-gradient(90deg, ${COR_LARANJA}33 0%, ${COR_LARANJA}12 100%)`,
             },
-            // Barra vertical lateral para item ativo
+            
+            // A barra vertical lateral (indicador visual forte)
             '&::before': {
               content: '""',
               position: 'absolute',
@@ -65,26 +66,49 @@ const getStyles = (theme: Theme, ativo: boolean, isDashboard: boolean) => {
               width: '4px',
               borderRadius: '0 4px 4px 0',
               backgroundColor: COR_LARANJA,
+              boxShadow: `0 0 6px ${COR_LARANJA}`, // Efeito neon sutil
             },
+            
+            // Remove o overlay cinza padrão do MUI ao clicar
+            '&.Mui-selected': {
+               backgroundColor: activeBgColor,
+               '&:hover': {
+                 backgroundColor: `linear-gradient(90deg, ${COR_LARANJA}33 0%, ${COR_LARANJA}12 100%)`,
+               }
+            }
           }
         : {
+            // --- ESTADOS INATIVOS ---
             color: theme.palette.text.secondary,
-            // HOVER LARANJA BONITO
             '&:hover': {
               backgroundColor: hoverBgColor,
-              color: COR_LARANJA, // Texto e ícone ficam laranja no hover
-              transform: 'translateX(4px)', // Pequeno movimento
+              color: COR_LARANJA, // Texto vira laranja no hover
+              transform: 'translateX(4px)', // Animação de slide
+              '& .MuiListItemIcon-root': {
+                color: COR_LARANJA, // Ícone vira laranja no hover
+              }
             },
           }),
+
+      // Estilo extra se for Dashboard
+      ...(isDashboard && {
+         mb: 1,
+      }),
     },
+
     listItemIcon: {
         minWidth: 32,
         mr: 2,
         justifyContent: 'center',
-        color: 'inherit', // Herda a cor do botão (laranja se ativo/hover, cinza se não)
-        transition: 'transform 0.2s ease',
-        ...(ativo && { transform: 'scale(1.1)' }), // Ícone aumenta ligeiramente se ativo
+        // Se ativo, usa laranja. Se não, herda (cinza).
+        color: ativo ? COR_LARANJA : 'inherit', 
+        transition: 'all 0.2s ease',
+        ...(ativo && { 
+            transform: 'scale(1.1)',
+            filter: `drop-shadow(0 0 2px ${COR_LARANJA}44)` 
+        }), 
     },
+
     listItemText: {
         fontSize: isDashboard ? 15 : 14,
         fontWeight: ativo || isDashboard ? 600 : 400,
@@ -93,7 +117,7 @@ const getStyles = (theme: Theme, ativo: boolean, isDashboard: boolean) => {
   }
 }
 
-// --- SUBCOMPONENTE PARA RENDERIZAR UM ITEM ---
+// --- SUBCOMPONENTE ---
 interface ItemProps {
   item: ItemMenuConfig
   aberta: boolean
@@ -105,10 +129,28 @@ const ItemBarraLateral: React.FC<ItemProps> = ({ item, aberta, isDashboard = fal
   const navigate = useNavigate()
   const location = useLocation()
 
-  const rotaAtiva = (caminho: string) => {
-    if (caminho === '/') return location.pathname === '/'
-    // Verifica se é a rota exata ou uma sub-rota
-    return location.pathname === caminho || location.pathname.startsWith(`${caminho}/`)
+  // --- LÓGICA DE ROTA ATIVA CORRIGIDA ---
+  const rotaAtiva = (caminhoMenu: string) => {
+    const pathAtual = location.pathname
+    
+    // 1. Correspondência exata (Dashboard ou itens raiz)
+    if (pathAtual === caminhoMenu) return true
+
+    // 2. Correspondência de sub-rotas (ex: /secretaria/usuarios/novo ativa /secretaria/usuarios)
+    // O check `caminhoMenu !== pathAtual` evita falsos positivos em rotas raiz curtas
+    if (pathAtual.startsWith(`${caminhoMenu}/`)) {
+      
+      // Correção Específica:
+      // Se o menu é "/secretaria" (Dashboard) e estamos em "/secretaria/usuarios",
+      // NÃO queremos ativar o Dashboard, queremos ativar Usuários.
+      // Então, se o item for um "Dashboard" (rota curta), exigimos match exato na regra 1.
+      const ehRotaRaiz = caminhoMenu.split('/').length <= 2 // ex: /secretaria ou /admin
+      if (ehRotaRaiz) return false
+
+      return true
+    }
+
+    return false
   }
 
   const ativo = rotaAtiva(item.caminho)
@@ -116,6 +158,7 @@ const ItemBarraLateral: React.FC<ItemProps> = ({ item, aberta, isDashboard = fal
 
   const conteudoBotao = (
     <ListItemButton
+      // Usamos 'selected' para acessibilidade, mas o visual vem do 'sx' acima
       selected={ativo}
       onClick={() => navigate(item.caminho)}
       sx={styles.listItemButton}
@@ -136,7 +179,6 @@ const ItemBarraLateral: React.FC<ItemProps> = ({ item, aberta, isDashboard = fal
 
   if (aberta) return conteudoBotao
 
-  // Tooltip quando fechado
   return (
     <Tooltip
       title={item.rotulo}
@@ -151,7 +193,7 @@ const ItemBarraLateral: React.FC<ItemProps> = ({ item, aberta, isDashboard = fal
   )
 }
 
-// --- COMPONENTE PRINCIPAL DA BARRA LATERAL ---
+// --- COMPONENTE PRINCIPAL ---
 interface BarraLateralProps {
   aberta: boolean
 }
@@ -164,9 +206,7 @@ const BarraLateral: React.FC<BarraLateralProps> = ({ aberta }) => {
   const painelAtual = obterContextoPainel(usuario?.papel, location.pathname)
   const todosItens = menusPorContexto[painelAtual] || []
 
-  // Assume que o primeiro item é sempre o Dashboard principal
   const dashboardItem = todosItens.length > 0 ? todosItens[0] : null
-  // O restante dos itens
   const outrosItens = todosItens.length > 1 ? todosItens.slice(1) : []
 
   return (
@@ -184,25 +224,21 @@ const BarraLateral: React.FC<BarraLateralProps> = ({ aberta }) => {
         },
       }}
     >
-      {/* --- SEÇÃO DO DASHBOARD PRINCIPAL --- */}
+      {/* SEÇÃO DO DASHBOARD */}
       {dashboardItem && (
         <>
           <ItemBarraLateral item={dashboardItem} aberta={aberta} isDashboard />
           {outrosItens.length > 0 && (
-            <Divider sx={{ my: 1.5, mx: 2, borderColor: theme.palette.divider, opacity: 0.6 }} />
+            <Divider sx={{ my: 1.5, mx: 2, opacity: 0.6 }} />
           )}
         </>
       )}
 
-      {/* --- RESTANTE DOS ITENS COM GRUPOS --- */}
+      {/* OUTROS ITENS COM GRUPOS */}
       {outrosItens.map((item, index) => {
-        // Lógica para mostrar cabeçalho de grupo
         const grupoAtual = item.grupo
-        // Compara com o item anterior na lista filtrada 'outrosItens'
         const grupoAnterior = index > 0 ? outrosItens[index - 1].grupo : null
         const mostrarHeader = aberta && grupoAtual && grupoAtual !== grupoAnterior
-
-        // Lógica para mostrar divisor quando fechado (separação visual de grupos)
         const mostrarDivisorFechado = !aberta && grupoAtual !== grupoAnterior && index > 0
 
         return (
@@ -228,7 +264,7 @@ const BarraLateral: React.FC<BarraLateralProps> = ({ aberta }) => {
             )}
 
              {mostrarDivisorFechado && (
-                 <Divider sx={{ my: 1, mx: 'auto', width: '50%', borderColor: theme.palette.divider, opacity: 0.4 }} />
+                 <Divider sx={{ my: 1, mx: 'auto', width: '50%', opacity: 0.4 }} />
             )}
 
             <ItemBarraLateral item={item} aberta={aberta} />

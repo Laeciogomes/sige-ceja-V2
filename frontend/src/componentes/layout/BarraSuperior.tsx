@@ -1,5 +1,5 @@
 // frontend/src/componentes/layout/BarraSuperior.tsx
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import {
   AppBar,
   Avatar,
@@ -84,6 +84,9 @@ const mapTipoUsuario: Record<number, string> = {
   6: 'Admin',
 }
 
+// Chave para o hint de login (usada junto com a LoginPage)
+const LOGIN_HINT_KEY = 'sigeceja_login_hint'
+
 const BarraSuperior: React.FC<BarraSuperiorProps> = ({ alternarMenuLateral }) => {
   const theme = useTheme()
   const navigate = useNavigate()
@@ -98,6 +101,38 @@ const BarraSuperior: React.FC<BarraSuperiorProps> = ({ alternarMenuLateral }) =>
 
   // Dados
   const { data: perfil, isLoading } = usePerfilUsuario(usuario, supabase)
+
+  // Sincroniza foto/nome/username com o hint de login, respeitando o "Lembrar-me"
+  useEffect(() => {
+    if (!usuario?.email || !perfil) return
+
+    try {
+      const raw = localStorage.getItem(LOGIN_HINT_KEY)
+      const prev = raw ? JSON.parse(raw) : {}
+
+      // Se o usuário não marcou "lembrar-me" na tela de login, não persiste avatar
+      if (!prev.rememberMe) return
+
+      const emailFromStorage =
+        typeof prev.email === 'string' ? prev.email : null
+
+      // Se o e-mail salvo for de outra pessoa, zera a base para não misturar usuários
+      const payloadBase =
+        emailFromStorage && emailFromStorage !== usuario.email ? {} : prev
+
+      const payload = {
+        ...payloadBase,
+        email: usuario.email,
+        foto_url: perfil.foto_url ?? null,
+        name: perfil.name ?? null,
+        username: perfil.username ?? null,
+      }
+
+      localStorage.setItem(LOGIN_HINT_KEY, JSON.stringify(payload))
+    } catch (error) {
+      console.error('Erro ao atualizar hint de login:', error)
+    }
+  }, [usuario?.email, perfil])
 
   const ehDark = modo === 'dark'
   const menuAberto = Boolean(anchorAvatar)
@@ -301,7 +336,6 @@ const BarraSuperior: React.FC<BarraSuperiorProps> = ({ alternarMenuLateral }) =>
                     </>
                   ) : (
                     <>
-                      {/* AQUI agora mostra o username */}
                       <Typography
                         variant="subtitle2"
                         sx={{
