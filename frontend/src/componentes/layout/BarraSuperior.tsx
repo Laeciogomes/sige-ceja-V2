@@ -19,7 +19,6 @@ import {
   Fade,
 } from '@mui/material'
 
-// Ícones
 import MenuIcon from '@mui/icons-material/Menu'
 import DarkModeRoundedIcon from '@mui/icons-material/DarkModeRounded'
 import LightModeRoundedIcon from '@mui/icons-material/LightModeRounded'
@@ -29,21 +28,18 @@ import ManageAccountsIcon from '@mui/icons-material/ManageAccounts'
 import NotificationsNoneRoundedIcon from '@mui/icons-material/NotificationsNoneRounded'
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown'
 
-// Contextos e Hooks
 import { useTema } from '../../contextos/TemaContext'
 import { useAuth } from '../../contextos/AuthContext'
 import { useSupabase } from '../../contextos/SupabaseContext'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 
-// Assets
 import logoCeja from '../../assets/imagens/logo-ceja.png'
 
-// --- Tipagens ---
+// Exportado porque RootLayout / BarraLateral usam esse tipo
 export type BarraSuperiorProps = {
   alternarMenuLateral?: () => void
-  // prop opcional usada por BarraLateral / RootLayout para compatibilidade
-  aberta?: boolean
+  aberta?: boolean // compatibilidade com RootLayout / BarraLateral
 }
 
 type PerfilUsuario = {
@@ -53,7 +49,6 @@ type PerfilUsuario = {
   id_tipo_usuario: number | null
 }
 
-// --- Hook Personalizado para Dados (Separação de lógica) ---
 const usePerfilUsuario = (usuario: any, supabase: any) => {
   return useQuery({
     queryKey: ['perfil-usuario', usuario?.id],
@@ -76,7 +71,6 @@ const usePerfilUsuario = (usuario: any, supabase: any) => {
   })
 }
 
-// Mapeamento de tipo de usuário (para o subtítulo, ex.: Admin)
 const mapTipoUsuario: Record<number, string> = {
   1: 'Diretor',
   2: 'Professor',
@@ -86,25 +80,21 @@ const mapTipoUsuario: Record<number, string> = {
   6: 'Admin',
 }
 
-// Chave para o hint de login (usada junto com a LoginPage)
 const LOGIN_HINT_KEY = 'sigeceja_login_hint'
 
 const BarraSuperior: React.FC<BarraSuperiorProps> = ({ alternarMenuLateral }) => {
   const theme = useTheme()
   const navigate = useNavigate()
 
-  // Contextos
   const { modo, alternarModo } = useTema()
   const { usuario, logout } = useAuth()
   const { supabase } = useSupabase()
 
-  // Estados locais
   const [anchorAvatar, setAnchorAvatar] = useState<null | HTMLElement>(null)
 
-  // Dados
   const { data: perfil, isLoading } = usePerfilUsuario(usuario, supabase)
 
-  // Sincroniza email / foto / nome / username com o hint de login
+  // Atualiza hint de login com e-mail + foto + nome
   useEffect(() => {
     if (!usuario?.email || !perfil) return
 
@@ -131,7 +121,6 @@ const BarraSuperior: React.FC<BarraSuperiorProps> = ({ alternarMenuLateral }) =>
   const ehDark = modo === 'dark'
   const menuAberto = Boolean(anchorAvatar)
 
-  // Lógica de exibição do nome
   const displayUsername =
     perfil?.username || perfil?.name || usuario?.email || 'Usuário'
   const nomeExibicao = displayUsername.split(' ')[0]
@@ -140,7 +129,6 @@ const BarraSuperior: React.FC<BarraSuperiorProps> = ({ alternarMenuLateral }) =>
     (perfil?.id_tipo_usuario && mapTipoUsuario[perfil.id_tipo_usuario]) ||
     'Admin'
 
-  // Handlers
   const handleMenuOpen = (event: React.MouseEvent<HTMLElement>) =>
     setAnchorAvatar(event.currentTarget)
   const handleMenuClose = () => setAnchorAvatar(null)
@@ -281,6 +269,7 @@ const BarraSuperior: React.FC<BarraSuperiorProps> = ({ alternarMenuLateral }) =>
               }}
             />
 
+            {/* Área do Usuário */}
             <Tooltip title="Gerenciar conta">
               <Box
                 onClick={handleMenuOpen}
@@ -407,7 +396,6 @@ const BarraSuperior: React.FC<BarraSuperiorProps> = ({ alternarMenuLateral }) =>
         </Toolbar>
       </AppBar>
 
-      {/* Menu Dropdown */}
       <Menu
         anchorEl={anchorAvatar}
         open={menuAberto}
