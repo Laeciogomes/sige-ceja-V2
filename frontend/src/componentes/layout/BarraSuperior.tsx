@@ -103,41 +103,32 @@ const BarraSuperior: React.FC<BarraSuperiorProps> = ({ alternarMenuLateral }) =>
   const { data: perfil, isLoading } = usePerfilUsuario(usuario, supabase)
 
   // Sincroniza foto/nome/username com o hint de login, respeitando o "Lembrar-me"
+    // Sincroniza email / foto / nome / username com o hint de login
   useEffect(() => {
-  console.log("DEBUG BarraSuperior → usuario:", usuario)
-  console.log("DEBUG BarraSuperior → perfil:", perfil)
+    if (!usuario?.email || !perfil) return
 
-  if (!usuario?.email || !perfil) {
-    console.log("DEBUG: sem usuário ou sem perfil, cancelando persistência.")
-    return
-  }
+    try {
+      const raw = localStorage.getItem(LOGIN_HINT_KEY)
+      const prev = raw ? JSON.parse(raw) : {}
 
-  try {
-    const raw = localStorage.getItem(LOGIN_HINT_KEY)
-    console.log("DEBUG → RAW localStorage:", raw)
+      const payload = {
+        ...prev,
+        // garante que o email atual está salvo
+        email: usuario.email,
+        // preserva o rememberMe que veio da tela de login
+        rememberMe: typeof prev.rememberMe === 'boolean' ? prev.rememberMe : true,
+        // dados do perfil para o login usar depois
+        foto_url: perfil.foto_url ?? null,
+        name: perfil.name ?? null,
+        username: perfil.username ?? null,
+      }
 
-    const prev = raw ? JSON.parse(raw) : {}
-
-    if (!prev.rememberMe) {
-      console.log("DEBUG: rememberMe = false, NÃO salvando foto.")
-      return
+      localStorage.setItem(LOGIN_HINT_KEY, JSON.stringify(payload))
+    } catch (error) {
+      console.error('Erro ao atualizar hint de login:', error)
     }
+  }, [usuario?.email, perfil])
 
-    const payload = {
-      ...prev,
-      email: usuario.email,
-      foto_url: perfil.foto_url,
-      name: perfil.name,
-      username: perfil.username,
-    }
-
-    console.log("DEBUG → Salvando payload:", payload)
-
-    localStorage.setItem(LOGIN_HINT_KEY, JSON.stringify(payload))
-  } catch (error) {
-    console.error('Erro ao atualizar hint de login:', error)
-  }
-}, [usuario?.email, perfil])
 
 
   const ehDark = modo === 'dark'
