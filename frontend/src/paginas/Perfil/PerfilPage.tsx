@@ -392,7 +392,9 @@ const PerfilPage: React.FC = () => {
 
     const atualIndex = videoDevices.findIndex(d => d.deviceId === currentDeviceId)
     const proximoIndex =
-      atualIndex === -1 ? 1 : (atualIndex + 1) % videoDevices.length
+      atualIndex === -1
+        ? 1
+        : (atualIndex + 1) % videoDevices.length
 
     setCurrentDeviceId(videoDevices[proximoIndex].deviceId)
   }
@@ -625,20 +627,20 @@ const PerfilPage: React.FC = () => {
 
   // --------- Loading / erro global ---------
 
+  const containerSx = {
+    maxWidth: { xs: '100%', md: 720 }, // xs ocupa 100%, md+ mantém 720
+    mx: 'auto',
+    p: { xs: 0, md: 2 },               // sem padding lateral em xs
+    minHeight: '60vh',
+    display: 'flex',
+    justifyContent: 'center',
+    alignItems: 'center',
+    boxSizing: 'border-box' as const,
+  }
+
   if (isLoading || !form || !perfil) {
     return (
-      <Box
-        sx={{
-          maxWidth: 720,
-          mx: 'auto',
-          p: { xs: 0, md: 2 }, // xs sem padding extra
-          minHeight: '60vh',
-          display: 'flex',
-          justifyContent: 'center',
-          alignItems: 'center',
-          boxSizing: 'border-box',
-        }}
-      >
+      <Box sx={containerSx}>
         <CircularProgress />
       </Box>
     )
@@ -646,18 +648,7 @@ const PerfilPage: React.FC = () => {
 
   if (isError) {
     return (
-      <Box
-        sx={{
-          maxWidth: 720,
-          mx: 'auto',
-          p: { xs: 0, md: 2 }, // xs sem padding extra
-          minHeight: '60vh',
-          display: 'flex',
-          justifyContent: 'center',
-          alignItems: 'center',
-          boxSizing: 'border-box',
-        }}
-      >
+      <Box sx={containerSx}>
         <Alert severity="error" sx={{ width: '100%' }}>
           Erro ao carregar perfil.
         </Alert>
@@ -670,9 +661,9 @@ const PerfilPage: React.FC = () => {
   return (
     <Box
       sx={{
-        maxWidth: 720,
+        maxWidth: { xs: '100%', md: 720 }, // xs ocupa toda a largura, md+ igual antes
         mx: 'auto',
-        p: { xs: 0, md: 2 }, // em tela pequena, sem padding lateral extra
+        p: { xs: 0, md: 2 },
         pb: 8,
         boxSizing: 'border-box',
       }}
@@ -763,11 +754,9 @@ const PerfilPage: React.FC = () => {
           width: '100%',
           borderRadius: 3,
           boxSizing: 'border-box',
-          minWidth: 0,
-          // em telas grandes mantém overflow hidden como estava;
-          // em telas pequenas permite scroll horizontal em vez de cortar
-          overflowX: isSmall ? 'auto' : 'hidden',
-          overflowY: 'visible',
+          // em telas grandes continua escondendo overflow,
+          // em telas pequenas NÃO corta nada
+          overflow: { xs: 'visible', md: 'hidden' },
         }}
       >
         <Tabs
@@ -825,7 +814,7 @@ const PerfilPage: React.FC = () => {
               boxSizing: 'border-box',
             }}
           >
-            <Grid container spacing={2} sx={{ width: '100%', m: 0, minWidth: 0 }}>
+            <Grid container spacing={2} sx={{ width: '100%', m: 0 }}>
               <Grid item xs={12} md={6}>
                 <TextField
                   fullWidth
@@ -950,7 +939,7 @@ const PerfilPage: React.FC = () => {
               boxSizing: 'border-box',
             }}
           >
-            <Grid container spacing={2} sx={{ width: '100%', m: 0, minWidth: 0 }}>
+            <Grid container spacing={2} sx={{ width: '100%', m: 0 }}>
               <Grid item xs={12} md={6}>
                 <TextField
                   fullWidth
@@ -1015,7 +1004,7 @@ const PerfilPage: React.FC = () => {
               boxSizing: 'border-box',
             }}
           >
-            <Grid container spacing={3} sx={{ width: '100%', m: 0, minWidth: 0 }}>
+            <Grid container spacing={3} sx={{ width: '100%', m: 0 }}>
               <Grid item xs={12} md={4} sx={{ textAlign: 'center' }}>
                 <Typography variant="subtitle2" gutterBottom>
                   Foto de Perfil
@@ -1153,7 +1142,11 @@ const PerfilPage: React.FC = () => {
                           })
                         }
                       >
-                        {mostrarSenhas.atual ? <VisibilityOff /> : <Visibility />}
+                        {mostrarSenhas.atual ? (
+                          <VisibilityOff />
+                        ) : (
+                          <Visibility />
+                        )}
                       </IconButton>
                     </InputAdornment>
                   ),
@@ -1178,7 +1171,11 @@ const PerfilPage: React.FC = () => {
                           })
                         }
                       >
-                        {mostrarSenhas.nova ? <VisibilityOff /> : <Visibility />}
+                        {mostrarSenhas.nova ? (
+                          <VisibilityOff />
+                        ) : (
+                          <Visibility />
+                        )}
                       </IconButton>
                     </InputAdornment>
                   ),
@@ -1203,7 +1200,11 @@ const PerfilPage: React.FC = () => {
                           })
                         }
                       >
-                        {mostrarSenhas.conf ? <VisibilityOff /> : <Visibility />}
+                        {mostrarSenhas.conf ? (
+                          <VisibilityOff />
+                        ) : (
+                          <Visibility />
+                        )}
                       </IconButton>
                     </InputAdornment>
                   ),
