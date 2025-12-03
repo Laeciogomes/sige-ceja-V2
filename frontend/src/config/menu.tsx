@@ -1,4 +1,3 @@
-// src/config/menu.tsx
 import React from 'react'
 
 import DashboardIcon from '@mui/icons-material/Dashboard'
@@ -28,6 +27,7 @@ export type ItemMenuConfig = {
   rotulo: string
   caminho: string
   icone: React.ReactElement
+  grupo?: string // Novo campo para organização visual
 }
 
 /**
@@ -36,93 +36,101 @@ export type ItemMenuConfig = {
 export const menusPorContexto: Record<ContextoPainel, ItemMenuConfig[]> = {
   /**
    * ADMIN
-   *
-   * Menu funcional com TUDO que os outros têm,
-   * sem itens de “Dashboard” e sem duplicar funcionalidades.
    */
   ADMIN: [
-    // SECRETARIA
+    // --- SECRETARIA ---
     {
       id: 'admin-sec-usuarios',
-      rotulo: 'Secretaria · Usuários',
+      rotulo: 'Usuários',
       caminho: '/secretaria/usuarios',
       icone: <PeopleIcon />,
+      grupo: 'Administrativo',
     },
     {
       id: 'admin-sec-turmas',
-      rotulo: 'Secretaria · Turmas',
+      rotulo: 'Turmas',
       caminho: '/secretaria/turmas',
       icone: <ClassIcon />,
+      grupo: 'Administrativo',
     },
     {
       id: 'admin-sec-salas',
-      rotulo: 'Secretaria · Salas',
+      rotulo: 'Salas',
       caminho: '/secretaria/salas',
       icone: <DoorFrontIcon />,
+      grupo: 'Administrativo',
     },
     {
       id: 'admin-sec-disciplinas',
-      rotulo: 'Secretaria · Disciplinas',
+      rotulo: 'Disciplinas',
       caminho: '/secretaria/disciplinas',
       icone: <MenuBookIcon />,
+      grupo: 'Administrativo',
     },
     {
       id: 'admin-sec-protocolos',
-      rotulo: 'Secretaria · Protocolos',
+      rotulo: 'Protocolos',
       caminho: '/secretaria/protocolos',
       icone: <DescriptionIcon />,
+      grupo: 'Administrativo',
     },
     {
       id: 'admin-sec-matriculas',
-      rotulo: 'Secretaria · Matrículas',
+      rotulo: 'Matrículas',
       caminho: '/secretaria/matriculas',
       icone: <AssignmentIndIcon />,
+      grupo: 'Acadêmico',
     },
     {
       id: 'admin-sec-renovacoes',
-      rotulo: 'Secretaria · Renovar matrícula',
+      rotulo: 'Renovar matrícula',
       caminho: '/secretaria/renovacoes',
       icone: <AutorenewIcon />,
+      grupo: 'Acadêmico',
     },
 
-    // PEDAGÓGICO (Professor / Coordenação / Direção)
+    // --- PEDAGÓGICO ---
     {
       id: 'admin-ped-atendimentos',
-      rotulo: 'Pedagógico · Atendimentos',
+      rotulo: 'Atendimentos',
       caminho: '/professores/atendimentos',
       icone: <MeetingRoomIcon />,
+      grupo: 'Pedagógico',
     },
     {
       id: 'admin-ped-acompanhamento',
-      rotulo: 'Pedagógico · Acompanhamento de alunos',
+      rotulo: 'Acompanhamento',
       caminho: '/coordenacao/acompanhamento',
       icone: <AssessmentIcon />,
+      grupo: 'Pedagógico',
     },
     {
       id: 'admin-ped-sasp',
-      rotulo: 'Pedagógico · SASP',
+      rotulo: 'SASP',
       caminho: '/coordenacao/sasp',
       icone: <ListAltIcon />,
+      grupo: 'Pedagógico',
     },
 
-    // VISÃO ALUNO
+    // --- VISÃO ALUNO ---
     {
       id: 'admin-aluno-matriculas',
-      rotulo: 'Aluno · Matrículas',
+      rotulo: 'Matrículas (Aluno)',
       caminho: '/alunos/matriculas',
       icone: <AssignmentIndIcon />,
+      grupo: 'Visão Aluno',
     },
     {
       id: 'admin-aluno-progresso',
-      rotulo: 'Aluno · Progresso',
+      rotulo: 'Progresso (Aluno)',
       caminho: '/alunos/progresso',
       icone: <AssessmentIcon />,
+      grupo: 'Visão Aluno',
     },
   ],
 
   /**
-   * SECRETARIA – visto por SECRETARIA / COORDENAÇÃO / DIREÇÃO
-   * quando estão no contexto /secretaria.
+   * SECRETARIA
    */
   SECRETARIA: [
     {
@@ -130,48 +138,56 @@ export const menusPorContexto: Record<ContextoPainel, ItemMenuConfig[]> = {
       rotulo: 'Dashboard',
       caminho: '/secretaria',
       icone: <DashboardIcon />,
+      grupo: 'Geral',
     },
     {
       id: 'sec-usuarios',
-      rotulo: 'Gerenciar usuários',
+      rotulo: 'Usuários',
       caminho: '/secretaria/usuarios',
       icone: <PeopleIcon />,
+      grupo: 'Gestão',
     },
     {
       id: 'sec-turmas',
-      rotulo: 'Gerenciar turmas',
+      rotulo: 'Turmas',
       caminho: '/secretaria/turmas',
       icone: <ClassIcon />,
+      grupo: 'Gestão',
     },
     {
       id: 'sec-salas',
-      rotulo: 'Gerenciar salas',
+      rotulo: 'Salas',
       caminho: '/secretaria/salas',
       icone: <DoorFrontIcon />,
+      grupo: 'Gestão',
     },
     {
       id: 'sec-disciplinas',
-      rotulo: 'Gerenciar disciplinas',
+      rotulo: 'Disciplinas',
       caminho: '/secretaria/disciplinas',
       icone: <MenuBookIcon />,
+      grupo: 'Gestão',
     },
     {
       id: 'sec-protocolos',
-      rotulo: 'Gerenciar protocolos',
+      rotulo: 'Protocolos',
       caminho: '/secretaria/protocolos',
       icone: <DescriptionIcon />,
+      grupo: 'Atendimento',
     },
     {
       id: 'sec-matriculas',
       rotulo: 'Matrículas',
       caminho: '/secretaria/matriculas',
       icone: <AssignmentIndIcon />,
+      grupo: 'Atendimento',
     },
     {
       id: 'sec-renovacoes',
       rotulo: 'Renovar matrícula',
       caminho: '/secretaria/renovacoes',
       icone: <AutorenewIcon />,
+      grupo: 'Atendimento',
     },
   ],
 
@@ -184,18 +200,21 @@ export const menusPorContexto: Record<ContextoPainel, ItemMenuConfig[]> = {
       rotulo: 'Dashboard',
       caminho: '/professores',
       icone: <DashboardIcon />,
+      grupo: 'Geral',
     },
     {
       id: 'prof-atendimentos',
-      rotulo: 'Atendimentos',
+      rotulo: 'Meus Atendimentos',
       caminho: '/professores/atendimentos',
       icone: <MeetingRoomIcon />,
+      grupo: 'Pedagógico',
     },
     {
       id: 'prof-acompanhamento',
-      rotulo: 'Acompanhamento de alunos',
+      rotulo: 'Acompanhamento',
       caminho: '/professores/acompanhamento',
       icone: <AssessmentIcon />,
+      grupo: 'Pedagógico',
     },
   ],
 
@@ -208,60 +227,70 @@ export const menusPorContexto: Record<ContextoPainel, ItemMenuConfig[]> = {
       rotulo: 'Dashboard',
       caminho: '/coordenacao',
       icone: <DashboardIcon />,
+      grupo: 'Geral',
     },
     {
       id: 'coord-usuarios',
-      rotulo: 'Gerenciar usuários',
+      rotulo: 'Usuários',
       caminho: '/secretaria/usuarios',
       icone: <PeopleIcon />,
+      grupo: 'Administração',
     },
     {
       id: 'coord-turmas',
-      rotulo: 'Gerenciar turmas',
+      rotulo: 'Turmas',
       caminho: '/secretaria/turmas',
       icone: <ClassIcon />,
+      grupo: 'Administração',
     },
     {
       id: 'coord-salas',
-      rotulo: 'Gerenciar salas',
+      rotulo: 'Salas',
       caminho: '/secretaria/salas',
       icone: <DoorFrontIcon />,
+      grupo: 'Administração',
     },
     {
       id: 'coord-disciplinas',
-      rotulo: 'Gerenciar disciplinas',
+      rotulo: 'Disciplinas',
       caminho: '/secretaria/disciplinas',
       icone: <MenuBookIcon />,
+      grupo: 'Administração',
     },
     {
       id: 'coord-protocolos',
-      rotulo: 'Gerenciar protocolos',
+      rotulo: 'Protocolos',
       caminho: '/secretaria/protocolos',
       icone: <DescriptionIcon />,
+      grupo: 'Secretaria',
     },
     {
       id: 'coord-matriculas',
       rotulo: 'Matrículas',
       caminho: '/secretaria/matriculas',
       icone: <AssignmentIndIcon />,
+      grupo: 'Secretaria',
     },
     {
       id: 'coord-renovacoes',
       rotulo: 'Renovar matrícula',
       caminho: '/secretaria/renovacoes',
       icone: <AutorenewIcon />,
+      grupo: 'Secretaria',
     },
     {
       id: 'coord-sasp',
       rotulo: 'SASP',
       caminho: '/coordenacao/sasp',
       icone: <ListAltIcon />,
+      grupo: 'Pedagógico',
     },
     {
       id: 'coord-acompanhamento',
-      rotulo: 'Acompanhamento de alunos',
+      rotulo: 'Acompanhamento',
       caminho: '/coordenacao/acompanhamento',
       icone: <AssessmentIcon />,
+      grupo: 'Pedagógico',
     },
   ],
 
@@ -274,60 +303,70 @@ export const menusPorContexto: Record<ContextoPainel, ItemMenuConfig[]> = {
       rotulo: 'Dashboard',
       caminho: '/direcao',
       icone: <DashboardIcon />,
+      grupo: 'Geral',
     },
     {
       id: 'dir-usuarios',
-      rotulo: 'Gerenciar usuários',
+      rotulo: 'Usuários',
       caminho: '/secretaria/usuarios',
       icone: <PeopleIcon />,
+      grupo: 'Gestão Escolar',
     },
     {
       id: 'dir-turmas',
-      rotulo: 'Gerenciar turmas',
+      rotulo: 'Turmas',
       caminho: '/secretaria/turmas',
       icone: <ClassIcon />,
+      grupo: 'Gestão Escolar',
     },
     {
       id: 'dir-salas',
-      rotulo: 'Gerenciar salas',
+      rotulo: 'Salas',
       caminho: '/secretaria/salas',
       icone: <DoorFrontIcon />,
+      grupo: 'Gestão Escolar',
     },
     {
       id: 'dir-disciplinas',
-      rotulo: 'Gerenciar disciplinas',
+      rotulo: 'Disciplinas',
       caminho: '/secretaria/disciplinas',
       icone: <MenuBookIcon />,
+      grupo: 'Gestão Escolar',
     },
     {
       id: 'dir-protocolos',
-      rotulo: 'Gerenciar protocolos',
+      rotulo: 'Protocolos',
       caminho: '/secretaria/protocolos',
       icone: <DescriptionIcon />,
+      grupo: 'Secretaria',
     },
     {
       id: 'dir-matriculas',
       rotulo: 'Matrículas',
       caminho: '/secretaria/matriculas',
       icone: <AssignmentIndIcon />,
+      grupo: 'Secretaria',
     },
     {
       id: 'dir-renovacoes',
       rotulo: 'Renovar matrícula',
       caminho: '/secretaria/renovacoes',
       icone: <AutorenewIcon />,
+      grupo: 'Secretaria',
     },
     {
       id: 'dir-sasp',
       rotulo: 'SASP',
       caminho: '/direcao/sasp',
       icone: <ListAltIcon />,
+      grupo: 'Pedagógico',
     },
     {
       id: 'dir-acompanhamento',
-      rotulo: 'Acompanhamento de alunos',
+      rotulo: 'Acompanhamento',
       caminho: '/direcao/acompanhamento',
       icone: <AssessmentIcon />,
+      grupo: 'Pedagógico',
     },
   ],
 
@@ -340,45 +379,42 @@ export const menusPorContexto: Record<ContextoPainel, ItemMenuConfig[]> = {
       rotulo: 'Minha área',
       caminho: '/alunos',
       icone: <DashboardIcon />,
+      grupo: 'Principal',
     },
     {
       id: 'aluno-matriculas',
       rotulo: 'Minhas matrículas',
       caminho: '/alunos/matriculas',
       icone: <AssignmentIndIcon />,
+      grupo: 'Secretaria',
     },
     {
       id: 'aluno-progresso',
       rotulo: 'Meu progresso',
       caminho: '/alunos/progresso',
       icone: <AssessmentIcon />,
+      grupo: 'Acadêmico',
     },
   ],
 }
 
-/**
- * Descobre qual painel está ativo com base na rota atual e no papel.
- * Para ADMIN, o menu mostrado é sempre o de ADMIN.
- */
+// Mantive a lógica de obterContextoPainel igual, pois é regra de negócio
 export const obterContextoPainel = (
   papel: PapelUsuario | undefined,
   pathname: string,
 ): ContextoPainel => {
   const path = pathname.toLowerCase()
 
-  // ADMIN sempre usa menu de ADMIN
   if ((papel as string) === 'ADMIN') {
     return 'ADMIN'
   }
 
-  // Tenta inferir pela URL para outros papéis
   if (path.startsWith('/secretaria')) return 'SECRETARIA'
   if (path.startsWith('/professores')) return 'PROFESSOR'
   if (path.startsWith('/coordenacao')) return 'COORDENACAO'
   if (path.startsWith('/direcao')) return 'DIRECAO'
   if (path.startsWith('/alunos')) return 'ALUNO'
 
-  // Fallback pelo papel do usuário
   switch (papel as string) {
     case 'SECRETARIA':
       return 'SECRETARIA'
