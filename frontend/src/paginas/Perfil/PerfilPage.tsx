@@ -631,7 +631,7 @@ const PerfilPage: React.FC = () => {
     return (
       <Box
         sx={{
-          maxWidth: 1200,
+          maxWidth: 900,
           mx: 'auto',
           p: { xs: 1.5, md: 2 },
           minHeight: '60vh',
@@ -703,7 +703,7 @@ const PerfilPage: React.FC = () => {
         elevation={0}
         sx={{
           width: '100%',
-          p: { xs: 1.5, sm: 2.5 },
+          p: { xs: 1, sm: 2 },
           mb: 3,
           display: 'flex',
           flexDirection: { xs: 'column', sm: 'row' },
