@@ -105,9 +105,7 @@ function TabPanel(props: TabPanelProps) {
       style={{ width: '100%' }}
     >
       {value === index && (
-        <Box sx={{ py: 3, width: '100%', boxSizing: 'border-box' }}>
-          {children}
-        </Box>
+        <Box sx={{ py: 3, width: '100%', boxSizing: 'border-box' }}>{children}</Box>
       )}
     </div>
   )
@@ -631,11 +629,9 @@ const PerfilPage: React.FC = () => {
     return (
       <Box
         sx={{
-          width: '100%',
-          maxWidth: 1600,
+          maxWidth: 720,
           mx: 'auto',
-          px: { xs: 1.5, sm: 3 },
-          py: { xs: 2, sm: 3 },
+          p: { xs: 0, md: 2 }, // xs sem padding extra
           minHeight: '60vh',
           display: 'flex',
           justifyContent: 'center',
@@ -652,11 +648,9 @@ const PerfilPage: React.FC = () => {
     return (
       <Box
         sx={{
-          width: '100%',
-          maxWidth: 1600,
+          maxWidth: 720,
           mx: 'auto',
-          px: { xs: 1.5, sm: 3 },
-          py: { xs: 2, sm: 3 },
+          p: { xs: 0, md: 2 }, // xs sem padding extra
           minHeight: '60vh',
           display: 'flex',
           justifyContent: 'center',
@@ -676,651 +670,630 @@ const PerfilPage: React.FC = () => {
   return (
     <Box
       sx={{
-        width: '100%',
-        maxWidth: 1600,
+        maxWidth: 720,
         mx: 'auto',
-        px: { xs: 1.5, sm: 3 },
-        py: { xs: 2, sm: 3 },
+        p: { xs: 0, md: 2 }, // em tela pequena, sem padding lateral extra
+        pb: 8,
         boxSizing: 'border-box',
       }}
     >
-      <Box
+      {/* Toast */}
+      {toast && toast.open && (
+        <Snackbar
+          open={true}
+          autoHideDuration={4000}
+          onClose={handleCloseToast}
+          anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
+        >
+          <Alert
+            onClose={handleCloseToast}
+            severity={toast.severity}
+            variant="filled"
+            sx={{ width: '100%' }}
+          >
+            {toast.message}
+          </Alert>
+        </Snackbar>
+      )}
+
+      {/* Header */}
+      <Paper
+        elevation={0}
         sx={{
-          maxWidth: 720,
-          mx: 'auto',
+          width: '100%',
+          p: { xs: 0.75, sm: 1.5 },
+          mb: 2,
           display: 'flex',
-          flexDirection: 'column',
+          flexDirection: { xs: 'column', sm: 'row' },
+          alignItems: { xs: 'flex-start', sm: 'center' },
           gap: 2,
-          pb: 8,
+          bgcolor: theme.palette.primary.main,
+          color: 'white',
+          borderRadius: 3,
+          boxSizing: 'border-box',
         }}
       >
-        {/* Toast */}
-        {toast && toast.open && (
-          <Snackbar
-            open={true}
-            autoHideDuration={4000}
-            onClose={handleCloseToast}
-            anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
-          >
-            <Alert
-              onClose={handleCloseToast}
-              severity={toast.severity}
-              variant="filled"
-              sx={{ width: '100%' }}
-            >
-              {toast.message}
-            </Alert>
-          </Snackbar>
-        )}
-
-        {/* Header */}
-        <Paper
-          elevation={0}
+        <Avatar
+          src={form.foto_url || undefined}
           sx={{
-            width: '100%',
-            p: { xs: 0.75, sm: 1.5 },
-            mb: 2,
-            display: 'flex',
-            flexDirection: { xs: 'column', sm: 'row' },
-            alignItems: { xs: 'flex-start', sm: 'center' },
-            gap: 2,
-            bgcolor: theme.palette.primary.main,
-            color: 'white',
-            borderRadius: 3,
-            boxSizing: 'border-box',
+            width: 60,
+            height: 60,
+            border: '3px solid white',
+            boxShadow: 2,
+            bgcolor: theme.palette.primary.dark,
           }}
         >
-          <Avatar
-            src={form.foto_url || undefined}
+          {form.name.charAt(0)}
+        </Avatar>
+        <Box sx={{ flexGrow: 1, minWidth: 0 }}>
+          <Typography
+            variant="subtitle1"
+            fontWeight={700}
+            sx={{ wordBreak: 'break-word', fontSize: { xs: 15, sm: 17 } }}
+          >
+            {form.name}
+          </Typography>
+          <Typography
+            variant="body2"
             sx={{
-              width: 60,
-              height: 60,
-              border: '3px solid white',
-              boxShadow: 2,
-              bgcolor: theme.palette.primary.dark,
+              opacity: 0.9,
+              wordBreak: 'break-all',
+              fontSize: { xs: 11, sm: 13 },
             }}
           >
-            {form.name.charAt(0)}
-          </Avatar>
-          <Box sx={{ flexGrow: 1, minWidth: 0 }}>
-            <Typography
-              variant="subtitle1"
-              fontWeight={700}
-              sx={{ wordBreak: 'break-word', fontSize: { xs: 15, sm: 17 } }}
-            >
-              {form.name}
-            </Typography>
-            <Typography
-              variant="body2"
-              sx={{
-                opacity: 0.9,
-                wordBreak: 'break-all',
-                fontSize: { xs: 11, sm: 13 },
-              }}
-            >
-              {form.email}
-            </Typography>
-            <Chip
-              label={mapTipoUsuario[perfil.id_tipo_usuario] || 'Usuário'}
-              size="small"
-              sx={{
-                mt: 1,
-                bgcolor: 'rgba(255,255,255,0.2)',
-                color: 'white',
-                fontWeight: 600,
-              }}
-            />
-          </Box>
-        </Paper>
+            {form.email}
+          </Typography>
+          <Chip
+            label={mapTipoUsuario[perfil.id_tipo_usuario] || 'Usuário'}
+            size="small"
+            sx={{
+              mt: 1,
+              bgcolor: 'rgba(255,255,255,0.2)',
+              color: 'white',
+              fontWeight: 600,
+            }}
+          />
+        </Box>
+      </Paper>
 
-        {/* Card principal com abas e conteúdo */}
-        <Paper
-          variant="outlined"
+      {/* Card principal com abas e conteúdo */}
+      <Paper
+        variant="outlined"
+        sx={{
+          width: '100%',
+          borderRadius: 3,
+          boxSizing: 'border-box',
+          minWidth: 0,
+          // em telas grandes mantém overflow hidden como estava;
+          // em telas pequenas permite scroll horizontal em vez de cortar
+          overflowX: isSmall ? 'auto' : 'hidden',
+          overflowY: 'visible',
+        }}
+      >
+        <Tabs
+          value={tabValue}
+          onChange={handleTabChange}
+          variant={isSmall ? 'fullWidth' : 'scrollable'}
+          scrollButtons={isSmall ? false : 'auto'}
           sx={{
-            width: '100%',
-            borderRadius: 3,
-            boxSizing: 'border-box',
-            overflow: 'visible',
-            minWidth: 0,
+            borderBottom: 1,
+            borderColor: 'divider',
+            bgcolor: theme.palette.background.default,
           }}
         >
-          <Tabs
-            value={tabValue}
-            onChange={handleTabChange}
-            variant={isSmall ? 'fullWidth' : 'scrollable'}
-            scrollButtons={isSmall ? false : 'auto'}
+          <Tab
+            wrapped
+            icon={<PersonIcon />}
+            iconPosition="start"
+            label="Dados Pessoais"
+            sx={{ fontSize: { xs: 11, sm: 13 }, minHeight: 40 }}
+          />
+          <Tab
+            wrapped
+            icon={<HomeIcon />}
+            iconPosition="start"
+            label="Endereço"
+            sx={{ fontSize: { xs: 11, sm: 13 }, minHeight: 40 }}
+          />
+          <Tab
+            wrapped
+            icon={<PhotoIcon />}
+            iconPosition="start"
+            label="Foto / Social"
+            sx={{ fontSize: { xs: 11, sm: 13 }, minHeight: 40 }}
+          />
+          <Tab
+            wrapped
+            icon={<SecurityIcon />}
+            iconPosition="start"
+            label="Segurança"
+            sx={{ fontSize: { xs: 11, sm: 13 }, minHeight: 40 }}
+          />
+        </Tabs>
+
+        {/* Dados Pessoais */}
+        <TabPanel value={tabValue} index={0}>
+          <Box
+            component="form"
+            onSubmit={e => {
+              e.preventDefault()
+              if (form) mutation.mutate(form)
+            }}
             sx={{
-              borderBottom: 1,
-              borderColor: 'divider',
-              bgcolor: theme.palette.background.default,
+              px: { xs: 1.5, md: 3 },
+              width: '100%',
+              boxSizing: 'border-box',
             }}
           >
-            <Tab
-              wrapped
-              icon={<PersonIcon />}
-              iconPosition="start"
-              label="Dados Pessoais"
-              sx={{ fontSize: { xs: 11, sm: 13 }, minHeight: 40 }}
-            />
-            <Tab
-              wrapped
-              icon={<HomeIcon />}
-              iconPosition="start"
-              label="Endereço"
-              sx={{ fontSize: { xs: 11, sm: 13 }, minHeight: 40 }}
-            />
-            <Tab
-              wrapped
-              icon={<PhotoIcon />}
-              iconPosition="start"
-              label="Foto / Social"
-              sx={{ fontSize: { xs: 11, sm: 13 }, minHeight: 40 }}
-            />
-            <Tab
-              wrapped
-              icon={<SecurityIcon />}
-              iconPosition="start"
-              label="Segurança"
-              sx={{ fontSize: { xs: 11, sm: 13 }, minHeight: 40 }}
-            />
-          </Tabs>
-
-          {/* Dados Pessoais */}
-          <TabPanel value={tabValue} index={0}>
-            <Box
-              component="form"
-              onSubmit={e => {
-                e.preventDefault()
-                if (form) mutation.mutate(form)
-              }}
-              sx={{
-                px: { xs: 1.5, md: 3 },
-                width: '100%',
-                boxSizing: 'border-box',
-              }}
-            >
-              <Grid container spacing={2} sx={{ width: '100%', m: 0 }}>
-                <Grid item xs={12} md={6}>
-                  <TextField
-                    fullWidth
-                    label="Nome Completo"
-                    value={form.name}
-                    onChange={handleChange('name')}
-                    required
-                  />
-                </Grid>
-                <Grid item xs={12} md={6}>
-                  <TextField
-                    fullWidth
-                    label="Nome de Usuário"
-                    value={form.username}
-                    onChange={handleChange('username')}
-                    helperText="Como você será identificado no sistema."
-                  />
-                </Grid>
-                <Grid item xs={12} md={6}>
-                  <TextField
-                    fullWidth
-                    label="E-mail"
-                    value={form.email}
-                    disabled
-                    helperText="E-mail de login (não editável aqui)."
-                  />
-                </Grid>
-                <Grid item xs={12} sm={6} md={3}>
-                  <TextField
-                    fullWidth
-                    label="CPF"
-                    value={form.cpf}
-                    onChange={handleChange('cpf')}
-                    placeholder="000.000.000-00"
-                  />
-                </Grid>
-                <Grid item xs={12} sm={6} md={3}>
-                  <TextField
-                    fullWidth
-                    label="RG"
-                    value={form.rg}
-                    onChange={handleChange('rg')}
-                  />
-                </Grid>
-                <Grid item xs={12} sm={6} md={3}>
-                  <TextField
-                    fullWidth
-                    label="Celular"
-                    value={form.celular}
-                    onChange={handleChange('celular')}
-                    placeholder="(00) 00000-0000"
-                  />
-                </Grid>
-                <Grid item xs={12} sm={6} md={3}>
-                  <TextField
-                    fullWidth
-                    type="date"
-                    label="Nascimento"
-                    value={form.data_nascimento}
-                    onChange={handleChange('data_nascimento')}
-                    InputLabelProps={{ shrink: true }}
-                  />
-                </Grid>
-                <Grid item xs={12} sm={6} md={3}>
-                  <TextField
-                    select
-                    fullWidth
-                    label="Sexo"
-                    value={form.sexo}
-                    onChange={handleChange('sexo')}
-                    SelectProps={{ native: true }}
-                  >
-                    <option value="">Selecione</option>
-                    <option value="Masculino">Masculino</option>
-                    <option value="Feminino">Feminino</option>
-                    <option value="Outro">Outro</option>
-                  </TextField>
-                </Grid>
-                <Grid item xs={12} sm={6} md={3}>
-                  <TextField
-                    select
-                    fullWidth
-                    label="Raça"
-                    value={form.raca}
-                    onChange={handleChange('raca')}
-                    SelectProps={{ native: true }}
-                  >
-                    <option value="">Selecione</option>
-                    <option value="Branca">Branca</option>
-                    <option value="Preta">Preta</option>
-                    <option value="Parda">Parda</option>
-                    <option value="Amarela">Amarela</option>
-                    <option value="Indígena">Indígena</option>
-                  </TextField>
-                </Grid>
-                <Grid item xs={12} sx={{ mt: 1 }}>
-                  <Button
-                    variant="contained"
-                    type="submit"
-                    size="large"
-                    fullWidth
-                    disabled={mutation.isPending}
-                  >
-                    {mutation.isPending ? 'Salvando...' : 'Salvar Dados Pessoais'}
-                  </Button>
-                </Grid>
-              </Grid>
-            </Box>
-          </TabPanel>
-
-          {/* Endereço */}
-          <TabPanel value={tabValue} index={1}>
-            <Box
-              component="form"
-              onSubmit={e => {
-                e.preventDefault()
-                if (form) mutation.mutate(form)
-              }}
-              sx={{
-                px: { xs: 1.5, md: 3 },
-                width: '100%',
-                boxSizing: 'border-box',
-              }}
-            >
-              <Grid container spacing={2} sx={{ width: '100%', m: 0 }}>
-                <Grid item xs={12} md={6}>
-                  <TextField
-                    fullWidth
-                    label="Logradouro"
-                    value={form.logradouro}
-                    onChange={handleChange('logradouro')}
-                  />
-                </Grid>
-                <Grid item xs={12} sm={6} md={2}>
-                  <TextField
-                    fullWidth
-                    label="Número"
-                    value={form.numero_endereco}
-                    onChange={handleChange('numero_endereco')}
-                  />
-                </Grid>
-                <Grid item xs={12} sm={6} md={4}>
-                  <TextField
-                    fullWidth
-                    label="Bairro"
-                    value={form.bairro}
-                    onChange={handleChange('bairro')}
-                  />
-                </Grid>
-                <Grid item xs={12} sm={6} md={4}>
-                  <TextField
-                    fullWidth
-                    label="Município"
-                    value={form.municipio}
-                    onChange={handleChange('municipio')}
-                  />
-                </Grid>
-                <Grid item xs={12} sm={6} md={8}>
-                  <TextField
-                    fullWidth
-                    label="Ponto de Referência"
-                    value={form.ponto_referencia}
-                    onChange={handleChange('ponto_referencia')}
-                  />
-                </Grid>
-                <Grid item xs={12} sx={{ mt: 1 }}>
-                  <Button
-                    variant="contained"
-                    type="submit"
-                    size="large"
-                    fullWidth
-                    disabled={mutation.isPending}
-                  >
-                    {mutation.isPending ? 'Salvando...' : 'Salvar Endereço'}
-                  </Button>
-                </Grid>
-              </Grid>
-            </Box>
-          </TabPanel>
-
-          {/* Foto & Social */}
-          <TabPanel value={tabValue} index={2}>
-            <Box
-              sx={{
-                px: { xs: 1.5, md: 3 },
-                width: '100%',
-                boxSizing: 'border-box',
-              }}
-            >
-              <Grid container spacing={3} sx={{ width: '100%', m: 0 }}>
-                <Grid item xs={12} md={4} sx={{ textAlign: 'center' }}>
-                  <Typography variant="subtitle2" gutterBottom>
-                    Foto de Perfil
-                  </Typography>
-                  <Avatar
-                    src={form.foto_url || undefined}
-                    sx={{ width: 100, height: 100, mx: 'auto', mb: 2 }}
-                  />
-                  <Stack
-                    direction={{ xs: 'column', sm: 'row' }}
-                    justifyContent="center"
-                    spacing={1}
-                    sx={{ '& > button': { flex: 1 } }}
-                  >
-                    <Button
-                      variant="outlined"
-                      size="small"
-                      onClick={() => fileInputGaleriaRef.current?.click()}
-                      startIcon={<ImageIcon />}
-                    >
-                      Galeria
-                    </Button>
-                    <Button
-                      variant="outlined"
-                      size="small"
-                      onClick={handleCliqueCamera}
-                      startIcon={<PhotoCamera />}
-                    >
-                      Câmera
-                    </Button>
-                  </Stack>
-                  {uploadingAvatar && (
-                    <Typography variant="caption">Enviando...</Typography>
-                  )}
-
-                  {/* Galeria */}
-                  <input
-                    ref={fileInputGaleriaRef}
-                    type="file"
-                    hidden
-                    accept="image/*"
-                    onChange={e => {
-                      if (e.target.files?.[0]) uploadAvatar(e.target.files[0])
-                    }}
-                  />
-
-                  {/* Câmera nativa (mobile) */}
-                  <input
-                    ref={fileInputCameraMobileRef}
-                    type="file"
-                    hidden
-                    accept="image/*"
-                    capture="environment"
-                    onChange={e => {
-                      if (e.target.files?.[0]) uploadAvatar(e.target.files[0])
-                    }}
-                  />
-                </Grid>
-
-                <Grid item xs={12} md={8}>
-                  <Stack spacing={2}>
-                    <TextField
-                      label="Instagram"
-                      value={form.instagram_url}
-                      onChange={handleChange('instagram_url')}
-                      fullWidth
-                      placeholder="https://instagram.com/..."
-                    />
-                    <TextField
-                      label="Facebook"
-                      value={form.facebook_url}
-                      onChange={handleChange('facebook_url')}
-                      fullWidth
-                      placeholder="https://facebook.com/..."
-                    />
-                    <Button
-                      variant="contained"
-                      onClick={() => form && mutation.mutate(form)}
-                      sx={{ width: { xs: '100%', sm: 'fit-content' } }}
-                      disabled={mutation.isPending}
-                    >
-                      {mutation.isPending ? 'Salvando...' : 'Salvar Foto & Social'}
-                    </Button>
-                  </Stack>
-                </Grid>
-              </Grid>
-            </Box>
-          </TabPanel>
-
-          {/* Segurança */}
-          <TabPanel value={tabValue} index={3}>
-            <Box
-              component="form"
-              sx={{
-                px: { xs: 1.5, md: 3 },
-                pb: 2,
-                width: '100%',
-                maxWidth: 500,
-                boxSizing: 'border-box',
-              }}
-              onSubmit={e => {
-                e.preventDefault()
-                handleAlterarSenha()
-              }}
-            >
-              <input
-                type="text"
-                name="username"
-                autoComplete="username"
-                value={form.email}
-                readOnly
-                style={{ display: 'none' }}
-              />
-
-              <Alert severity="info" sx={{ mb: 3 }}>
-                Para sua segurança, informe sua senha atual para definir uma nova.
-              </Alert>
-              <Stack spacing={2}>
+            <Grid container spacing={2} sx={{ width: '100%', m: 0, minWidth: 0 }}>
+              <Grid item xs={12} md={6}>
                 <TextField
-                  label="Senha Atual"
-                  type={mostrarSenhas.atual ? 'text' : 'password'}
-                  value={senhaData.atual}
-                  autoComplete="current-password"
-                  onChange={e =>
-                    setSenhaData({ ...senhaData, atual: e.target.value })
-                  }
-                  InputProps={{
-                    endAdornment: (
-                      <InputAdornment position="end">
-                        <IconButton
-                          onClick={() =>
-                            setMostrarSenhas({
-                              ...mostrarSenhas,
-                              atual: !mostrarSenhas.atual,
-                            })
-                          }
-                        >
-                          {mostrarSenhas.atual ? (
-                            <VisibilityOff />
-                          ) : (
-                            <Visibility />
-                          )}
-                        </IconButton>
-                      </InputAdornment>
-                    ),
-                  }}
+                  fullWidth
+                  label="Nome Completo"
+                  value={form.name}
+                  onChange={handleChange('name')}
+                  required
                 />
+              </Grid>
+              <Grid item xs={12} md={6}>
                 <TextField
-                  label="Nova Senha"
-                  type={mostrarSenhas.nova ? 'text' : 'password'}
-                  value={senhaData.nova}
-                  autoComplete="new-password"
-                  onChange={e =>
-                    setSenhaData({ ...senhaData, nova: e.target.value })
-                  }
-                  InputProps={{
-                    endAdornment: (
-                      <InputAdornment position="end">
-                        <IconButton
-                          onClick={() =>
-                            setMostrarSenhas({
-                              ...mostrarSenhas,
-                              nova: !mostrarSenhas.nova,
-                            })
-                          }
-                        >
-                          {mostrarSenhas.nova ? (
-                            <VisibilityOff />
-                          ) : (
-                            <Visibility />
-                          )}
-                        </IconButton>
-                      </InputAdornment>
-                    ),
-                  }}
+                  fullWidth
+                  label="Nome de Usuário"
+                  value={form.username}
+                  onChange={handleChange('username')}
+                  helperText="Como você será identificado no sistema."
                 />
+              </Grid>
+              <Grid item xs={12} md={6}>
                 <TextField
-                  label="Confirmar Senha"
-                  type={mostrarSenhas.conf ? 'text' : 'password'}
-                  value={senhaData.conf}
-                  autoComplete="new-password"
-                  onChange={e =>
-                    setSenhaData({ ...senhaData, conf: e.target.value })
-                  }
-                  InputProps={{
-                    endAdornment: (
-                      <InputAdornment position="end">
-                        <IconButton
-                          onClick={() =>
-                            setMostrarSenhas({
-                              ...mostrarSenhas,
-                              conf: !mostrarSenhas.conf,
-                            })
-                          }
-                        >
-                          {mostrarSenhas.conf ? (
-                            <VisibilityOff />
-                          ) : (
-                            <Visibility />
-                          )}
-                        </IconButton>
-                      </InputAdornment>
-                    ),
-                  }}
+                  fullWidth
+                  label="E-mail"
+                  value={form.email}
+                  disabled
+                  helperText="E-mail de login (não editável aqui)."
                 />
+              </Grid>
+              <Grid item xs={12} sm={6} md={3}>
+                <TextField
+                  fullWidth
+                  label="CPF"
+                  value={form.cpf}
+                  onChange={handleChange('cpf')}
+                  placeholder="000.000.000-00"
+                />
+              </Grid>
+              <Grid item xs={12} sm={6} md={3}>
+                <TextField
+                  fullWidth
+                  label="RG"
+                  value={form.rg}
+                  onChange={handleChange('rg')}
+                />
+              </Grid>
+              <Grid item xs={12} sm={6} md={3}>
+                <TextField
+                  fullWidth
+                  label="Celular"
+                  value={form.celular}
+                  onChange={handleChange('celular')}
+                  placeholder="(00) 00000-0000"
+                />
+              </Grid>
+              <Grid item xs={12} sm={6} md={3}>
+                <TextField
+                  fullWidth
+                  type="date"
+                  label="Nascimento"
+                  value={form.data_nascimento}
+                  onChange={handleChange('data_nascimento')}
+                  InputLabelProps={{ shrink: true }}
+                />
+              </Grid>
+              <Grid item xs={12} sm={6} md={3}>
+                <TextField
+                  select
+                  fullWidth
+                  label="Sexo"
+                  value={form.sexo}
+                  onChange={handleChange('sexo')}
+                  SelectProps={{ native: true }}
+                >
+                  <option value="">Selecione</option>
+                  <option value="Masculino">Masculino</option>
+                  <option value="Feminino">Feminino</option>
+                  <option value="Outro">Outro</option>
+                </TextField>
+              </Grid>
+              <Grid item xs={12} sm={6} md={3}>
+                <TextField
+                  select
+                  fullWidth
+                  label="Raça"
+                  value={form.raca}
+                  onChange={handleChange('raca')}
+                  SelectProps={{ native: true }}
+                >
+                  <option value="">Selecione</option>
+                  <option value="Branca">Branca</option>
+                  <option value="Preta">Preta</option>
+                  <option value="Parda">Parda</option>
+                  <option value="Amarela">Amarela</option>
+                  <option value="Indígena">Indígena</option>
+                </TextField>
+              </Grid>
+              <Grid item xs={12} sx={{ mt: 1 }}>
                 <Button
                   variant="contained"
-                  color="warning"
                   type="submit"
-                  disabled={loadingSenha}
-                  sx={{ width: { xs: '100%', sm: 'fit-content' } }}
+                  size="large"
+                  fullWidth
+                  disabled={mutation.isPending}
                 >
-                  {loadingSenha ? 'Alterando...' : 'Alterar Senha'}
+                  {mutation.isPending ? 'Salvando...' : 'Salvar Dados Pessoais'}
                 </Button>
-              </Stack>
-            </Box>
-          </TabPanel>
-        </Paper>
+              </Grid>
+            </Grid>
+          </Box>
+        </TabPanel>
 
-        {/* Modal da câmera - apenas desktop */}
-        {!isSmall && (
-          <Dialog
-            open={cameraAberta}
-            onClose={fecharCamera}
-            fullWidth
-            maxWidth="sm"
+        {/* Endereço */}
+        <TabPanel value={tabValue} index={1}>
+          <Box
+            component="form"
+            onSubmit={e => {
+              e.preventDefault()
+              if (form) mutation.mutate(form)
+            }}
+            sx={{
+              px: { xs: 1.5, md: 3 },
+              width: '100%',
+              boxSizing: 'border-box',
+            }}
           >
-            <DialogTitle>Usar câmera</DialogTitle>
-            <DialogContent>
-              <Box
-                sx={{
-                  mt: 1,
-                  borderRadius: 2,
-                  overflow: 'hidden',
-                  bgcolor: 'black',
-                  height: { xs: 260, sm: 320 },
-                  position: 'relative',
-                }}
-              >
-                <video
-                  ref={videoRef}
-                  autoPlay
-                  muted
-                  playsInline
-                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+            <Grid container spacing={2} sx={{ width: '100%', m: 0, minWidth: 0 }}>
+              <Grid item xs={12} md={6}>
+                <TextField
+                  fullWidth
+                  label="Logradouro"
+                  value={form.logradouro}
+                  onChange={handleChange('logradouro')}
                 />
-                {cameraErro && (
-                  <Box
-                    sx={{
-                      position: 'absolute',
-                      inset: 0,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      px: 2,
-                      textAlign: 'center',
-                      color: 'white',
-                      bgcolor: 'rgba(0,0,0,0.6)',
-                    }}
+              </Grid>
+              <Grid item xs={12} sm={6} md={2}>
+                <TextField
+                  fullWidth
+                  label="Número"
+                  value={form.numero_endereco}
+                  onChange={handleChange('numero_endereco')}
+                />
+              </Grid>
+              <Grid item xs={12} sm={6} md={4}>
+                <TextField
+                  fullWidth
+                  label="Bairro"
+                  value={form.bairro}
+                  onChange={handleChange('bairro')}
+                />
+              </Grid>
+              <Grid item xs={12} sm={6} md={4}>
+                <TextField
+                  fullWidth
+                  label="Município"
+                  value={form.municipio}
+                  onChange={handleChange('municipio')}
+                />
+              </Grid>
+              <Grid item xs={12} sm={6} md={8}>
+                <TextField
+                  fullWidth
+                  label="Ponto de Referência"
+                  value={form.ponto_referencia}
+                  onChange={handleChange('ponto_referencia')}
+                />
+              </Grid>
+              <Grid item xs={12} sx={{ mt: 1 }}>
+                <Button
+                  variant="contained"
+                  type="submit"
+                  size="large"
+                  fullWidth
+                  disabled={mutation.isPending}
+                >
+                  {mutation.isPending ? 'Salvando...' : 'Salvar Endereço'}
+                </Button>
+              </Grid>
+            </Grid>
+          </Box>
+        </TabPanel>
+
+        {/* Foto & Social */}
+        <TabPanel value={tabValue} index={2}>
+          <Box
+            sx={{
+              px: { xs: 1.5, md: 3 },
+              width: '100%',
+              boxSizing: 'border-box',
+            }}
+          >
+            <Grid container spacing={3} sx={{ width: '100%', m: 0, minWidth: 0 }}>
+              <Grid item xs={12} md={4} sx={{ textAlign: 'center' }}>
+                <Typography variant="subtitle2" gutterBottom>
+                  Foto de Perfil
+                </Typography>
+                <Avatar
+                  src={form.foto_url || undefined}
+                  sx={{ width: 100, height: 100, mx: 'auto', mb: 2 }}
+                />
+                <Stack
+                  direction={{ xs: 'column', sm: 'row' }}
+                  justifyContent="center"
+                  spacing={1}
+                  sx={{ '& > button': { flex: 1 } }}
+                >
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => fileInputGaleriaRef.current?.click()}
+                    startIcon={<ImageIcon />}
                   >
-                    <Typography variant="body2">{cameraErro}</Typography>
-                  </Box>
+                    Galeria
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={handleCliqueCamera}
+                    startIcon={<PhotoCamera />}
+                  >
+                    Câmera
+                  </Button>
+                </Stack>
+                {uploadingAvatar && (
+                  <Typography variant="caption">Enviando...</Typography>
                 )}
-              </Box>
-            </DialogContent>
-            <DialogActions
+
+                {/* Galeria */}
+                <input
+                  ref={fileInputGaleriaRef}
+                  type="file"
+                  hidden
+                  accept="image/*"
+                  onChange={e => {
+                    if (e.target.files?.[0]) uploadAvatar(e.target.files[0])
+                  }}
+                />
+
+                {/* Câmera nativa (mobile) */}
+                <input
+                  ref={fileInputCameraMobileRef}
+                  type="file"
+                  hidden
+                  accept="image/*"
+                  capture="environment"
+                  onChange={e => {
+                    if (e.target.files?.[0]) uploadAvatar(e.target.files[0])
+                  }}
+                />
+              </Grid>
+
+              <Grid item xs={12} md={8}>
+                <Stack spacing={2}>
+                  <TextField
+                    label="Instagram"
+                    value={form.instagram_url}
+                    onChange={handleChange('instagram_url')}
+                    fullWidth
+                    placeholder="https://instagram.com/..."
+                  />
+                  <TextField
+                    label="Facebook"
+                    value={form.facebook_url}
+                    onChange={handleChange('facebook_url')}
+                    fullWidth
+                    placeholder="https://facebook.com/..."
+                  />
+                  <Button
+                    variant="contained"
+                    onClick={() => form && mutation.mutate(form)}
+                    sx={{ width: { xs: '100%', sm: 'fit-content' } }}
+                    disabled={mutation.isPending}
+                  >
+                    {mutation.isPending ? 'Salvando...' : 'Salvar Foto & Social'}
+                  </Button>
+                </Stack>
+              </Grid>
+            </Grid>
+          </Box>
+        </TabPanel>
+
+        {/* Segurança */}
+        <TabPanel value={tabValue} index={3}>
+          <Box
+            component="form"
+            sx={{
+              px: { xs: 1.5, md: 3 },
+              pb: 2,
+              width: '100%',
+              maxWidth: 500,
+              boxSizing: 'border-box',
+            }}
+            onSubmit={e => {
+              e.preventDefault()
+              handleAlterarSenha()
+            }}
+          >
+            <input
+              type="text"
+              name="username"
+              autoComplete="username"
+              value={form.email}
+              readOnly
+              style={{ display: 'none' }}
+            />
+
+            <Alert severity="info" sx={{ mb: 3 }}>
+              Para sua segurança, informe sua senha atual para definir uma nova.
+            </Alert>
+            <Stack spacing={2}>
+              <TextField
+                label="Senha Atual"
+                type={mostrarSenhas.atual ? 'text' : 'password'}
+                value={senhaData.atual}
+                autoComplete="current-password"
+                onChange={e =>
+                  setSenhaData({ ...senhaData, atual: e.target.value })
+                }
+                InputProps={{
+                  endAdornment: (
+                    <InputAdornment position="end">
+                      <IconButton
+                        onClick={() =>
+                          setMostrarSenhas({
+                            ...mostrarSenhas,
+                            atual: !mostrarSenhas.atual,
+                          })
+                        }
+                      >
+                        {mostrarSenhas.atual ? <VisibilityOff /> : <Visibility />}
+                      </IconButton>
+                    </InputAdornment>
+                  ),
+                }}
+              />
+              <TextField
+                label="Nova Senha"
+                type={mostrarSenhas.nova ? 'text' : 'password'}
+                value={senhaData.nova}
+                autoComplete="new-password"
+                onChange={e =>
+                  setSenhaData({ ...senhaData, nova: e.target.value })
+                }
+                InputProps={{
+                  endAdornment: (
+                    <InputAdornment position="end">
+                      <IconButton
+                        onClick={() =>
+                          setMostrarSenhas({
+                            ...mostrarSenhas,
+                            nova: !mostrarSenhas.nova,
+                          })
+                        }
+                      >
+                        {mostrarSenhas.nova ? <VisibilityOff /> : <Visibility />}
+                      </IconButton>
+                    </InputAdornment>
+                  ),
+                }}
+              />
+              <TextField
+                label="Confirmar Senha"
+                type={mostrarSenhas.conf ? 'text' : 'password'}
+                value={senhaData.conf}
+                autoComplete="new-password"
+                onChange={e =>
+                  setSenhaData({ ...senhaData, conf: e.target.value })
+                }
+                InputProps={{
+                  endAdornment: (
+                    <InputAdornment position="end">
+                      <IconButton
+                        onClick={() =>
+                          setMostrarSenhas({
+                            ...mostrarSenhas,
+                            conf: !mostrarSenhas.conf,
+                          })
+                        }
+                      >
+                        {mostrarSenhas.conf ? <VisibilityOff /> : <Visibility />}
+                      </IconButton>
+                    </InputAdornment>
+                  ),
+                }}
+              />
+              <Button
+                variant="contained"
+                color="warning"
+                type="submit"
+                disabled={loadingSenha}
+                sx={{ width: { xs: '100%', sm: 'fit-content' } }}
+              >
+                {loadingSenha ? 'Alterando...' : 'Alterar Senha'}
+              </Button>
+            </Stack>
+          </Box>
+        </TabPanel>
+      </Paper>
+
+      {/* Modal da câmera - apenas desktop */}
+      {!isSmall && (
+        <Dialog
+          open={cameraAberta}
+          onClose={fecharCamera}
+          fullWidth
+          maxWidth="sm"
+        >
+          <DialogTitle>Usar câmera</DialogTitle>
+          <DialogContent>
+            <Box
               sx={{
-                justifyContent: 'space-between',
-                flexWrap: 'wrap',
-                gap: 1,
-                px: 3,
-                pb: 2,
+                mt: 1,
+                borderRadius: 2,
+                overflow: 'hidden',
+                bgcolor: 'black',
+                height: { xs: 260, sm: 320 },
+                position: 'relative',
               }}
             >
-              <Button onClick={fecharCamera}>Cancelar</Button>
+              <video
+                ref={videoRef}
+                autoPlay
+                muted
+                playsInline
+                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+              />
+              {cameraErro && (
+                <Box
+                  sx={{
+                    position: 'absolute',
+                    inset: 0,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    px: 2,
+                    textAlign: 'center',
+                    color: 'white',
+                    bgcolor: 'rgba(0,0,0,0.6)',
+                  }}
+                >
+                  <Typography variant="body2">{cameraErro}</Typography>
+                </Box>
+              )}
+            </Box>
+          </DialogContent>
+          <DialogActions
+            sx={{
+              justifyContent: 'space-between',
+              flexWrap: 'wrap',
+              gap: 1,
+              px: 3,
+              pb: 2,
+            }}
+          >
+            <Button onClick={fecharCamera}>Cancelar</Button>
 
-              <Button
-                onClick={alternarCamera}
-                startIcon={<CameraswitchIcon />}
-                disabled={videoDevices.length < 2}
-              >
-                Trocar câmera
-              </Button>
+            <Button
+              onClick={alternarCamera}
+              startIcon={<CameraswitchIcon />}
+              disabled={videoDevices.length < 2}
+            >
+              Trocar câmera
+            </Button>
 
-              <Button variant="contained" onClick={capturarFotoDaCamera}>
-                Tirar foto
-              </Button>
-            </DialogActions>
-          </Dialog>
-        )}
-      </Box>
+            <Button variant="contained" onClick={capturarFotoDaCamera}>
+              Tirar foto
+            </Button>
+          </DialogActions>
+        </Dialog>
+      )}
     </Box>
   )
 }
