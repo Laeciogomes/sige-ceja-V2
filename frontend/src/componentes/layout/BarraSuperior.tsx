@@ -486,3 +486,5 @@ const BarraSuperior: React.FC<BarraSuperiorProps> = ({ alternarMenuLateral }) =>
 }
 
 export default BarraSuperior
+
+// frontend/src/componentes/layout/BarraSuperior.tsx fim
