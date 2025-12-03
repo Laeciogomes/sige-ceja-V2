@@ -23,10 +23,20 @@ import SecretariaTurmasPage from '../paginas/painel-secretaria/SecretariaTurmasP
 import SecretariaMatriculasPage from '../paginas/painel-secretaria/SecretariaMatriculasPage'
 import SecretariaRelatoriosFichasPage from '../paginas/painel-secretaria/SecretariaRelatoriosFichasPage'
 
-
 export const AppRoutes: React.FC = () => {
-  const { usuario } = useAuth()
+  // Inclui "carregando" para evitar redirecionar enquanto a sessão está sendo restaurada
+  const { usuario, carregando } = useAuth() as {
+    usuario: any
+    carregando?: boolean
+  }
+
   const autenticado = !!usuario
+
+  // Enquanto a autenticação estiver carregando, não monta as rotas protegidas
+  // Isso evita que um F5 em /perfil ou /config volte para "/"
+  if (carregando) {
+    return <PaginaSimples titulo="Carregando sessão, aguarde..." />
+  }
 
   return (
     <Routes>

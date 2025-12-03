@@ -228,8 +228,15 @@ export const NotificacaoProvider: React.FC<NotificacaoProviderProps> = ({
           open={aberto}
           autoHideDuration={autoHideDuration ?? undefined}
           onClose={handleClose}
-          anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
-          sx={{ mt: 8 }} // desloca o toast para baixo da AppBar
+          anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+          sx={{
+            pointerEvents: 'none', // não bloqueia clique no resto da página
+            '& .MuiPaper-root': {
+              pointerEvents: 'auto', // apenas o próprio toast é clicável
+            },
+            mb: 2,
+            mr: 2,
+          }}
           TransitionComponent={props => <Slide {...props} direction="left" />}
           TransitionProps={{ onExited: handleExited }}
         >
