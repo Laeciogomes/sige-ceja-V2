@@ -40,8 +40,10 @@ import { useNavigate } from 'react-router-dom'
 import logoCeja from '../../assets/imagens/logo-ceja.png'
 
 // --- Tipagens ---
-type BarraSuperiorProps = {
-  alternarMenuLateral: () => void
+export type BarraSuperiorProps = {
+  alternarMenuLateral?: () => void
+  // prop opcional usada por BarraLateral / RootLayout para compatibilidade
+  aberta?: boolean
 }
 
 type PerfilUsuario = {
@@ -102,8 +104,7 @@ const BarraSuperior: React.FC<BarraSuperiorProps> = ({ alternarMenuLateral }) =>
   // Dados
   const { data: perfil, isLoading } = usePerfilUsuario(usuario, supabase)
 
-  // Sincroniza foto/nome/username com o hint de login, respeitando o "Lembrar-me"
-    // Sincroniza email / foto / nome / username com o hint de login
+  // Sincroniza email / foto / nome / username com o hint de login
   useEffect(() => {
     if (!usuario?.email || !perfil) return
 
@@ -113,11 +114,9 @@ const BarraSuperior: React.FC<BarraSuperiorProps> = ({ alternarMenuLateral }) =>
 
       const payload = {
         ...prev,
-        // garante que o email atual está salvo
         email: usuario.email,
-        // preserva o rememberMe que veio da tela de login
-        rememberMe: typeof prev.rememberMe === 'boolean' ? prev.rememberMe : true,
-        // dados do perfil para o login usar depois
+        rememberMe:
+          typeof prev.rememberMe === 'boolean' ? prev.rememberMe : true,
         foto_url: perfil.foto_url ?? null,
         name: perfil.name ?? null,
         username: perfil.username ?? null,
@@ -129,17 +128,17 @@ const BarraSuperior: React.FC<BarraSuperiorProps> = ({ alternarMenuLateral }) =>
     }
   }, [usuario?.email, perfil])
 
-
-
   const ehDark = modo === 'dark'
   const menuAberto = Boolean(anchorAvatar)
 
   // Lógica de exibição do nome
-  const displayUsername = perfil?.username || perfil?.name || usuario?.email || 'Usuário'
-  const nomeExibicao = displayUsername.split(' ')[0] // rótulo principal no "badge" verde
+  const displayUsername =
+    perfil?.username || perfil?.name || usuario?.email || 'Usuário'
+  const nomeExibicao = displayUsername.split(' ')[0]
   const inicialUsuario = nomeExibicao.charAt(0).toUpperCase()
   const tipoUsuarioLabel =
-    (perfil?.id_tipo_usuario && mapTipoUsuario[perfil.id_tipo_usuario]) || 'Admin'
+    (perfil?.id_tipo_usuario && mapTipoUsuario[perfil.id_tipo_usuario]) ||
+    'Admin'
 
   // Handlers
   const handleMenuOpen = (event: React.MouseEvent<HTMLElement>) =>
@@ -174,7 +173,7 @@ const BarraSuperior: React.FC<BarraSuperiorProps> = ({ alternarMenuLateral }) =>
         }}
       >
         <Toolbar sx={{ justifyContent: 'space-between', height: 70 }}>
-          {/* --- ESQUERDA: Menu Hambúrguer + Marca --- */}
+          {/* ESQUERDA */}
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
             <IconButton
               onClick={alternarMenuLateral}
@@ -235,9 +234,8 @@ const BarraSuperior: React.FC<BarraSuperiorProps> = ({ alternarMenuLateral }) =>
             </Box>
           </Box>
 
-          {/* --- DIREITA: Ações + Perfil --- */}
+          {/* DIREITA */}
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            {/* Toggle Tema Animado */}
             <Tooltip title={`Mudar para tema ${ehDark ? 'claro' : 'escuro'}`}>
               <IconButton
                 onClick={alternarModo}
@@ -257,7 +255,6 @@ const BarraSuperior: React.FC<BarraSuperiorProps> = ({ alternarMenuLateral }) =>
               </IconButton>
             </Tooltip>
 
-            {/* Notificações (Mock visual) */}
             <Tooltip title="Notificações">
               <IconButton
                 color="inherit"
@@ -284,7 +281,6 @@ const BarraSuperior: React.FC<BarraSuperiorProps> = ({ alternarMenuLateral }) =>
               }}
             />
 
-            {/* Área do Usuário */}
             <Tooltip title="Gerenciar conta">
               <Box
                 onClick={handleMenuOpen}
@@ -308,7 +304,6 @@ const BarraSuperior: React.FC<BarraSuperiorProps> = ({ alternarMenuLateral }) =>
                   },
                 }}
               >
-                {/* Texto com Skeleton Loading */}
                 <Box
                   sx={{
                     display: { xs: 'none', sm: 'flex' },
@@ -358,7 +353,6 @@ const BarraSuperior: React.FC<BarraSuperiorProps> = ({ alternarMenuLateral }) =>
                   )}
                 </Box>
 
-                {/* Avatar com Status Online */}
                 <Badge
                   overlap="circular"
                   anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
