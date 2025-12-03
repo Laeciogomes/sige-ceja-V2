@@ -105,7 +105,7 @@ function TabPanel(props: TabPanelProps) {
       style={{ width: '100%' }}
     >
       {value === index && (
-        <Box sx={{ py: 3, width: '100%', boxSizing: 'border-box' }}>{children}</Box>
+        <Box sx={{ py: 2, width: '100%', boxSizing: 'border-box' }}>{children}</Box>
       )}
     </div>
   )
@@ -148,8 +148,9 @@ type ToastSeverity = 'success' | 'error' | 'warning'
 
 const PerfilPage: React.FC = () => {
   const theme = useTheme()
-  const isSmall = useMediaQuery(theme.breakpoints.down('sm')) // para câmera
-  const isNarrow = useMediaQuery(theme.breakpoints.down('md')) // para layout
+  const isSmall = useMediaQuery(theme.breakpoints.down('sm')) // câmera
+  const isNarrow = useMediaQuery(theme.breakpoints.down('md')) // layout (tudo <= md)
+  const gridSpacing = isNarrow ? 0 : 2
 
   const { usuario } = useAuth()
   const { supabase } = useSupabase()
@@ -630,8 +631,10 @@ const PerfilPage: React.FC = () => {
 
   const containerSx = {
     maxWidth: isNarrow ? '100%' : 720,
+    width: '100%',
     mx: 'auto',
-    p: isNarrow ? 0 : 2,
+    px: isNarrow ? 0 : 2,
+    py: isNarrow ? 0 : 2,
     minHeight: '60vh',
     display: 'flex',
     justifyContent: 'center',
@@ -663,10 +666,12 @@ const PerfilPage: React.FC = () => {
     <Box
       sx={{
         maxWidth: isNarrow ? '100%' : 720,
+        width: '100%',
         mx: 'auto',
-        p: isNarrow ? 0 : 2,
+        px: isNarrow ? 0 : 2,
         pb: 8,
         boxSizing: 'border-box',
+        overflowX: 'hidden',
       }}
     >
       {/* Toast */}
@@ -693,7 +698,7 @@ const PerfilPage: React.FC = () => {
         elevation={0}
         sx={{
           width: '100%',
-          p: { xs: 0.5, sm: 1.5 }, // bem menor em xs
+          p: isNarrow ? 0.5 : 1.5,
           mb: 2,
           display: 'flex',
           flexDirection: { xs: 'column', sm: 'row' },
@@ -755,7 +760,7 @@ const PerfilPage: React.FC = () => {
           width: '100%',
           borderRadius: isNarrow ? 0 : 3,
           boxSizing: 'border-box',
-          overflow: isNarrow ? 'visible' : 'hidden',
+          overflowX: 'visible',
         }}
       >
         <Tabs
@@ -813,11 +818,11 @@ const PerfilPage: React.FC = () => {
               boxSizing: 'border-box',
             }}
           >
-            <Grid container spacing={2} sx={{ width: '100%', m: 0 }}>
+            <Grid container spacing={gridSpacing} sx={{ width: '100%', m: 0 }}>
               <Grid item xs={12} md={6}>
                 <TextField
                   fullWidth
-                  margin={isNarrow ? 'dense' : 'normal'}
+                  margin="dense"
                   label="Nome Completo"
                   value={form.name}
                   onChange={handleChange('name')}
@@ -827,7 +832,7 @@ const PerfilPage: React.FC = () => {
               <Grid item xs={12} md={6}>
                 <TextField
                   fullWidth
-                  margin={isNarrow ? 'dense' : 'normal'}
+                  margin="dense"
                   label="Nome de Usuário"
                   value={form.username}
                   onChange={handleChange('username')}
@@ -837,7 +842,7 @@ const PerfilPage: React.FC = () => {
               <Grid item xs={12} md={6}>
                 <TextField
                   fullWidth
-                  margin={isNarrow ? 'dense' : 'normal'}
+                  margin="dense"
                   label="E-mail"
                   value={form.email}
                   disabled
@@ -847,7 +852,7 @@ const PerfilPage: React.FC = () => {
               <Grid item xs={12} sm={6} md={3}>
                 <TextField
                   fullWidth
-                  margin={isNarrow ? 'dense' : 'normal'}
+                  margin="dense"
                   label="CPF"
                   value={form.cpf}
                   onChange={handleChange('cpf')}
@@ -857,7 +862,7 @@ const PerfilPage: React.FC = () => {
               <Grid item xs={12} sm={6} md={3}>
                 <TextField
                   fullWidth
-                  margin={isNarrow ? 'dense' : 'normal'}
+                  margin="dense"
                   label="RG"
                   value={form.rg}
                   onChange={handleChange('rg')}
@@ -866,7 +871,7 @@ const PerfilPage: React.FC = () => {
               <Grid item xs={12} sm={6} md={3}>
                 <TextField
                   fullWidth
-                  margin={isNarrow ? 'dense' : 'normal'}
+                  margin="dense"
                   label="Celular"
                   value={form.celular}
                   onChange={handleChange('celular')}
@@ -876,7 +881,7 @@ const PerfilPage: React.FC = () => {
               <Grid item xs={12} sm={6} md={3}>
                 <TextField
                   fullWidth
-                  margin={isNarrow ? 'dense' : 'normal'}
+                  margin="dense"
                   type="date"
                   label="Nascimento"
                   value={form.data_nascimento}
@@ -888,7 +893,7 @@ const PerfilPage: React.FC = () => {
                 <TextField
                   select
                   fullWidth
-                  margin={isNarrow ? 'dense' : 'normal'}
+                  margin="dense"
                   label="Sexo"
                   value={form.sexo}
                   onChange={handleChange('sexo')}
@@ -904,7 +909,7 @@ const PerfilPage: React.FC = () => {
                 <TextField
                   select
                   fullWidth
-                  margin={isNarrow ? 'dense' : 'normal'}
+                  margin="dense"
                   label="Raça"
                   value={form.raca}
                   onChange={handleChange('raca')}
@@ -947,11 +952,11 @@ const PerfilPage: React.FC = () => {
               boxSizing: 'border-box',
             }}
           >
-            <Grid container spacing={2} sx={{ width: '100%', m: 0 }}>
+            <Grid container spacing={gridSpacing} sx={{ width: '100%', m: 0 }}>
               <Grid item xs={12} md={6}>
                 <TextField
                   fullWidth
-                  margin={isNarrow ? 'dense' : 'normal'}
+                  margin="dense"
                   label="Logradouro"
                   value={form.logradouro}
                   onChange={handleChange('logradouro')}
@@ -960,7 +965,7 @@ const PerfilPage: React.FC = () => {
               <Grid item xs={12} sm={6} md={2}>
                 <TextField
                   fullWidth
-                  margin={isNarrow ? 'dense' : 'normal'}
+                  margin="dense"
                   label="Número"
                   value={form.numero_endereco}
                   onChange={handleChange('numero_endereco')}
@@ -969,7 +974,7 @@ const PerfilPage: React.FC = () => {
               <Grid item xs={12} sm={6} md={4}>
                 <TextField
                   fullWidth
-                  margin={isNarrow ? 'dense' : 'normal'}
+                  margin="dense"
                   label="Bairro"
                   value={form.bairro}
                   onChange={handleChange('bairro')}
@@ -978,7 +983,7 @@ const PerfilPage: React.FC = () => {
               <Grid item xs={12} sm={6} md={4}>
                 <TextField
                   fullWidth
-                  margin={isNarrow ? 'dense' : 'normal'}
+                  margin="dense"
                   label="Município"
                   value={form.municipio}
                   onChange={handleChange('municipio')}
@@ -987,7 +992,7 @@ const PerfilPage: React.FC = () => {
               <Grid item xs={12} sm={6} md={8}>
                 <TextField
                   fullWidth
-                  margin={isNarrow ? 'dense' : 'normal'}
+                  margin="dense"
                   label="Ponto de Referência"
                   value={form.ponto_referencia}
                   onChange={handleChange('ponto_referencia')}
@@ -1017,14 +1022,14 @@ const PerfilPage: React.FC = () => {
               boxSizing: 'border-box',
             }}
           >
-            <Grid container spacing={3} sx={{ width: '100%', m: 0 }}>
+            <Grid container spacing={gridSpacing} sx={{ width: '100%', m: 0 }}>
               <Grid item xs={12} md={4} sx={{ textAlign: 'center' }}>
                 <Typography variant="subtitle2" gutterBottom>
                   Foto de Perfil
                 </Typography>
                 <Avatar
                   src={form.foto_url || undefined}
-                  sx={{ width: 100, height: 100, mx: 'auto', mb: 2 }}
+                  sx={{ width: 90, height: 90, mx: 'auto', mb: 2 }}
                 />
                 <Stack
                   direction={{ xs: 'column', sm: 'row' }}
@@ -1085,7 +1090,7 @@ const PerfilPage: React.FC = () => {
                     onChange={handleChange('instagram_url')}
                     fullWidth
                     placeholder="https://instagram.com/..."
-                    margin={isNarrow ? 'dense' : 'normal'}
+                    margin="dense"
                   />
                   <TextField
                     label="Facebook"
@@ -1093,7 +1098,7 @@ const PerfilPage: React.FC = () => {
                     onChange={handleChange('facebook_url')}
                     fullWidth
                     placeholder="https://facebook.com/..."
-                    margin={isNarrow ? 'dense' : 'normal'}
+                    margin="dense"
                   />
                   <Button
                     variant="contained"
@@ -1146,7 +1151,7 @@ const PerfilPage: React.FC = () => {
                 onChange={e =>
                   setSenhaData({ ...senhaData, atual: e.target.value })
                 }
-                margin={isNarrow ? 'dense' : 'normal'}
+                margin="dense"
                 InputProps={{
                   endAdornment: (
                     <InputAdornment position="end">
@@ -1176,7 +1181,7 @@ const PerfilPage: React.FC = () => {
                 onChange={e =>
                   setSenhaData({ ...senhaData, nova: e.target.value })
                 }
-                margin={isNarrow ? 'dense' : 'normal'}
+                margin="dense"
                 InputProps={{
                   endAdornment: (
                     <InputAdornment position="end">
@@ -1206,7 +1211,7 @@ const PerfilPage: React.FC = () => {
                 onChange={e =>
                   setSenhaData({ ...senhaData, conf: e.target.value })
                 }
-                margin={isNarrow ? 'dense' : 'normal'}
+                margin="dense"
                 InputProps={{
                   endAdornment: (
                     <InputAdornment position="end">
