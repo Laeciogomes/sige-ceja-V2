@@ -193,6 +193,9 @@ const PerfilPage: React.FC = () => {
   })
   const [loadingSenha, setLoadingSenha] = useState(false)
 
+  // Largura segura em telas pequenas (viewport - 32px)
+  const smallMaxWidth = 'calc(100vw - 32px)'
+
   // --------- Query perfil ---------
 
   const {
@@ -631,7 +634,8 @@ const PerfilPage: React.FC = () => {
     return (
       <Box
         sx={{
-          maxWidth: 720,
+          maxWidth: { xs: smallMaxWidth, md: 720 },
+          width: '100%',
           mx: 'auto',
           p: { xs: 1, md: 2 },
           minHeight: '60vh',
@@ -650,7 +654,8 @@ const PerfilPage: React.FC = () => {
     return (
       <Box
         sx={{
-          maxWidth: 720,
+          maxWidth: { xs: smallMaxWidth, md: 720 },
+          width: '100%',
           mx: 'auto',
           p: { xs: 1, md: 2 },
           minHeight: '60vh',
@@ -672,7 +677,8 @@ const PerfilPage: React.FC = () => {
   return (
     <Box
       sx={{
-        maxWidth: 720,
+        maxWidth: { xs: smallMaxWidth, md: 720 },
+        width: '100%',
         mx: 'auto',
         p: { xs: 1, md: 2 },
         pb: 8,
@@ -764,7 +770,7 @@ const PerfilPage: React.FC = () => {
         sx={{
           width: '100%',
           borderRadius: 3,
-          overflow: 'hidden', // continua igual
+          overflow: 'hidden',
           boxSizing: 'border-box',
         }}
       >
