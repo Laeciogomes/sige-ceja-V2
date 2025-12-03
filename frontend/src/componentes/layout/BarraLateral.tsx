@@ -43,14 +43,15 @@ const getStyles = (theme: Theme, ativo: boolean, isDashboard: boolean) => {
       overflow: 'hidden',
       transition: 'all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1)',
       
-      // Estilo extra se for Dashboard (Margem abaixo)
+      // Estilo extra se for Dashboard
       ...(isDashboard && {
-         mb: 1.5, // Mais espaço após o dashboard para destacar
+         mb: 1.5,
       }),
 
       // --- ESTADOS ATIVOS vs INATIVOS ---
       ...(ativo
         ? {
+            // ATIVO
             background: activeBgColor,
             color: COR_LARANJA, 
             fontWeight: 600,
@@ -127,27 +128,22 @@ const ItemBarraLateral: React.FC<ItemProps> = ({ item, aberta, isDashboard = fal
   const navigate = useNavigate()
   const location = useLocation()
 
-  // --- LÓGICA DE ROTA CORRIGIDA ---
+  // --- LÓGICA DE ROTA CORRIGIDA (Versão Simplificada e Robusta) ---
   const rotaAtiva = (caminhoMenu: string) => {
-    // Remove barra final para evitar erros (/secretaria/ vs /secretaria)
-    const pathAtual = location.pathname.replace(/\/$/, '') 
-    const pathMenu = caminhoMenu.replace(/\/$/, '')
+    // Normaliza removendo barra no final e query strings
+    // ex: "/secretaria/" vira "/secretaria"
+    const pathAtual = location.pathname.toLowerCase().replace(/\/$/, '')
+    const pathMenu = caminhoMenu.toLowerCase().replace(/\/$/, '')
 
-    // 1. Match Exato (Prioridade máxima)
-    // Se estou em /secretaria e o menu é /secretaria -> ATIVO
+    // 1. Verificação Exata (Funciona sempre para Dashboard e itens finais)
     if (pathAtual === pathMenu) return true
 
-    // 2. Sub-rotas (Ex: /secretaria/turmas)
-    // Se o item for "Dashboard" (raiz), ele NÃO deve acender em sub-rotas para não ficar duplicado.
-    // Detectamos se é raiz pela quantidade de barras (ex: /secretaria tem profundidade baixa)
-    const ehRaiz = pathMenu.split('/').filter(Boolean).length <= 1
-    
-    if (ehRaiz) {
-      // Se é raiz (Dashboard) e não foi match exato (passo 1), então não é ele.
-      return false
-    }
+    // 2. Verificação de Sub-rotas
+    // Se for Dashboard, NÃO queremos que ative em sub-rotas (ex: não acender /admin quando estou em /admin/usuarios)
+    if (isDashboard) return false
 
-    // Para outros itens, verificamos se começa com o caminho (ex: /usuarios/novo ativa /usuarios)
+    // Para outros itens, verificamos se é sub-rota (ex: /usuarios/novo acende /usuarios)
+    // Adicionamos a barra '/' para garantir que '/usuario-teste' não ative '/usuario'
     return pathAtual.startsWith(`${pathMenu}/`)
   }
 
@@ -203,6 +199,7 @@ const BarraLateral: React.FC<BarraLateralProps> = ({ aberta }) => {
   const painelAtual = obterContextoPainel(usuario?.papel, location.pathname)
   const todosItens = menusPorContexto[painelAtual] || []
 
+  // Assume que o primeiro item do array é sempre o Dashboard principal
   const dashboardItem = todosItens.length > 0 ? todosItens[0] : null
   const outrosItens = todosItens.length > 1 ? todosItens.slice(1) : []
 
@@ -224,7 +221,7 @@ const BarraLateral: React.FC<BarraLateralProps> = ({ aberta }) => {
       {/* SEÇÃO DO DASHBOARD (SEMPRE NO TOPO) */}
       {dashboardItem && (
         <>
-          <ItemBarraLateral item={dashboardItem} aberta={aberta} isDashboard />
+          <ItemBarraLateral item={dashboardItem} aberta={aberta} isDashboard={true} />
           {outrosItens.length > 0 && (
             <Divider sx={{ my: 1, mx: 2, opacity: 0.6 }} />
           )}
@@ -236,10 +233,7 @@ const BarraLateral: React.FC<BarraLateralProps> = ({ aberta }) => {
         const grupoAtual = item.grupo
         const grupoAnterior = index > 0 ? outrosItens[index - 1].grupo : null
         
-        // Exibe título do grupo apenas se estiver aberto e mudou o grupo
         const mostrarHeader = aberta && grupoAtual && grupoAtual !== grupoAnterior
-        
-        // Exibe divisor simples se estiver fechado e mudou o grupo
         const mostrarDivisorFechado = !aberta && grupoAtual !== grupoAnterior && index > 0
 
         return (
@@ -268,7 +262,8 @@ const BarraLateral: React.FC<BarraLateralProps> = ({ aberta }) => {
                  <Divider sx={{ my: 1, mx: 'auto', width: '50%', opacity: 0.4 }} />
             )}
 
-            <ItemBarraLateral item={item} aberta={aberta} />
+            {/* Itens normais não são dashboard */}
+            <ItemBarraLateral item={item} aberta={aberta} isDashboard={false} />
           </React.Fragment>
         )
       })}
