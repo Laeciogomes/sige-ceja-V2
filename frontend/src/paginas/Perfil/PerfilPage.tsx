@@ -105,7 +105,7 @@ function TabPanel(props: TabPanelProps) {
       style={{ width: '100%' }}
     >
       {value === index && (
-        <Box sx={{ py: 2, width: '100%', boxSizing: 'border-box' }}>{children}</Box>
+        <Box sx={{ py: 3, width: '100%', boxSizing: 'border-box' }}>{children}</Box>
       )}
     </div>
   )
@@ -148,9 +148,7 @@ type ToastSeverity = 'success' | 'error' | 'warning'
 
 const PerfilPage: React.FC = () => {
   const theme = useTheme()
-  const isSmall = useMediaQuery(theme.breakpoints.down('sm')) // câmera
-  const isNarrow = useMediaQuery(theme.breakpoints.down('md')) // layout
-  const gridSpacing = isNarrow ? 0 : 2
+  const isSmall = useMediaQuery(theme.breakpoints.down('sm'))
 
   const { usuario } = useAuth()
   const { supabase } = useSupabase()
@@ -629,24 +627,20 @@ const PerfilPage: React.FC = () => {
 
   // --------- Loading / erro global ---------
 
-  const maxContentWidth = isNarrow ? 480 : 720
-
-  const containerSx = {
-    maxWidth: maxContentWidth,
-    width: '100%',
-    mx: 'auto',
-    px: isNarrow ? 0 : 2,
-    py: isNarrow ? 0 : 2,
-    minHeight: '60vh',
-    display: 'flex',
-    justifyContent: 'center',
-    alignItems: 'center',
-    boxSizing: 'border-box' as const,
-  }
-
   if (isLoading || !form || !perfil) {
     return (
-      <Box sx={containerSx}>
+      <Box
+        sx={{
+          maxWidth: 720,
+          mx: 'auto',
+          p: { xs: 1, md: 2 },
+          minHeight: '60vh',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          boxSizing: 'border-box',
+        }}
+      >
         <CircularProgress />
       </Box>
     )
@@ -654,7 +648,18 @@ const PerfilPage: React.FC = () => {
 
   if (isError) {
     return (
-      <Box sx={containerSx}>
+      <Box
+        sx={{
+          maxWidth: 720,
+          mx: 'auto',
+          p: { xs: 1, md: 2 },
+          minHeight: '60vh',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          boxSizing: 'border-box',
+        }}
+      >
         <Alert severity="error" sx={{ width: '100%' }}>
           Erro ao carregar perfil.
         </Alert>
@@ -667,10 +672,9 @@ const PerfilPage: React.FC = () => {
   return (
     <Box
       sx={{
-        maxWidth: maxContentWidth,
-        width: '100%',
+        maxWidth: 720,
         mx: 'auto',
-        px: isNarrow ? 0 : 2,
+        p: { xs: 1, md: 2 },
         pb: 8,
         boxSizing: 'border-box',
       }}
@@ -699,7 +703,7 @@ const PerfilPage: React.FC = () => {
         elevation={0}
         sx={{
           width: '100%',
-          p: isNarrow ? 0.5 : 1.5,
+          p: { xs: 0.75, sm: 1.5 },
           mb: 2,
           display: 'flex',
           flexDirection: { xs: 'column', sm: 'row' },
@@ -707,15 +711,15 @@ const PerfilPage: React.FC = () => {
           gap: 2,
           bgcolor: theme.palette.primary.main,
           color: 'white',
-          borderRadius: isNarrow ? 1.5 : 3,
+          borderRadius: 3,
           boxSizing: 'border-box',
         }}
       >
         <Avatar
           src={form.foto_url || undefined}
           sx={{
-            width: 56,
-            height: 56,
+            width: 60,
+            height: 60,
             border: '3px solid white',
             boxShadow: 2,
             bgcolor: theme.palette.primary.dark,
@@ -727,7 +731,7 @@ const PerfilPage: React.FC = () => {
           <Typography
             variant="subtitle1"
             fontWeight={700}
-            sx={{ wordBreak: 'break-word', fontSize: { xs: 14, sm: 17 } }}
+            sx={{ wordBreak: 'break-word', fontSize: { xs: 15, sm: 17 } }}
           >
             {form.name}
           </Typography>
@@ -736,7 +740,7 @@ const PerfilPage: React.FC = () => {
             sx={{
               opacity: 0.9,
               wordBreak: 'break-all',
-              fontSize: { xs: 10, sm: 13 },
+              fontSize: { xs: 11, sm: 13 },
             }}
           >
             {form.email}
@@ -759,16 +763,16 @@ const PerfilPage: React.FC = () => {
         variant="outlined"
         sx={{
           width: '100%',
-          borderRadius: isNarrow ? 1.5 : 3,
+          borderRadius: 3,
+          overflow: 'hidden', // continua igual
           boxSizing: 'border-box',
-          overflow: 'visible',
         }}
       >
         <Tabs
           value={tabValue}
           onChange={handleTabChange}
-          variant={isNarrow ? 'fullWidth' : 'scrollable'}
-          scrollButtons={isNarrow ? false : 'auto'}
+          variant={isSmall ? 'fullWidth' : 'scrollable'}
+          scrollButtons={isSmall ? false : 'auto'}
           sx={{
             borderBottom: 1,
             borderColor: 'divider',
@@ -780,28 +784,28 @@ const PerfilPage: React.FC = () => {
             icon={<PersonIcon />}
             iconPosition="start"
             label="Dados Pessoais"
-            sx={{ fontSize: { xs: 10, sm: 13 }, minHeight: 36 }}
+            sx={{ fontSize: { xs: 11, sm: 13 }, minHeight: 40 }}
           />
           <Tab
             wrapped
             icon={<HomeIcon />}
             iconPosition="start"
             label="Endereço"
-            sx={{ fontSize: { xs: 10, sm: 13 }, minHeight: 36 }}
+            sx={{ fontSize: { xs: 11, sm: 13 }, minHeight: 40 }}
           />
           <Tab
             wrapped
             icon={<PhotoIcon />}
             iconPosition="start"
             label="Foto / Social"
-            sx={{ fontSize: { xs: 10, sm: 13 }, minHeight: 36 }}
+            sx={{ fontSize: { xs: 11, sm: 13 }, minHeight: 40 }}
           />
           <Tab
             wrapped
             icon={<SecurityIcon />}
             iconPosition="start"
             label="Segurança"
-            sx={{ fontSize: { xs: 10, sm: 13 }, minHeight: 36 }}
+            sx={{ fontSize: { xs: 11, sm: 13 }, minHeight: 40 }}
           />
         </Tabs>
 
@@ -814,16 +818,20 @@ const PerfilPage: React.FC = () => {
               if (form) mutation.mutate(form)
             }}
             sx={{
-              px: isNarrow ? 0.5 : 3,
+              px: { xs: 1.5, md: 3 },
               width: '100%',
               boxSizing: 'border-box',
             }}
           >
-            <Grid container spacing={gridSpacing} sx={{ width: '100%', m: 0 }}>
+            <Grid
+              container
+              columnSpacing={0}
+              rowSpacing={2}
+              sx={{ width: '100%', m: 0 }}
+            >
               <Grid item xs={12} md={6}>
                 <TextField
                   fullWidth
-                  margin="dense"
                   label="Nome Completo"
                   value={form.name}
                   onChange={handleChange('name')}
@@ -833,7 +841,6 @@ const PerfilPage: React.FC = () => {
               <Grid item xs={12} md={6}>
                 <TextField
                   fullWidth
-                  margin="dense"
                   label="Nome de Usuário"
                   value={form.username}
                   onChange={handleChange('username')}
@@ -843,7 +850,6 @@ const PerfilPage: React.FC = () => {
               <Grid item xs={12} md={6}>
                 <TextField
                   fullWidth
-                  margin="dense"
                   label="E-mail"
                   value={form.email}
                   disabled
@@ -853,7 +859,6 @@ const PerfilPage: React.FC = () => {
               <Grid item xs={12} sm={6} md={3}>
                 <TextField
                   fullWidth
-                  margin="dense"
                   label="CPF"
                   value={form.cpf}
                   onChange={handleChange('cpf')}
@@ -863,7 +868,6 @@ const PerfilPage: React.FC = () => {
               <Grid item xs={12} sm={6} md={3}>
                 <TextField
                   fullWidth
-                  margin="dense"
                   label="RG"
                   value={form.rg}
                   onChange={handleChange('rg')}
@@ -872,7 +876,6 @@ const PerfilPage: React.FC = () => {
               <Grid item xs={12} sm={6} md={3}>
                 <TextField
                   fullWidth
-                  margin="dense"
                   label="Celular"
                   value={form.celular}
                   onChange={handleChange('celular')}
@@ -882,7 +885,6 @@ const PerfilPage: React.FC = () => {
               <Grid item xs={12} sm={6} md={3}>
                 <TextField
                   fullWidth
-                  margin="dense"
                   type="date"
                   label="Nascimento"
                   value={form.data_nascimento}
@@ -894,7 +896,6 @@ const PerfilPage: React.FC = () => {
                 <TextField
                   select
                   fullWidth
-                  margin="dense"
                   label="Sexo"
                   value={form.sexo}
                   onChange={handleChange('sexo')}
@@ -910,7 +911,6 @@ const PerfilPage: React.FC = () => {
                 <TextField
                   select
                   fullWidth
-                  margin="dense"
                   label="Raça"
                   value={form.raca}
                   onChange={handleChange('raca')}
@@ -948,16 +948,20 @@ const PerfilPage: React.FC = () => {
               if (form) mutation.mutate(form)
             }}
             sx={{
-              px: isNarrow ? 0.5 : 3,
+              px: { xs: 1.5, md: 3 },
               width: '100%',
               boxSizing: 'border-box',
             }}
           >
-            <Grid container spacing={gridSpacing} sx={{ width: '100%', m: 0 }}>
+            <Grid
+              container
+              columnSpacing={0}
+              rowSpacing={2}
+              sx={{ width: '100%', m: 0 }}
+            >
               <Grid item xs={12} md={6}>
                 <TextField
                   fullWidth
-                  margin="dense"
                   label="Logradouro"
                   value={form.logradouro}
                   onChange={handleChange('logradouro')}
@@ -966,7 +970,6 @@ const PerfilPage: React.FC = () => {
               <Grid item xs={12} sm={6} md={2}>
                 <TextField
                   fullWidth
-                  margin="dense"
                   label="Número"
                   value={form.numero_endereco}
                   onChange={handleChange('numero_endereco')}
@@ -975,7 +978,6 @@ const PerfilPage: React.FC = () => {
               <Grid item xs={12} sm={6} md={4}>
                 <TextField
                   fullWidth
-                  margin="dense"
                   label="Bairro"
                   value={form.bairro}
                   onChange={handleChange('bairro')}
@@ -984,7 +986,6 @@ const PerfilPage: React.FC = () => {
               <Grid item xs={12} sm={6} md={4}>
                 <TextField
                   fullWidth
-                  margin="dense"
                   label="Município"
                   value={form.municipio}
                   onChange={handleChange('municipio')}
@@ -993,7 +994,6 @@ const PerfilPage: React.FC = () => {
               <Grid item xs={12} sm={6} md={8}>
                 <TextField
                   fullWidth
-                  margin="dense"
                   label="Ponto de Referência"
                   value={form.ponto_referencia}
                   onChange={handleChange('ponto_referencia')}
@@ -1018,19 +1018,24 @@ const PerfilPage: React.FC = () => {
         <TabPanel value={tabValue} index={2}>
           <Box
             sx={{
-              px: isNarrow ? 0.5 : 3,
+              px: { xs: 1.5, md: 3 },
               width: '100%',
               boxSizing: 'border-box',
             }}
           >
-            <Grid container spacing={gridSpacing} sx={{ width: '100%', m: 0 }}>
+            <Grid
+              container
+              columnSpacing={0}
+              rowSpacing={3}
+              sx={{ width: '100%', m: 0 }}
+            >
               <Grid item xs={12} md={4} sx={{ textAlign: 'center' }}>
                 <Typography variant="subtitle2" gutterBottom>
                   Foto de Perfil
                 </Typography>
                 <Avatar
                   src={form.foto_url || undefined}
-                  sx={{ width: 90, height: 90, mx: 'auto', mb: 2 }}
+                  sx={{ width: 100, height: 100, mx: 'auto', mb: 2 }}
                 />
                 <Stack
                   direction={{ xs: 'column', sm: 'row' }}
@@ -1091,7 +1096,6 @@ const PerfilPage: React.FC = () => {
                     onChange={handleChange('instagram_url')}
                     fullWidth
                     placeholder="https://instagram.com/..."
-                    margin="dense"
                   />
                   <TextField
                     label="Facebook"
@@ -1099,7 +1103,6 @@ const PerfilPage: React.FC = () => {
                     onChange={handleChange('facebook_url')}
                     fullWidth
                     placeholder="https://facebook.com/..."
-                    margin="dense"
                   />
                   <Button
                     variant="contained"
@@ -1120,7 +1123,7 @@ const PerfilPage: React.FC = () => {
           <Box
             component="form"
             sx={{
-              px: isNarrow ? 0.5 : 3,
+              px: { xs: 1.5, md: 3 },
               pb: 2,
               width: '100%',
               maxWidth: 500,
@@ -1152,7 +1155,6 @@ const PerfilPage: React.FC = () => {
                 onChange={e =>
                   setSenhaData({ ...senhaData, atual: e.target.value })
                 }
-                margin="dense"
                 InputProps={{
                   endAdornment: (
                     <InputAdornment position="end">
@@ -1182,7 +1184,6 @@ const PerfilPage: React.FC = () => {
                 onChange={e =>
                   setSenhaData({ ...senhaData, nova: e.target.value })
                 }
-                margin="dense"
                 InputProps={{
                   endAdornment: (
                     <InputAdornment position="end">
@@ -1212,7 +1213,6 @@ const PerfilPage: React.FC = () => {
                 onChange={e =>
                   setSenhaData({ ...senhaData, conf: e.target.value })
                 }
-                margin="dense"
                 InputProps={{
                   endAdornment: (
                     <InputAdornment position="end">
