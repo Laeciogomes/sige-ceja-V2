@@ -12,6 +12,7 @@ import DescriptionIcon from '@mui/icons-material/Description'
 import AssignmentIndIcon from '@mui/icons-material/AssignmentInd'
 import AutorenewIcon from '@mui/icons-material/Autorenew'
 import ListAltIcon from '@mui/icons-material/ListAlt'
+import CategoryIcon from '@mui/icons-material/Category'
 
 import type { PapelUsuario } from '../contextos/AuthContext'
 
@@ -69,6 +70,13 @@ export const menusPorContexto: Record<ContextoPainel, ItemMenuConfig[]> = {
       rotulo: 'Salas', 
       caminho: '/secretaria/salas', 
       icone: <DoorFrontIcon />, 
+      grupo: 'Administrativo' 
+    },
+    { 
+      id: 'admin-sec-areas', 
+      rotulo: 'Áreas de conhecimento', 
+      caminho: '/secretaria/areas-conhecimento', 
+      icone: <CategoryIcon />, 
       grupo: 'Administrativo' 
     },
     { 
@@ -174,6 +182,13 @@ export const menusPorContexto: Record<ContextoPainel, ItemMenuConfig[]> = {
       grupo: 'Gestão' 
     },
     { 
+      id: 'sec-areas', 
+      rotulo: 'Áreas de conhecimento', 
+      caminho: '/secretaria/areas-conhecimento', 
+      icone: <CategoryIcon />, 
+      grupo: 'Gestão' 
+    },
+    { 
       id: 'sec-disciplinas', 
       rotulo: 'Disciplinas', 
       caminho: '/secretaria/disciplinas', 
@@ -261,6 +276,13 @@ export const menusPorContexto: Record<ContextoPainel, ItemMenuConfig[]> = {
       grupo: 'Administração' 
     },
     { 
+      id: 'coord-areas', 
+      rotulo: 'Áreas de conhecimento', 
+      caminho: '/secretaria/areas-conhecimento', 
+      icone: <CategoryIcon />, 
+      grupo: 'Administração' 
+    },
+    { 
       id: 'coord-disciplinas', 
       rotulo: 'Disciplinas', 
       caminho: '/secretaria/disciplinas', 
@@ -333,6 +355,13 @@ export const menusPorContexto: Record<ContextoPainel, ItemMenuConfig[]> = {
       rotulo: 'Salas', 
       caminho: '/secretaria/salas', 
       icone: <DoorFrontIcon />, 
+      grupo: 'Gestão Escolar' 
+    },
+    { 
+      id: 'dir-areas', 
+      rotulo: 'Áreas de conhecimento', 
+      caminho: '/secretaria/areas-conhecimento', 
+      icone: <CategoryIcon />, 
       grupo: 'Gestão Escolar' 
     },
     { 

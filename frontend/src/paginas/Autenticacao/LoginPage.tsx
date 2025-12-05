@@ -32,6 +32,15 @@ import { SolicitarNovaSenhaModal } from '../../componentes/autenticacao/Solicita
 
 const LOGIN_HINT_KEY = 'sigeceja_login_hint'
 
+type LoginHint = {
+  email?: string
+  rememberMe?: boolean
+  foto_url?: string | null
+  photoUrl?: string | null
+  name?: string | null
+  username?: string | null
+}
+
 const LoginPage: React.FC = () => {
   const { login } = useAuth()
   const navigate = useNavigate()
@@ -50,31 +59,48 @@ const LoginPage: React.FC = () => {
   const [erro, setErro] = useState<string | null>(null)
   const [modalRecuperarAberta, setModalRecuperarAberta] = useState(false)
 
-  // Carrega e-mail lembrado
+  const [fotoUrlLembrada, setFotoUrlLembrada] = useState<string | null>(null)
+  const [nomeLembrado, setNomeLembrado] = useState<string | null>(null)
+  const [hintCarregado, setHintCarregado] = useState(false)
+
+  // 1) Carrega e-mail / rememberMe / foto / nome lembrados
   useEffect(() => {
     try {
       const raw = localStorage.getItem(LOGIN_HINT_KEY)
-      if (!raw) return
-      const parsed = JSON.parse(raw) as { email?: string; rememberMe?: boolean }
-      if (parsed.email) setEmail(parsed.email)
-      if (typeof parsed.rememberMe === 'boolean') setRememberMe(parsed.rememberMe)
-    } catch {
-      // ignora erro
+      if (raw) {
+        const parsed = JSON.parse(raw) as LoginHint
+
+        if (parsed.email) setEmail(parsed.email)
+        if (typeof parsed.rememberMe === 'boolean') setRememberMe(parsed.rememberMe)
+
+        const foto = (parsed.photoUrl ?? parsed.foto_url) || null
+        setFotoUrlLembrada(foto)
+        setNomeLembrado(parsed.name ?? parsed.username ?? null)
+      }
+    } finally {
+      setHintCarregado(true)
     }
   }, [])
 
-  // Salva e-mail se "lembrar de mim" estiver marcado
+  // 2) Salva e-mail / rememberMe sem apagar foto/nome já existentes
   useEffect(() => {
+    if (!hintCarregado) return
+
     try {
-      const payload = JSON.stringify({
+      const raw = localStorage.getItem(LOGIN_HINT_KEY)
+      const prev: LoginHint = raw ? JSON.parse(raw) : {}
+
+      const payload: LoginHint = {
+        ...prev,
         email,
         rememberMe,
-      })
-      localStorage.setItem(LOGIN_HINT_KEY, payload)
+      }
+
+      localStorage.setItem(LOGIN_HINT_KEY, JSON.stringify(payload))
     } catch {
-      // ignora
+      // silencioso
     }
-  }, [email, rememberMe])
+  }, [hintCarregado, email, rememberMe])
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -89,20 +115,12 @@ const LoginPage: React.FC = () => {
       return
     }
 
+    setLoading(true)
     try {
-      setLoading(true)
-
       await login(emailTrim, senha, rememberMe)
-
-      toastSucesso(
-        'Login realizado com sucesso.',
-        'Bem-vindo(a) ao SIGE-CEJA',
-        3000,
-      )
-
-      navigate('/', { replace: true })
+      toastSucesso('Login efetuado com sucesso.', 'Bem-vindo(a)!', 3000)
+      navigate('/')
     } catch (error: any) {
-      console.error('Erro ao fazer login:', error)
       const mensagemErro =
         error?.message ||
         'Não foi possível entrar. Verifique seus dados e tente novamente.'
@@ -122,11 +140,22 @@ const LoginPage: React.FC = () => {
     event.preventDefault()
   }
 
-  const handleEsqueciSenha = () => {
+  const handleClickEsqueceuSenha = (
+    event: React.MouseEvent<HTMLAnchorElement>,
+  ) => {
+    event.preventDefault()
     setModalRecuperarAberta(true)
   }
 
   const desabilitado = loading
+
+  const primeiraParteNome =
+    nomeLembrado && nomeLembrado.trim().length > 0
+      ? nomeLembrado.split(' ')[0]
+      : 'Usuário'
+
+  // Só mostra foto se houver URL E se "Lembrar de mim" estiver marcado
+  const deveMostrarFoto = !!fotoUrlLembrada && rememberMe
 
   return (
     <AuthLayout>
@@ -182,18 +211,25 @@ const LoginPage: React.FC = () => {
           </Tooltip>
         </Box>
 
+        {/* Avatar + título */}
         <Box sx={{ textAlign: 'center', mb: 3, position: 'relative', zIndex: 1 }}>
           <Avatar
+            src={deveMostrarFoto ? fotoUrlLembrada ?? undefined : undefined}
+            alt={deveMostrarFoto ? primeiraParteNome : 'Usuário'}
             sx={{
-              bgcolor: 'primary.main',
+              bgcolor: deveMostrarFoto ? 'transparent' : 'primary.main',
               width: 64,
               height: 64,
               mx: 'auto',
               mb: 1.5,
+              boxShadow: deveMostrarFoto
+                ? '0 0 0 3px rgba(76, 175, 80, 0.55)'
+                : 'none',
             }}
           >
-            <PersonIcon sx={{ fontSize: 30 }} />
+            {!deveMostrarFoto && <PersonIcon sx={{ fontSize: 30 }} />}
           </Avatar>
+
           <Typography variant="h5" sx={{ fontWeight: 800, mb: 0.5 }}>
             Entrar no SIGE-CEJA
           </Typography>
@@ -202,6 +238,7 @@ const LoginPage: React.FC = () => {
           </Typography>
         </Box>
 
+        {/* Formulário */}
         <Box
           component="form"
           onSubmit={handleSubmit}
@@ -223,7 +260,10 @@ const LoginPage: React.FC = () => {
             InputProps={{
               startAdornment: (
                 <InputAdornment position="start">
-                  <MailOutlineIcon fontSize="small" />
+                  <MailOutlineIcon
+                    fontSize="small"
+                    color={deveMostrarFoto ? 'primary' : 'action'}
+                  />
                 </InputAdornment>
               ),
             }}
@@ -278,48 +318,48 @@ const LoginPage: React.FC = () => {
             <FormControlLabel
               control={
                 <Checkbox
+                  color="primary"
                   checked={rememberMe}
                   onChange={e => setRememberMe(e.target.checked)}
-                  color="primary"
                   disabled={desabilitado}
                 />
               }
-              label="Lembrar de mim neste dispositivo"
+              label={
+                <Typography variant="body2" color="text.secondary">
+                  Lembrar de mim neste dispositivo
+                </Typography>
+              }
             />
+
             <Link
-              component="button"
-              type="button"
-              onClick={handleEsqueciSenha}
-              sx={{ fontSize: '0.85rem' }}
-              disabled={desabilitado}
+              href="#"
+              onClick={handleClickEsqueceuSenha}
+              variant="body2"
+              underline="hover"
+              sx={{ fontWeight: 500 }}
             >
               Esqueceu a senha?
             </Link>
           </Box>
 
           {erro && (
-            <Box sx={{ mb: 2 }}>
-              <Typography
-                variant="body2"
-                color="error"
-                sx={{ fontWeight: 500, textAlign: 'center' }}
-              >
-                {erro}
-              </Typography>
-            </Box>
+            <Typography
+              variant="body2"
+              color="error"
+              sx={{ mt: 1, mb: 1, textAlign: 'center' }}
+            >
+              {erro}
+            </Typography>
           )}
 
           <Button
             type="submit"
             fullWidth
             variant="contained"
+            color="primary"
             disabled={desabilitado}
             startIcon={
-              desabilitado ? (
-                <CircularProgress color="inherit" size={18} />
-              ) : (
-                <LoginIcon />
-              )
+              loading ? <CircularProgress size={18} color="inherit" /> : <LoginIcon />
             }
             sx={{
               mt: 1,
@@ -329,7 +369,7 @@ const LoginPage: React.FC = () => {
               textTransform: 'none',
             }}
           >
-            {desabilitado ? <span>Entrando...</span> : <span>Entrar</span>}
+            {desabilitado ? 'Entrando...' : 'Entrar'}
           </Button>
         </Box>
       </Box>

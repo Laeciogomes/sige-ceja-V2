@@ -7,7 +7,7 @@ import { RootLayout } from '../layouts/RootLayout'
 import { LoginPage } from '../paginas/Autenticacao/LoginPage'
 import { NovaSenhaPage } from '../paginas/Autenticacao/NovaSenhaPage'
 
-// ATENÇÃO: Dashboard agora está na pasta painel-administracao
+// Dashboard principal (admin)
 import { DashboardPage } from '../paginas/painel-administracao/DashboardPage'
 
 import { PaginaSimples } from '../paginas/PaginaSimples'
@@ -16,12 +16,15 @@ import ConfiguracoesPage from '../paginas/Configuracoes/ConfiguracoesPage'
 import { useAuth } from '../contextos/AuthContext'
 import { RotaPorPapel } from '../componentes/navegacao/RotaPorPapel'
 
-// ATENÇÃO: páginas de Secretaria agora estão em painel-secretaria
+// Páginas da Secretaria
 import SecretariaLayout from '../paginas/painel-secretaria/SecretariaLayout'
 import SecretariaUsuariosPage from '../paginas/painel-secretaria/SecretariaUsuariosPage'
 import SecretariaTurmasPage from '../paginas/painel-secretaria/SecretariaTurmasPage'
 import SecretariaMatriculasPage from '../paginas/painel-secretaria/SecretariaMatriculasPage'
-import SecretariaRelatoriosFichasPage from '../paginas/painel-secretaria/SecretariaRelatoriosFichasPage'
+import SecretariaDisciplinasPage from '../paginas/painel-secretaria/SecretariaDisciplinasPage'
+import SecretariaAreasConhecimentoPage from '../paginas/painel-secretaria/SecretariaAreasConhecimentoPage'
+import SecretariaSalasPage from '../paginas/painel-secretaria/SecretariaSalasPage'
+import SecretariaProtocolosPage from '../paginas/painel-secretaria/SecretariaProtocolosPage'
 
 export const AppRoutes: React.FC = () => {
   // Inclui "carregando" para evitar redirecionar enquanto a sessão está sendo restaurada
@@ -77,21 +80,16 @@ export const AppRoutes: React.FC = () => {
         >
           {/* Por enquanto, mantém Matrículas como página padrão */}
           <Route index element={<Navigate to="matriculas" replace />} />
+
           <Route path="usuarios" element={<SecretariaUsuariosPage />} />
           <Route path="turmas" element={<SecretariaTurmasPage />} />
+          <Route path="salas" element={<SecretariaSalasPage />} />
           <Route
-            path="salas"
-            element={<PaginaSimples titulo="Gerenciar salas" />}
+            path="areas-conhecimento"
+            element={<SecretariaAreasConhecimentoPage />}
           />
-          <Route
-            path="disciplinas"
-            element={<PaginaSimples titulo="Gerenciar disciplinas" />}
-          />
-          {/* Usando a tela de relatórios/fichas como placeholder para protocolos */}
-          <Route
-            path="protocolos"
-            element={<SecretariaRelatoriosFichasPage />}
-          />
+          <Route path="disciplinas" element={<SecretariaDisciplinasPage />} />
+          <Route path="protocolos" element={<SecretariaProtocolosPage />} />
           <Route path="matriculas" element={<SecretariaMatriculasPage />} />
           <Route
             path="renovacoes"
@@ -151,7 +149,7 @@ export const AppRoutes: React.FC = () => {
           }
         />
 
-        {/* DIREÇÃO – igual à coordenação */}
+        {/* DIREÇÃO – visão macro + SASP e acompanhamento */}
         <Route
           path="direcao"
           element={
@@ -177,7 +175,7 @@ export const AppRoutes: React.FC = () => {
           }
         />
 
-        {/* ALUNOS – painel do aluno (placeholders) */}
+        {/* ALUNOS – painel do aluno */}
         <Route
           path="alunos"
           element={
@@ -203,14 +201,15 @@ export const AppRoutes: React.FC = () => {
           }
         />
 
-        {/* CONFIGURAÇÕES (página completa de ajustes do usuário) */}
+        {/* PERFIL E CONFIGURAÇÕES (acesso para qualquer usuário logado) */}
+        <Route path="perfil" element={<PerfilPage />} />
         <Route path="config" element={<ConfiguracoesPage />} />
 
-        {/* PERFIL DO USUÁRIO */}
-        <Route path="perfil" element={<PerfilPage />} />
+        {/* ROTA CORINGA DENTRO DO LAYOUT – se chegar aqui, vai para Dashboard */}
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
 
-      {/* QUALQUER OUTRA ROTA: REDIRECIONA CONFORME AUTENTICAÇÃO */}
+      {/* ROTA CORINGA FORA DO LAYOUT – se não autenticado, joga para login */}
       <Route
         path="*"
         element={
