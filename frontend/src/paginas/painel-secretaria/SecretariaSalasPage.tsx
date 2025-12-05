@@ -140,12 +140,27 @@ const SecretariaSalasPage: React.FC = () => {
         { data: disciplinasData, error: disciplinasError },
         { data: areasData, error: areasError },
       ] = await Promise.all([
-        supabase.from('salas_atendimento').select('id_sala, nome, descricao, tipo_sala, is_ativa, created_at').order('nome', { ascending: true }),
-        supabase.from('professores_salas').select('id_professor, id_sala, data_inicio, data_fim, ativo'),
-        supabase.from('salas_config_disciplina_ano').select('id_sala, id_config'),
-        supabase.from('config_disciplina_ano').select('id_config, id_disciplina, id_ano_escolar, quantidade_protocolos'),
-        supabase.from('disciplinas').select('id_disciplina, nome_disciplina, id_area_conhecimento').order('nome_disciplina', { ascending: true }),
-        supabase.from('areas_conhecimento').select('id_area_conhecimento, nome_area').order('nome_area', { ascending: true }),
+        supabase
+          .from('salas_atendimento')
+          .select('id_sala, nome, descricao, tipo_sala, is_ativa, created_at')
+          .order('nome', { ascending: true }),
+        supabase
+          .from('professores_salas')
+          .select('id_professor, id_sala, data_inicio, data_fim, ativo'),
+        supabase
+          .from('salas_config_disciplina_ano')
+          .select('id_sala, id_config'),
+        supabase
+          .from('config_disciplina_ano')
+          .select('id_config, id_disciplina, id_ano_escolar, quantidade_protocolos'),
+        supabase
+          .from('disciplinas')
+          .select('id_disciplina, nome_disciplina, id_area_conhecimento')
+          .order('nome_disciplina', { ascending: true }),
+        supabase
+          .from('areas_conhecimento')
+          .select('id_area_conhecimento, nome_area')
+          .order('nome_area', { ascending: true }),
       ])
 
       if (salasError) erro('Não foi possível carregar as salas.')
@@ -165,7 +180,6 @@ const SecretariaSalasPage: React.FC = () => {
 
       if (areasError) erro('Não foi possível carregar áreas.')
       else if (areasData) setAreas(areasData as AreaConhecimentoRow[])
-
     } catch (e) {
       console.error(e)
       erro('Ocorreu um erro técnico.')
@@ -306,7 +320,9 @@ const SecretariaSalasPage: React.FC = () => {
         id_sala: idSala,
         id_config: idConfig,
       }))
-      const { error } = await supabase.from('salas_config_disciplina_ano').insert(registros)
+      const { error } = await supabase
+        .from('salas_config_disciplina_ano')
+        .insert(registros)
       if (!error) setSalasConfigs((prev) => [...prev, ...registros])
     }
 
@@ -319,7 +335,8 @@ const SecretariaSalasPage: React.FC = () => {
       if (!error) {
         setSalasConfigs((prev) =>
           prev.filter(
-            (sc) => !(sc.id_sala === idSala && idsParaRemover.includes(sc.id_config)),
+            (sc) =>
+              !(sc.id_sala === idSala && idsParaRemover.includes(sc.id_config)),
           ),
         )
       }
@@ -347,7 +364,11 @@ const SecretariaSalasPage: React.FC = () => {
         if (error) throw error
         if (data) {
           const salaAtualizada = data as SalaRow
-          setSalas((prev) => prev.map((s) => (s.id_sala === salaAtualizada.id_sala ? salaAtualizada : s)))
+          setSalas((prev) =>
+            prev.map((s) =>
+              s.id_sala === salaAtualizada.id_sala ? salaAtualizada : s,
+            ),
+          )
           await syncDisciplinasSala(salaAtualizada.id_sala)
           sucesso(`Sala atualizada com sucesso.`)
         }
@@ -381,14 +402,24 @@ const SecretariaSalasPage: React.FC = () => {
     try {
       setSalvando(true)
       await supabase.from('professores_salas').delete().eq('id_sala', sala.id_sala)
-      await supabase.from('salas_config_disciplina_ano').delete().eq('id_sala', sala.id_sala)
-      const { error: salaError } = await supabase.from('salas_atendimento').delete().eq('id_sala', sala.id_sala)
+      await supabase
+        .from('salas_config_disciplina_ano')
+        .delete()
+        .eq('id_sala', sala.id_sala)
+      const { error: salaError } = await supabase
+        .from('salas_atendimento')
+        .delete()
+        .eq('id_sala', sala.id_sala)
 
       if (salaError) throw salaError
 
       setSalas((prev) => prev.filter((s) => s.id_sala !== sala.id_sala))
-      setProfessoresSalas((prev) => prev.filter((ps) => ps.id_sala !== sala.id_sala))
-      setSalasConfigs((prev) => prev.filter((sc) => sc.id_sala !== sala.id_sala))
+      setProfessoresSalas((prev) =>
+        prev.filter((ps) => ps.id_sala !== sala.id_sala),
+      )
+      setSalasConfigs((prev) =>
+        prev.filter((sc) => sc.id_sala !== sala.id_sala),
+      )
 
       sucesso(`Sala excluída com sucesso.`)
     } catch (e) {
@@ -399,49 +430,49 @@ const SecretariaSalasPage: React.FC = () => {
   }
 
   const handleChangePage = (_event: unknown, newPage: number) => setPage(newPage)
-  const handleChangeRowsPerPage = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleChangeRowsPerPage = (
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) => {
     setRowsPerPage(parseInt(event.target.value, 10))
     setPage(0)
   }
 
   const salasPaginadas = useMemo(
-    () => salasFiltradas.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage),
-    [salasFiltradas, page, rowsPerPage]
+    () =>
+      salasFiltradas.slice(
+        page * rowsPerPage,
+        page * rowsPerPage + rowsPerPage,
+      ),
+    [salasFiltradas, page, rowsPerPage],
   )
 
   // --- ESTILOS VISUAIS ---
   const cardBorderColor = theme.palette.divider
   const cardBgColor = theme.palette.background.paper
-  const zebraColor = theme.palette.mode === 'light' 
-    ? alpha(theme.palette.grey[400], 0.15) 
-    : alpha(theme.palette.common.white, 0.05)
+  const zebraColor =
+    theme.palette.mode === 'light'
+      ? alpha(theme.palette.grey[400], 0.15)
+      : alpha(theme.palette.common.white, 0.05)
 
   // Cores do Cabeçalho Verde
-  const headerBgColor = theme.palette.mode === 'light'
-    ? green[100] 
-    : alpha(green[900], 0.4)
-  const headerTextColor = theme.palette.mode === 'light'
-    ? theme.palette.success.dark 
-    : theme.palette.success.light
-
-  const getStatusChip = (ativa: boolean) => {
-    return ativa ? (
-      <Chip size="small" icon={<CheckCircleIcon fontSize="small" />} label="Ativa" color="success" variant="outlined" />
-    ) : (
-      <Chip size="small" icon={<CancelIcon fontSize="small" />} label="Inativa" color="default" variant="outlined" />
-    )
-  }
+  const headerBgColor =
+    theme.palette.mode === 'light' ? green[100] : alpha(green[900], 0.4)
+  const headerTextColor =
+    theme.palette.mode === 'light'
+      ? theme.palette.success.dark
+      : theme.palette.success.light
 
   return (
     // [FIX] Proteção contra corte lateral no mobile
-    <Box sx={{ 
-      p: { xs: 2, sm: 3 }, 
-      width: '100%', 
-      maxWidth: '100vw', 
-      overflowX: 'hidden',
-      boxSizing: 'border-box'
-    }}>
-      
+    <Box
+      sx={{
+        p: { xs: 2, sm: 3 },
+        width: '100%',
+        maxWidth: '100vw',
+        overflowX: 'hidden',
+        boxSizing: 'border-box',
+      }}
+    >
       {/* --- CABEÇALHO --- */}
       <Stack
         direction={{ xs: 'column', sm: 'row' }}
@@ -458,7 +489,7 @@ const SecretariaSalasPage: React.FC = () => {
                 color: 'primary.contrastText',
                 p: 0.5,
                 borderRadius: 1,
-                display: 'flex'
+                display: 'flex',
               }}
             >
               <MeetingRoomIcon fontSize="small" />
@@ -467,7 +498,11 @@ const SecretariaSalasPage: React.FC = () => {
               Salas de Atendimento
             </Typography>
           </Stack>
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+          <Typography
+            variant="body2"
+            color="text.secondary"
+            sx={{ mt: 0.5 }}
+          >
             Gerencie espaços e vincule disciplinas.
           </Typography>
         </Box>
@@ -487,16 +522,44 @@ const SecretariaSalasPage: React.FC = () => {
       <Box
         sx={{
           display: 'grid',
-          gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', md: 'repeat(4, 1fr)' },
+          gridTemplateColumns: {
+            xs: '1fr',
+            sm: '1fr 1fr',
+            md: 'repeat(4, 1fr)',
+          },
           gap: 2,
           mb: 3,
         }}
       >
         {[
-          { icon: <DoorFrontIcon />, label: 'Total de Salas', val: totalSalas, color: 'primary.main', bg: alpha(theme.palette.primary.main, 0.1) },
-          { icon: <CheckCircleIcon />, label: 'Salas Ativas', val: totalSalasAtivas, color: 'success.main', bg: alpha(theme.palette.success.main, 0.1) },
-          { icon: <PeopleIcon />, label: 'Professores Lotados', val: totalProfessoresAtivos, color: 'info.main', bg: alpha(theme.palette.info.main, 0.1) },
-          { icon: <MenuBookIcon />, label: 'Vínculos Ativos', val: totalConfigsVinculadas, color: 'warning.main', bg: alpha(theme.palette.warning.main, 0.1) },
+          {
+            icon: <DoorFrontIcon />,
+            label: 'Total de Salas',
+            val: totalSalas,
+            color: 'primary.main',
+            bg: alpha(theme.palette.primary.main, 0.1),
+          },
+          {
+            icon: <CheckCircleIcon />,
+            label: 'Salas Ativas',
+            val: totalSalasAtivas,
+            color: 'success.main',
+            bg: alpha(theme.palette.success.main, 0.1),
+          },
+          {
+            icon: <PeopleIcon />,
+            label: 'Professores Lotados',
+            val: totalProfessoresAtivos,
+            color: 'info.main',
+            bg: alpha(theme.palette.info.main, 0.1),
+          },
+          {
+            icon: <MenuBookIcon />,
+            label: 'Vínculos Ativos',
+            val: totalConfigsVinculadas,
+            color: 'warning.main',
+            bg: alpha(theme.palette.warning.main, 0.1),
+          },
         ].map((stat, idx) => (
           <Paper
             key={idx}
@@ -509,7 +572,7 @@ const SecretariaSalasPage: React.FC = () => {
               alignItems: 'center',
               gap: 2,
               transition: 'transform 0.2s',
-              '&:hover': { transform: 'translateY(-2px)', boxShadow: 2 }
+              '&:hover': { transform: 'translateY(-2px)', boxShadow: 2 },
             }}
           >
             <Box
@@ -522,7 +585,7 @@ const SecretariaSalasPage: React.FC = () => {
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                flexShrink: 0
+                flexShrink: 0,
               }}
             >
               {stat.icon}
@@ -531,7 +594,12 @@ const SecretariaSalasPage: React.FC = () => {
               <Typography variant="h4" fontWeight={800} sx={{ lineHeight: 1 }}>
                 {stat.val}
               </Typography>
-              <Typography variant="caption" color="text.secondary" fontWeight={500} noWrap>
+              <Typography
+                variant="caption"
+                color="text.secondary"
+                fontWeight={500}
+                noWrap
+              >
                 {stat.label}
               </Typography>
             </Box>
@@ -540,10 +608,15 @@ const SecretariaSalasPage: React.FC = () => {
       </Box>
 
       {/* --- FILTROS --- */}
-      <Paper 
-        elevation={0} 
-        variant="outlined" 
-        sx={{ p: 2, mb: 3, borderRadius: 3, bgcolor: alpha(theme.palette.background.paper, 0.5) }}
+      <Paper
+        elevation={0}
+        variant="outlined"
+        sx={{
+          p: 2,
+          mb: 3,
+          borderRadius: 3,
+          bgcolor: alpha(theme.palette.background.paper, 0.5),
+        }}
       >
         <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
           <TextField
@@ -552,13 +625,21 @@ const SecretariaSalasPage: React.FC = () => {
             value={busca}
             onChange={(e) => setBusca(e.target.value)}
             InputProps={{
-              startAdornment: <InputAdornment position="start"><SearchIcon color="action" /></InputAdornment>,
+              startAdornment: (
+                <InputAdornment position="start">
+                  <SearchIcon color="action" />
+                </InputAdornment>
+              ),
             }}
             fullWidth
           />
           <FormControl size="small" sx={{ minWidth: { md: 200 } }}>
             <InputLabel>Status</InputLabel>
-            <Select value={filtroStatus} label="Status" onChange={(e) => setFiltroStatus(e.target.value)}>
+            <Select
+              value={filtroStatus}
+              label="Status"
+              onChange={(e) => setFiltroStatus(e.target.value)}
+            >
               <MenuItem value="">Todos</MenuItem>
               <MenuItem value="ATIVAS">Ativas</MenuItem>
               <MenuItem value="INATIVAS">Inativas</MenuItem>
@@ -591,53 +672,81 @@ const SecretariaSalasPage: React.FC = () => {
                       position: 'relative',
                       overflow: 'hidden',
                       // Borda lateral Verde (Ativa) ou Cinza (Inativa)
-                      borderLeft: `5px solid ${sala.is_ativa ? theme.palette.success.main : theme.palette.grey[400]}`,
+                      borderLeft: `5px solid ${
+                        sala.is_ativa
+                          ? theme.palette.success.main
+                          : theme.palette.grey[400]
+                      }`,
                       bgcolor: cardBgColor,
                     }}
                   >
-                    <Stack direction="row" justifyContent="space-between" alignItems="flex-start" spacing={1}>
+                    <Stack
+                      direction="row"
+                      justifyContent="space-between"
+                      alignItems="flex-start"
+                      spacing={1}
+                    >
                       {/* Conteúdo Principal Flexível */}
                       <Box sx={{ flex: 1, minWidth: 0 }}>
-                        <Typography 
-                          variant="subtitle1" 
+                        <Typography
+                          variant="subtitle1"
                           fontWeight={700}
-                          sx={{ 
+                          sx={{
                             wordBreak: 'break-word',
                             lineHeight: 1.3,
-                            mb: 0.5
+                            mb: 0.5,
                           }}
                         >
                           {sala.nome}
                         </Typography>
                         {sala.descricao && (
-                          <Typography variant="caption" color="text.secondary" display="block" gutterBottom>
+                          <Typography
+                            variant="caption"
+                            color="text.secondary"
+                            display="block"
+                            gutterBottom
+                          >
                             {sala.descricao}
                           </Typography>
                         )}
 
-                        <Stack direction="row" flexWrap="wrap" gap={0.5} sx={{ mt: 1 }}>
-                          <Chip 
+                        <Stack
+                          direction="row"
+                          flexWrap="wrap"
+                          gap={0.5}
+                          sx={{ mt: 1 }}
+                        >
+                          <Chip
                             label={`${qtdProf} Prof.`}
                             size="small"
                             variant="outlined"
                             icon={<PeopleIcon style={{ fontSize: 14 }} />}
                           />
-                          <Chip 
+                          <Chip
                             label={`${qtdConfigs} Vínculos`}
                             size="small"
                             variant="outlined"
                             icon={<MenuBookIcon style={{ fontSize: 14 }} />}
                           />
-                          {!sala.is_ativa && <Chip label="Inativa" size="small" color="default" />}
+                          {!sala.is_ativa && (
+                            <Chip label="Inativa" size="small" color="default" />
+                          )}
                         </Stack>
                       </Box>
 
                       {/* Ações Fixas */}
                       <Stack direction="column" spacing={0} sx={{ flexShrink: 0 }}>
-                        <IconButton size="small" onClick={() => abrirDialogEdicao(sala)}>
+                        <IconButton
+                          size="small"
+                          onClick={() => abrirDialogEdicao(sala)}
+                        >
                           <EditIcon fontSize="small" color="action" />
                         </IconButton>
-                        <IconButton size="small" color="error" onClick={() => handleExcluir(sala)}>
+                        <IconButton
+                          size="small"
+                          color="error"
+                          onClick={() => handleExcluir(sala)}
+                        >
                           <DeleteOutlineIcon fontSize="small" />
                         </IconButton>
                       </Stack>
@@ -645,20 +754,57 @@ const SecretariaSalasPage: React.FC = () => {
                   </Paper>
                 )
               })}
-              {salasPaginadas.length === 0 && <Typography align="center" color="text.secondary">Nenhuma sala encontrada.</Typography>}
+              {salasPaginadas.length === 0 && (
+                <Typography align="center" color="text.secondary">
+                  Nenhuma sala encontrada.
+                </Typography>
+              )}
             </Stack>
           ) : (
             /* --- MODO DESKTOP: TABELA COM CABEÇALHO VERDE --- */
-            <TableContainer component={Paper} elevation={0} variant="outlined" sx={{ borderRadius: 3, overflow: 'hidden' }}>
+            <TableContainer
+              component={Paper}
+              elevation={0}
+              variant="outlined"
+              sx={{ borderRadius: 3, overflow: 'hidden' }}
+            >
               <Table size="medium">
                 <TableHead>
                   <TableRow sx={{ bgcolor: headerBgColor }}>
-                    <TableCell sx={{ fontWeight: 'bold', color: headerTextColor }}>Sala</TableCell>
-                    <TableCell sx={{ fontWeight: 'bold', color: headerTextColor }}>Tipo</TableCell>
-                    <TableCell align="center" sx={{ fontWeight: 'bold', color: headerTextColor }}>Professores</TableCell>
-                    <TableCell align="center" sx={{ fontWeight: 'bold', color: headerTextColor }}>Vínculos</TableCell>
-                    <TableCell align="center" sx={{ fontWeight: 'bold', color: headerTextColor }}>Status</TableCell>
-                    <TableCell align="right" sx={{ fontWeight: 'bold', color: headerTextColor }}>Ações</TableCell>
+                    <TableCell
+                      sx={{ fontWeight: 'bold', color: headerTextColor }}
+                    >
+                      Sala
+                    </TableCell>
+                    <TableCell
+                      sx={{ fontWeight: 'bold', color: headerTextColor }}
+                    >
+                      Tipo
+                    </TableCell>
+                    <TableCell
+                      align="center"
+                      sx={{ fontWeight: 'bold', color: headerTextColor }}
+                    >
+                      Professores
+                    </TableCell>
+                    <TableCell
+                      align="center"
+                      sx={{ fontWeight: 'bold', color: headerTextColor }}
+                    >
+                      Vínculos
+                    </TableCell>
+                    <TableCell
+                      align="center"
+                      sx={{ fontWeight: 'bold', color: headerTextColor }}
+                    >
+                      Status
+                    </TableCell>
+                    <TableCell
+                      align="right"
+                      sx={{ fontWeight: 'bold', color: headerTextColor }}
+                    >
+                      Ações
+                    </TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -666,44 +812,84 @@ const SecretariaSalasPage: React.FC = () => {
                     const qtdProf = getQtdProfessoresSala(sala.id_sala)
                     const qtdConfigs = getQtdConfigsSala(sala.id_sala)
                     const isEven = index % 2 === 0
-                    
+
                     return (
-                      <TableRow 
-                        key={sala.id_sala} 
-                        sx={{ 
-                           bgcolor: isEven ? 'inherit' : zebraColor,
-                           '&:hover': { bgcolor: alpha(theme.palette.primary.main, 0.08) }
+                      <TableRow
+                        key={sala.id_sala}
+                        sx={{
+                          bgcolor: isEven ? 'inherit' : zebraColor,
+                          '&:hover': {
+                            bgcolor: alpha(theme.palette.primary.main, 0.08),
+                          },
                         }}
                       >
                         <TableCell>
-                           <Typography variant="body2" fontWeight={600} color="text.primary">
-                             {sala.nome}
-                           </Typography>
-                           {sala.descricao && <Typography variant="caption" color="text.secondary">{sala.descricao}</Typography>}
+                          <Typography
+                            variant="body2"
+                            fontWeight={600}
+                            color="text.primary"
+                          >
+                            {sala.nome}
+                          </Typography>
+                          {sala.descricao && (
+                            <Typography
+                              variant="caption"
+                              color="text.secondary"
+                            >
+                              {sala.descricao}
+                            </Typography>
+                          )}
                         </TableCell>
                         <TableCell>{sala.tipo_sala || '—'}</TableCell>
                         <TableCell align="center">
                           <Chip label={qtdProf} size="small" variant="outlined" />
                         </TableCell>
                         <TableCell align="center">
-                          <Chip label={qtdConfigs} size="small" variant="outlined" />
+                          <Chip
+                            label={qtdConfigs}
+                            size="small"
+                            variant="outlined"
+                          />
                         </TableCell>
                         <TableCell align="center">
                           {sala.is_ativa ? (
-                            <Chip label="Ativa" size="small" color="success" variant="outlined" icon={<CheckCircleIcon />} />
+                            <Chip
+                              label="Ativa"
+                              size="small"
+                              color="success"
+                              variant="outlined"
+                              icon={<CheckCircleIcon />}
+                            />
                           ) : (
-                            <Chip label="Inativa" size="small" color="default" variant="outlined" icon={<CancelIcon />} />
+                            <Chip
+                              label="Inativa"
+                              size="small"
+                              color="default"
+                              variant="outlined"
+                              icon={<CancelIcon />}
+                            />
                           )}
                         </TableCell>
                         <TableCell align="right">
-                          <Stack direction="row" justifyContent="flex-end" spacing={1}>
+                          <Stack
+                            direction="row"
+                            justifyContent="flex-end"
+                            spacing={1}
+                          >
                             <Tooltip title="Editar">
-                              <IconButton size="small" onClick={() => abrirDialogEdicao(sala)}>
+                              <IconButton
+                                size="small"
+                                onClick={() => abrirDialogEdicao(sala)}
+                              >
                                 <EditIcon fontSize="small" />
                               </IconButton>
                             </Tooltip>
                             <Tooltip title="Excluir">
-                              <IconButton size="small" color="error" onClick={() => handleExcluir(sala)}>
+                              <IconButton
+                                size="small"
+                                color="error"
+                                onClick={() => handleExcluir(sala)}
+                              >
                                 <DeleteOutlineIcon fontSize="small" />
                               </IconButton>
                             </Tooltip>
@@ -714,8 +900,12 @@ const SecretariaSalasPage: React.FC = () => {
                   })}
                   {salasPaginadas.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={6} align="center" sx={{ py: 4, color: 'text.secondary' }}>
-                         Nenhum registro encontrado.
+                      <TableCell
+                        colSpan={6}
+                        align="center"
+                        sx={{ py: 4, color: 'text.secondary' }}
+                      >
+                        Nenhum registro encontrado.
                       </TableCell>
                     </TableRow>
                   )}
@@ -727,7 +917,14 @@ const SecretariaSalasPage: React.FC = () => {
       )}
 
       {/* --- PAGINAÇÃO PROTEGIDA --- */}
-      <Box sx={{ mt: 2, display: 'flex', justifyContent: 'center', overflowX: 'auto' }}>
+      <Box
+        sx={{
+          mt: 2,
+          display: 'flex',
+          justifyContent: 'center',
+          overflowX: 'auto',
+        }}
+      >
         <TablePagination
           component="div"
           count={salasFiltradas.length}
@@ -764,29 +961,64 @@ const SecretariaSalasPage: React.FC = () => {
               onChange={(e) => setFormDescricao(e.target.value)}
             />
             <FormControlLabel
-              control={<Checkbox checked={formAtiva} onChange={(e) => setFormAtiva(e.target.checked)} />}
+              control={
+                <Checkbox
+                  checked={formAtiva}
+                  onChange={(e) => setFormAtiva(e.target.checked)}
+                />
+              }
               label="Sala Ativa"
             />
 
             {/* SELEÇÃO DE DISCIPLINAS MELHORADA */}
-            <Paper variant="outlined" sx={{ p: 2, bgcolor: alpha(theme.palette.action.hover, 0.1) }}>
+            <Paper
+              variant="outlined"
+              sx={{ p: 2, bgcolor: alpha(theme.palette.action.hover, 0.1) }}
+            >
               <Typography variant="subtitle2" gutterBottom fontWeight="bold">
                 Vincular Disciplinas
               </Typography>
-              <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 2 }}>
+              <Typography
+                variant="caption"
+                color="text.secondary"
+                display="block"
+                sx={{ mb: 2 }}
+              >
                 Selecione as disciplinas que serão atendidas nesta sala.
               </Typography>
-              
-              <FormControl size="small" fullWidth sx={{ mb: 2, bgcolor: 'background.paper' }}>
+
+              <FormControl
+                size="small"
+                fullWidth
+                sx={{ mb: 2, bgcolor: 'background.paper' }}
+              >
                 <InputLabel>Filtrar por Área</InputLabel>
-                <Select value={filtroAreaModal} label="Filtrar por Área" onChange={(e) => setFiltroAreaModal(e.target.value)}>
+                <Select
+                  value={filtroAreaModal}
+                  label="Filtrar por Área"
+                  onChange={(e) => setFiltroAreaModal(e.target.value)}
+                >
                   <MenuItem value="">Todas as Áreas</MenuItem>
-                  {areas.map((a) => <MenuItem key={a.id_area_conhecimento} value={String(a.id_area_conhecimento)}>{a.nome_area}</MenuItem>)}
+                  {areas.map((a) => (
+                    <MenuItem
+                      key={a.id_area_conhecimento}
+                      value={String(a.id_area_conhecimento)}
+                    >
+                      {a.nome_area}
+                    </MenuItem>
+                  ))}
                 </Select>
               </FormControl>
 
               {/* LISTA COM SCROLL E DESIGN LIMPO */}
-              <Paper variant="outlined" sx={{ maxHeight: 300, overflowY: 'auto', bgcolor: 'background.paper' }}>
+              <Paper
+                variant="outlined"
+                sx={{
+                  maxHeight: 300,
+                  overflowY: 'auto',
+                  bgcolor: 'background.paper',
+                }}
+              >
                 {disciplinasFiltradasModal.length === 0 ? (
                   <Box sx={{ p: 4, textAlign: 'center' }}>
                     <Typography variant="body2" color="text.secondary">
@@ -794,27 +1026,36 @@ const SecretariaSalasPage: React.FC = () => {
                     </Typography>
                   </Box>
                 ) : (
-                  // Importe List, ListItem, ListItemButton, ListItemIcon, ListItemText do @mui/material se não tiver
-                  <Stack divider={<Divider flexItem />}> 
+                  <Stack divider={<Divider flexItem />}>
                     {disciplinasFiltradasModal.map((disc) => {
-                      const area = areas.find(a => a.id_area_conhecimento === disc.id_area_conhecimento)
-                      const isSelected = disciplinasSelecionadas.includes(disc.id_disciplina)
-                      
+                      const area = areas.find(
+                        (a) =>
+                          a.id_area_conhecimento === disc.id_area_conhecimento,
+                      )
+                      const isSelected = disciplinasSelecionadas.includes(
+                        disc.id_disciplina,
+                      )
+
                       return (
-                        <Box 
-                          key={disc.id_disciplina} 
-                          onClick={() => handleToggleDisciplinaSelecionada(disc.id_disciplina, !isSelected)}
-                          sx={{ 
-                            display: 'flex', 
-                            alignItems: 'center', 
-                            p: 1.5, 
+                        <Box
+                          key={disc.id_disciplina}
+                          onClick={() =>
+                            handleToggleDisciplinaSelecionada(
+                              disc.id_disciplina,
+                              !isSelected,
+                            )
+                          }
+                          sx={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            p: 1.5,
                             cursor: 'pointer',
                             '&:hover': { bgcolor: 'action.hover' },
-                            transition: 'background-color 0.2s'
+                            transition: 'background-color 0.2s',
                           }}
                         >
-                          <Checkbox 
-                            size="small" 
+                          <Checkbox
+                            size="small"
                             checked={isSelected}
                             tabIndex={-1}
                             disableRipple
@@ -837,9 +1078,18 @@ const SecretariaSalasPage: React.FC = () => {
             </Paper>
           </Stack>
         </DialogContent>
-        <DialogActions sx={{ p: 2, bgcolor: alpha(theme.palette.primary.main, 0.05) }}>
-          <Button onClick={fecharDialog} color="inherit">Cancelar</Button>
-          <Button variant="contained" onClick={handleSalvar} disabled={salvando} disableElevation>
+        <DialogActions
+          sx={{ p: 2, bgcolor: alpha(theme.palette.primary.main, 0.05) }}
+        >
+          <Button onClick={fecharDialog} color="inherit">
+            Cancelar
+          </Button>
+          <Button
+            variant="contained"
+            onClick={handleSalvar}
+            disabled={salvando}
+            disableElevation
+          >
             {salvando ? 'Salvando...' : 'Salvar Dados'}
           </Button>
         </DialogActions>
