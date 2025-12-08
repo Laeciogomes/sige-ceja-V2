@@ -18,6 +18,7 @@ import {
   DialogContent,
   DialogActions,
   FormControl,
+  FormControlLabel,
   InputAdornment,
   InputLabel,
   MenuItem,
@@ -40,6 +41,7 @@ import {
   Checkbox,
   ListItemText,
   Divider,
+  Switch,
 } from '@mui/material'
 
 import SearchIcon from '@mui/icons-material/Search'
@@ -56,7 +58,10 @@ import LocalAtmIcon from '@mui/icons-material/LocalAtm'
 import { useSupabase } from '../../contextos/SupabaseContext'
 import { useNotificacaoContext } from '../../contextos/NotificacaoContext'
 
-// === MODALIDADES (enum modalidade_matricula_enum) ===
+const SENHA_PADRAO_ALUNO = 'Ceja@2024'
+const TIPO_USUARIO_ALUNO_ID = 5
+
+// === MODALIDADES (enum modalidade_matricula_enum em Supabase) ===
 const MODALIDADES_MATRICULA = [
   {
     value: 'Orientação de Estudos',
@@ -207,13 +212,6 @@ interface MatriculaLista {
   dataConclusao?: string | null
 }
 
-interface AlunoDisplay {
-  id_aluno: number
-  nome: string
-  email: string
-  foto_url?: string | null
-}
-
 // === COMPONENTE PRINCIPAL ===
 
 const SecretariaMatriculasPage: FC = () => {
@@ -221,7 +219,7 @@ const SecretariaMatriculasPage: FC = () => {
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'))
 
   const { supabase } = useSupabase()
-  const { erro, sucesso } = useNotificacaoContext()
+  const { erro, sucesso, aviso } = useNotificacaoContext()
 
   const [matriculas, setMatriculas] = useState<MatriculaLista[]>([])
   const [carregando, setCarregando] = useState<boolean>(true)
@@ -236,8 +234,6 @@ const SecretariaMatriculasPage: FC = () => {
     useState<NivelEnsinoRow[]>([])
   const [statusDisponiveis, setStatusDisponiveis] =
     useState<StatusMatriculaRow[]>([])
-  const [alunosDisponiveis, setAlunosDisponiveis] =
-    useState<AlunoDisplay[]>([])
   const [turmasDisponiveis, setTurmasDisponiveis] = useState<TurmaRow[]>([])
   const [disciplinasDisponiveis, setDisciplinasDisponiveis] =
     useState<DisciplinaRow[]>([])
@@ -248,10 +244,6 @@ const SecretariaMatriculasPage: FC = () => {
   const [configDisciplinaAnoDisponiveis, setConfigDisciplinaAnoDisponiveis] =
     useState<ConfigDisciplinaAnoRow[]>([])
 
-  // Guardamos também os registros brutos de alunos/usuários para mostrar ficha completa
-  const [alunosDetalhes, setAlunosDetalhes] = useState<AlunoRow[]>([])
-  const [usuariosDetalhes, setUsuariosDetalhes] = useState<UsuarioRow[]>([])
-
   const [page, setPage] = useState(0)
   const [rowsPerPage, setRowsPerPage] = useState(10)
 
@@ -259,7 +251,33 @@ const SecretariaMatriculasPage: FC = () => {
   const [novaAberta, setNovaAberta] = useState(false)
   const [salvandoNova, setSalvandoNova] = useState(false)
 
-  const [novoAlunoId, setNovoAlunoId] = useState<number | ''>('')
+  // --- Dados do aluno (novo cadastro) ---
+  const [formAlunoNome, setFormAlunoNome] = useState('')
+  const [formAlunoEmail, setFormAlunoEmail] = useState('')
+  const [formAlunoDataNasc, setFormAlunoDataNasc] = useState('')
+  const [formAlunoCpf, setFormAlunoCpf] = useState('')
+  const [formAlunoRg, setFormAlunoRg] = useState('')
+  const [formAlunoCelular, setFormAlunoCelular] = useState('')
+  const [formAlunoNis, setFormAlunoNis] = useState('')
+  const [formAlunoNomeMae, setFormAlunoNomeMae] = useState('')
+  const [formAlunoNomePai, setFormAlunoNomePai] = useState('')
+  const [formAlunoLogradouro, setFormAlunoLogradouro] = useState('')
+  const [formAlunoNumeroEnd, setFormAlunoNumeroEnd] = useState('')
+  const [formAlunoBairro, setFormAlunoBairro] = useState('')
+  const [formAlunoMunicipio, setFormAlunoMunicipio] = useState('')
+  const [formAlunoPontoRef, setFormAlunoPontoRef] = useState('')
+  const [formAlunoUsaTransporte, setFormAlunoUsaTransporte] = useState(false)
+  const [formAlunoTemNecessidade, setFormAlunoTemNecessidade] =
+    useState(false)
+  const [formAlunoDescNecessidade, setFormAlunoDescNecessidade] =
+    useState('')
+  const [formAlunoTemRestricao, setFormAlunoTemRestricao] = useState(false)
+  const [formAlunoDescRestricao, setFormAlunoDescRestricao] = useState('')
+  const [formAlunoTemBeneficio, setFormAlunoTemBeneficio] = useState(false)
+  const [formAlunoDescBeneficio, setFormAlunoDescBeneficio] = useState('')
+  const [formAlunoObservacoes, setFormAlunoObservacoes] = useState('')
+
+  // --- Dados da matrícula ---
   const [novoNumeroInscricao, setNovoNumeroInscricao] = useState('')
   const [novoNivelId, setNovoNivelId] = useState<number | ''>('')
   const [novoStatusId, setNovoStatusId] = useState<number | ''>('')
@@ -267,8 +285,9 @@ const SecretariaMatriculasPage: FC = () => {
   const [novoAnoLetivo, setNovoAnoLetivo] = useState<string>(
     new Date().getFullYear().toString(),
   )
-  const [novaModalidade, setNovaModalidade] =
-    useState<string>('Orientação de Estudos')
+  const [novaModalidade, setNovaModalidade] = useState<string>(
+    'Orientação de Estudos',
+  )
   const [novaDataMatricula, setNovaDataMatricula] = useState<string>(
     new Date().toISOString().slice(0, 10),
   )
@@ -355,7 +374,9 @@ const SecretariaMatriculasPage: FC = () => {
           .select('id_status_disciplina, nome'),
         supabase
           .from('config_disciplina_ano')
-          .select('id_config, id_disciplina, id_ano_escolar, quantidade_protocolos'),
+          .select(
+            'id_config, id_disciplina, id_ano_escolar, quantidade_protocolos',
+          ),
       ])
 
       if (matriculasError) {
@@ -395,21 +416,20 @@ const SecretariaMatriculasPage: FC = () => {
         erro('Erro ao carregar configuração de disciplinas por série.')
       }
 
-      const matriculasList =
-        (matriculasData || []) as unknown as MatriculaRow[]
-      const alunosList = (alunosData || []) as unknown as AlunoRow[]
-      const niveisList = (niveisData || []) as unknown as NivelEnsinoRow[]
-      const statusList =
-        (statusData || []) as unknown as StatusMatriculaRow[]
-      const turmasList = (turmasData || []) as unknown as TurmaRow[]
+      const matriculasList: MatriculaRow[] = ((matriculasData ?? []) as unknown as MatriculaRow[])
+      const alunosList: AlunoRow[] = ((alunosData ?? []) as unknown as AlunoRow[])
+
+      const niveisList = (niveisData || []) as NivelEnsinoRow[]
+      const statusList = (statusData || []) as StatusMatriculaRow[]
+      const turmasList = (turmasData || []) as TurmaRow[]
       const disciplinasList =
-        (disciplinasData || []) as unknown as DisciplinaRow[]
+        (disciplinasData || []) as DisciplinaRow[]
       const anosEscolaresList =
-        (anosEscolaresData || []) as unknown as AnoEscolarRow[]
+        (anosEscolaresData || []) as AnoEscolarRow[]
       const statusDiscList =
-        (statusDiscData || []) as unknown as StatusDisciplinaRow[]
+        (statusDiscData || []) as StatusDisciplinaRow[]
       const configDiscAnoList =
-        (configDiscAnoData || []) as unknown as ConfigDisciplinaAnoRow[]
+        (configDiscAnoData || []) as ConfigDisciplinaAnoRow[]
 
       setNiveisDisponiveis(niveisList)
       setStatusDisponiveis(statusList)
@@ -418,8 +438,6 @@ const SecretariaMatriculasPage: FC = () => {
       setAnosEscolaresDisponiveis(anosEscolaresList)
       setStatusDisciplinaDisponiveis(statusDiscList)
       setConfigDisciplinaAnoDisponiveis(configDiscAnoList)
-
-      setAlunosDetalhes(alunosList)
 
       const anos = Array.from(
         new Set(matriculasList.map((m) => m.ano_letivo)),
@@ -430,16 +448,10 @@ const SecretariaMatriculasPage: FC = () => {
       alunosList.forEach((a) => alunosById.set(a.id_aluno, a))
 
       const userIds = Array.from(
-        new Set(
-          matriculasList
-            .map((m) => alunosById.get(m.id_aluno)?.user_id)
-            .filter((id): id is string => !!id),
-        ),
+        new Set(alunosList.map((a) => a.user_id)),
       )
 
-      let usuariosList: UsuarioRow[] = []
       let usuariosById = new Map<string, UsuarioRow>()
-
       if (userIds.length > 0) {
         const { data: usuariosData, error: usuariosError } = await supabase
           .from('usuarios')
@@ -466,31 +478,13 @@ const SecretariaMatriculasPage: FC = () => {
 
         if (usuariosError) {
           console.error(usuariosError)
-          erro('Erro ao carregar dados de usuários (alunos).')
-        } else {
-          usuariosList =
-            (usuariosData || []) as unknown as UsuarioRow[]
+          erro('Erro ao carregar dados dos usuários (alunos).')
+        } else if (usuariosData) {
+          const list: UsuarioRow[] = (usuariosData as unknown as UsuarioRow[])
           usuariosById = new Map<string, UsuarioRow>()
-          usuariosList.forEach((u) => usuariosById.set(u.id, u))
+          list.forEach((u) => usuariosById.set(u.id, u))
         }
       }
-
-      setUsuariosDetalhes(usuariosList)
-
-      // Lista para o select de alunos
-      const alunosDisplay: AlunoDisplay[] = alunosList
-        .map((a) => {
-          const u = usuariosById.get(a.user_id)
-          return {
-            id_aluno: a.id_aluno,
-            nome: u?.name ?? 'Aluno sem vínculo de usuário',
-            email: u?.email ?? '',
-            foto_url: u?.foto_url ?? null,
-          }
-        })
-        .sort((a, b) => a.nome.localeCompare(b.nome))
-
-      setAlunosDisponiveis(alunosDisplay)
 
       const niveisById = new Map<number, NivelEnsinoRow>()
       niveisList.forEach((n) => niveisById.set(n.id_nivel_ensino, n))
@@ -589,10 +583,36 @@ const SecretariaMatriculasPage: FC = () => {
       s.nome.toLowerCase().includes('ativo'),
     )
 
-    setNovoAlunoId('')
+    // reset aluno
+    setFormAlunoNome('')
+    setFormAlunoEmail('')
+    setFormAlunoDataNasc('')
+    setFormAlunoCpf('')
+    setFormAlunoRg('')
+    setFormAlunoCelular('')
+    setFormAlunoNis('')
+    setFormAlunoNomeMae('')
+    setFormAlunoNomePai('')
+    setFormAlunoLogradouro('')
+    setFormAlunoNumeroEnd('')
+    setFormAlunoBairro('')
+    setFormAlunoMunicipio('')
+    setFormAlunoPontoRef('')
+    setFormAlunoUsaTransporte(false)
+    setFormAlunoTemNecessidade(false)
+    setFormAlunoDescNecessidade('')
+    setFormAlunoTemRestricao(false)
+    setFormAlunoDescRestricao('')
+    setFormAlunoTemBeneficio(false)
+    setFormAlunoDescBeneficio('')
+    setFormAlunoObservacoes('')
+
+    // reset matrícula
     setNovoNumeroInscricao('')
     setNovoNivelId('')
-    setNovoStatusId(statusAtivo ? statusAtivo.id_status_matricula : '')
+    setNovoStatusId(
+      statusAtivo ? statusAtivo.id_status_matricula : '',
+    )
     setNovoTurmaId('')
     setNovoAnoLetivo(anoAtual)
     setNovaModalidade('Orientação de Estudos')
@@ -601,9 +621,8 @@ const SecretariaMatriculasPage: FC = () => {
     setSeriesConcluidasIds([])
     setSerieProgressaoId('')
     setDisciplinasProgressaoIds([])
-    setNovaAberta(true)
 
-    sucesso('Abrindo formulário de matrícula...', 'Nova Matrícula')
+    setNovaAberta(true)
   }
 
   const handleFecharNovaMatricula = () => {
@@ -614,8 +633,23 @@ const SecretariaMatriculasPage: FC = () => {
   const handleSalvarNovaMatricula = async () => {
     if (!supabase) return
 
+    const nome = formAlunoNome.trim()
+    const email = formAlunoEmail.trim()
+    const nomeMae = formAlunoNomeMae.trim()
+
+    if (!nome) {
+      erro('Informe o nome completo do aluno.')
+      return
+    }
+    if (!email) {
+      erro('Informe o e-mail do aluno (necessário para o usuário do sistema).')
+      return
+    }
+    if (!nomeMae) {
+      erro('Informe o nome da mãe do aluno (campo obrigatório).')
+      return
+    }
     if (
-      novoAlunoId === '' ||
       novoNivelId === '' ||
       novoStatusId === '' ||
       !novoNumeroInscricao.trim() ||
@@ -624,7 +658,7 @@ const SecretariaMatriculasPage: FC = () => {
       !novaModalidade.trim()
     ) {
       erro(
-        'Preencha aluno, nível, status, número de inscrição, modalidade, ano letivo e data de matrícula.',
+        'Preencha nível de ensino, status, número de inscrição, modalidade, ano letivo e data de matrícula.',
       )
       return
     }
@@ -635,11 +669,111 @@ const SecretariaMatriculasPage: FC = () => {
       return
     }
 
+    if (novaModalidade === 'Progressão de Estudos') {
+      if (serieProgressaoId === '') {
+        erro('Selecione a série (ano escolar) para a Progressão de Estudos.')
+        return
+      }
+      if (disciplinasProgressaoIds.length === 0) {
+        erro(
+          'Selecione pelo menos uma disciplina que o aluno irá cursar na Progressão de Estudos.',
+        )
+        return
+      }
+    }
+
     try {
       setSalvandoNova(true)
 
-      const payload = {
-        id_aluno: novoAlunoId as number,
+      // 1) Cria usuário de autenticação do aluno
+      const { data: signUpData, error: signUpError } =
+        await supabase.auth.signUp({
+          email,
+          password: SENHA_PADRAO_ALUNO,
+        })
+
+      if (signUpError || !signUpData.user) {
+        console.error(signUpError)
+        erro('Erro ao criar usuário de autenticação do aluno.')
+        return
+      }
+
+      const authUserId = signUpData.user.id
+
+      // 2) Cria registro em public.usuarios
+      const usuarioPayload = {
+        id: authUserId,
+        id_tipo_usuario: TIPO_USUARIO_ALUNO_ID,
+        name: nome,
+        username: null as string | null,
+        email,
+        data_nascimento: formAlunoDataNasc || null,
+        cpf: formAlunoCpf.trim() || null,
+        rg: formAlunoRg.trim() || null,
+        celular: formAlunoCelular.trim() || null,
+        logradouro: formAlunoLogradouro.trim() || null,
+        numero_endereco: formAlunoNumeroEnd.trim() || null,
+        bairro: formAlunoBairro.trim() || null,
+        municipio: formAlunoMunicipio.trim() || null,
+        ponto_referencia: formAlunoPontoRef.trim() || null,
+        raca: null as string | null,
+        foto_url: null as string | null,
+        facebook_url: null as string | null,
+        instagram_url: null as string | null,
+        status: 'Ativo',
+      }
+
+      const { error: usuarioError } = await supabase
+        .from('usuarios')
+        .insert(usuarioPayload)
+
+      if (usuarioError) {
+        console.error(usuarioError)
+        erro(
+          'Erro ao salvar dados básicos do aluno (tabela de usuários).',
+        )
+        return
+      }
+
+      // 3) Cria registro em public.alunos
+      const alunoPayload = {
+        user_id: authUserId,
+        nis: formAlunoNis.trim() || null,
+        nome_mae: nomeMae,
+        nome_pai: formAlunoNomePai.trim() || null,
+        usa_transporte_escolar: formAlunoUsaTransporte,
+        possui_necessidade_especial: formAlunoTemNecessidade,
+        qual_necessidade_especial: formAlunoTemNecessidade
+          ? formAlunoDescNecessidade.trim() || null
+          : null,
+        possui_restricao_alimentar: formAlunoTemRestricao,
+        qual_restricao_alimentar: formAlunoTemRestricao
+          ? formAlunoDescRestricao.trim() || null
+          : null,
+        possui_beneficio_governo: formAlunoTemBeneficio,
+        qual_beneficio_governo: formAlunoTemBeneficio
+          ? formAlunoDescBeneficio.trim() || null
+          : null,
+        observacoes_gerais: formAlunoObservacoes.trim() || null,
+      }
+
+      const { data: alunoData, error: alunoError } = await supabase
+        .from('alunos')
+        .insert(alunoPayload)
+        .select('id_aluno')
+        .single<{ id_aluno: number }>()
+
+      if (alunoError || !alunoData) {
+        console.error(alunoError)
+        erro('Erro ao salvar dados específicos do aluno.')
+        return
+      }
+
+      const novoAlunoId = alunoData.id_aluno
+
+      // 4) Cria matrícula
+      const payloadMatricula = {
+        id_aluno: novoAlunoId,
         numero_inscricao: novoNumeroInscricao.trim(),
         id_nivel_ensino: novoNivelId as number,
         id_status_matricula: novoStatusId as number,
@@ -650,20 +784,22 @@ const SecretariaMatriculasPage: FC = () => {
         id_turma: novoTurmaId === '' ? null : (novoTurmaId as number),
       }
 
-      const { data: novaMatriculaData, error: insertError } = await supabase
-        .from('matriculas')
-        .insert(payload)
-        .select('id_matricula')
-        .single<{ id_matricula: number }>()
+      const { data: novaMatriculaData, error: insertError } =
+        await supabase
+          .from('matriculas')
+          .insert(payloadMatricula)
+          .select('id_matricula')
+          .single<{ id_matricula: number }>()
 
       if (insertError || !novaMatriculaData) {
         console.error(insertError)
-        erro('Erro ao salvar matrícula.')
+        erro('Erro ao salvar a matrícula do aluno.')
         return
       }
 
       const novaMatriculaId = novaMatriculaData.id_matricula
 
+      // 5) Aproveitamento ou Progressão → registros em progresso_aluno
       const isAproveitamento =
         novaModalidade === 'Aproveitamento de Estudos'
       const isProgressao =
@@ -710,7 +846,8 @@ const SecretariaMatriculasPage: FC = () => {
                 id_matricula: novaMatriculaId,
                 id_disciplina: c.id_disciplina,
                 id_ano_escolar: serie.id_ano_escolar,
-                id_status_disciplina: statusConcluida.id_status_disciplina,
+                id_status_disciplina:
+                  statusConcluida.id_status_disciplina,
                 nota_final: null,
                 data_conclusao: null,
                 observacoes:
@@ -728,7 +865,8 @@ const SecretariaMatriculasPage: FC = () => {
                 id_matricula: novaMatriculaId,
                 id_disciplina: c.id_disciplina,
                 id_ano_escolar: serie.id_ano_escolar,
-                id_status_disciplina: statusACursar.id_status_disciplina,
+                id_status_disciplina:
+                  statusACursar.id_status_disciplina,
                 nota_final: null,
                 data_conclusao: null,
                 observacoes:
@@ -751,7 +889,8 @@ const SecretariaMatriculasPage: FC = () => {
               id_matricula: novaMatriculaId,
               id_disciplina: c.id_disciplina,
               id_ano_escolar: serieIdNum,
-              id_status_disciplina: statusACursar.id_status_disciplina,
+              id_status_disciplina:
+                statusACursar.id_status_disciplina,
               nota_final: null,
               data_conclusao: null,
               observacoes:
@@ -767,7 +906,7 @@ const SecretariaMatriculasPage: FC = () => {
 
           if (progError) {
             console.error(progError)
-            erro(
+            aviso(
               'Matrícula criada, mas houve erro ao registrar o progresso das disciplinas.',
             )
           }
@@ -775,7 +914,10 @@ const SecretariaMatriculasPage: FC = () => {
       }
 
       await carregarDados()
-      sucesso('Matrícula criada com sucesso.', 'Nova Matrícula')
+      sucesso(
+        `Matrícula criada com sucesso. Senha inicial do aluno: ${SENHA_PADRAO_ALUNO}`,
+        'Nova Matrícula',
+      )
       setNovaAberta(false)
     } catch (e) {
       console.error(e)
@@ -902,16 +1044,6 @@ const SecretariaMatriculasPage: FC = () => {
   const isProgressao =
     novaModalidade === 'Progressão de Estudos'
 
-  // Dados do aluno selecionado no formulário de nova matrícula
-  const dadosAlunoSelecionado = useMemo(() => {
-    if (novoAlunoId === '') return null
-    const id = novoAlunoId as number
-    const aluno = alunosDetalhes.find((a) => a.id_aluno === id)
-    if (!aluno) return null
-    const usuario = usuariosDetalhes.find((u) => u.id === aluno.user_id)
-    return { aluno, usuario }
-  }, [novoAlunoId, alunosDetalhes, usuariosDetalhes])
-
   return (
     <Box
       sx={{
@@ -937,7 +1069,8 @@ const SecretariaMatriculasPage: FC = () => {
             Matrículas
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            Acompanhe as matrículas por ano letivo, nível de ensino, modalidade e status.
+            Cadastre novos alunos, gere matrículas por modalidade e acompanhe o
+            histórico escolar.
           </Typography>
         </Box>
 
@@ -1428,409 +1561,452 @@ const SecretariaMatriculasPage: FC = () => {
         <DialogTitle>Nova matrícula</DialogTitle>
         <DialogContent dividers>
           <Stack spacing={3} sx={{ mt: 1 }}>
-            {/* Aluno + nº inscrição */}
-            <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
-              <FormControl fullWidth size="small">
-                <InputLabel id="novo-aluno-label">Aluno</InputLabel>
-                <Select
-                  labelId="novo-aluno-label"
-                  label="Aluno"
-                  value={novoAlunoId === '' ? '' : String(novoAlunoId)}
-                  onChange={(e) =>
-                    setNovoAlunoId(
-                      e.target.value === '' ? '' : Number(e.target.value),
-                    )
-                  }
-                  disabled={salvandoNova || alunosDisponiveis.length === 0}
-                >
-                  {alunosDisponiveis.map((aluno) => (
-                    <MenuItem
-                      key={aluno.id_aluno}
-                      value={String(aluno.id_aluno)}
-                    >
-                      <Stack
-                        direction="row"
-                        spacing={1}
-                        alignItems="center"
-                      >
-                        <Avatar
-                          src={aluno.foto_url ?? undefined}
-                          sx={{
-                            width: 24,
-                            height: 24,
-                            bgcolor: aluno.foto_url
-                              ? undefined
-                              : alpha(
-                                  theme.palette.primary.main,
-                                  0.12,
-                                ),
-                            color: theme.palette.primary.main,
-                            fontSize: 12,
-                          }}
-                        >
-                          {!aluno.foto_url &&
-                            aluno.nome.charAt(0).toUpperCase()}
-                        </Avatar>
-                        <Box>
-                          <Typography variant="body2">
-                            {aluno.nome}
-                          </Typography>
-                          {aluno.email && (
-                            <Typography
-                              variant="caption"
-                              color="text.secondary"
-                            >
-                              {aluno.email}
-                            </Typography>
-                          )}
-                        </Box>
-                      </Stack>
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-
-              <TextField
-                fullWidth
-                size="small"
-                label="Número de inscrição"
-                value={novoNumeroInscricao}
-                onChange={(e) => setNovoNumeroInscricao(e.target.value)}
-                disabled={salvandoNova}
-              />
-            </Stack>
-
-            {/* Ficha rápida do aluno selecionado */}
-            {dadosAlunoSelecionado && (
-              <Paper
-                elevation={0}
-                sx={{
-                  p: 2,
-                  borderRadius: 2,
-                  border: `1px dashed ${alpha(theme.palette.primary.main, 0.4)}`,
-                  bgcolor: alpha(theme.palette.primary.main, 0.02),
-                }}
+            {/* Seção: Dados do aluno */}
+            <Box>
+              <Typography variant="subtitle2" fontWeight={700} gutterBottom>
+                Dados do aluno
+              </Typography>
+              <Stack
+                direction={{ xs: 'column', md: 'row' }}
+                spacing={2}
+                sx={{ mb: 1.5 }}
               >
-                <Stack
-                  direction={{ xs: 'column', sm: 'row' }}
-                  spacing={2}
-                  alignItems={{ xs: 'flex-start', sm: 'center' }}
-                >
-                  <Avatar
-                    src={dadosAlunoSelecionado.usuario?.foto_url ?? undefined}
-                    sx={{
-                      width: 64,
-                      height: 64,
-                      bgcolor: dadosAlunoSelecionado.usuario?.foto_url
-                        ? undefined
-                        : alpha(theme.palette.primary.main, 0.12),
-                      color: theme.palette.primary.main,
-                      fontSize: 26,
-                    }}
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Nome completo do aluno"
+                  value={formAlunoNome}
+                  onChange={(e) => setFormAlunoNome(e.target.value)}
+                  disabled={salvandoNova}
+                />
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="E-mail do aluno"
+                  type="email"
+                  value={formAlunoEmail}
+                  onChange={(e) => setFormAlunoEmail(e.target.value)}
+                  disabled={salvandoNova}
+                />
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="CPF"
+                  value={formAlunoCpf}
+                  onChange={(e) => setFormAlunoCpf(e.target.value)}
+                  disabled={salvandoNova}
+                />
+              </Stack>
+
+              <Stack
+                direction={{ xs: 'column', md: 'row' }}
+                spacing={2}
+                sx={{ mb: 1.5 }}
+              >
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Data de nascimento"
+                  type="date"
+                  value={formAlunoDataNasc}
+                  onChange={(e) => setFormAlunoDataNasc(e.target.value)}
+                  InputLabelProps={{ shrink: true }}
+                  disabled={salvandoNova}
+                />
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Celular"
+                  value={formAlunoCelular}
+                  onChange={(e) => setFormAlunoCelular(e.target.value)}
+                  disabled={salvandoNova}
+                />
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="NIS (opcional)"
+                  value={formAlunoNis}
+                  onChange={(e) => setFormAlunoNis(e.target.value)}
+                  disabled={salvandoNova}
+                />
+              </Stack>
+
+              <Stack
+                direction={{ xs: 'column', md: 'row' }}
+                spacing={2}
+                sx={{ mb: 1.5 }}
+              >
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Nome da mãe"
+                  value={formAlunoNomeMae}
+                  onChange={(e) => setFormAlunoNomeMae(e.target.value)}
+                  disabled={salvandoNova}
+                />
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Nome do pai (opcional)"
+                  value={formAlunoNomePai}
+                  onChange={(e) => setFormAlunoNomePai(e.target.value)}
+                  disabled={salvandoNova}
+                />
+              </Stack>
+
+              <Stack
+                direction={{ xs: 'column', md: 'row' }}
+                spacing={2}
+                sx={{ mb: 1.5 }}
+              >
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Logradouro"
+                  value={formAlunoLogradouro}
+                  onChange={(e) =>
+                    setFormAlunoLogradouro(e.target.value)
+                  }
+                  disabled={salvandoNova}
+                />
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Número"
+                  value={formAlunoNumeroEnd}
+                  onChange={(e) => setFormAlunoNumeroEnd(e.target.value)}
+                  disabled={salvandoNova}
+                />
+              </Stack>
+
+              <Stack
+                direction={{ xs: 'column', md: 'row' }}
+                spacing={2}
+                sx={{ mb: 1.5 }}
+              >
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Bairro"
+                  value={formAlunoBairro}
+                  onChange={(e) => setFormAlunoBairro(e.target.value)}
+                  disabled={salvandoNova}
+                />
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Município"
+                  value={formAlunoMunicipio}
+                  onChange={(e) =>
+                    setFormAlunoMunicipio(e.target.value)
+                  }
+                  disabled={salvandoNova}
+                />
+              </Stack>
+
+              <TextField
+                fullWidth
+                size="small"
+                label="Ponto de referência (opcional)"
+                value={formAlunoPontoRef}
+                onChange={(e) => setFormAlunoPontoRef(e.target.value)}
+                disabled={salvandoNova}
+                sx={{ mb: 1.5 }}
+              />
+
+              <Stack
+                direction={{ xs: 'column', md: 'row' }}
+                spacing={2}
+                sx={{ mb: 1.5 }}
+              >
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={formAlunoUsaTransporte}
+                      onChange={(e) =>
+                        setFormAlunoUsaTransporte(e.target.checked)
+                      }
+                      disabled={salvandoNova}
+                      size="small"
+                    />
+                  }
+                  label="Usa transporte escolar"
+                />
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={formAlunoTemNecessidade}
+                      onChange={(e) =>
+                        setFormAlunoTemNecessidade(e.target.checked)
+                      }
+                      disabled={salvandoNova}
+                      size="small"
+                    />
+                  }
+                  label="Possui necessidade especial"
+                />
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={formAlunoTemRestricao}
+                      onChange={(e) =>
+                        setFormAlunoTemRestricao(e.target.checked)
+                      }
+                      disabled={salvandoNova}
+                      size="small"
+                    />
+                  }
+                  label="Restrição alimentar"
+                />
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={formAlunoTemBeneficio}
+                      onChange={(e) =>
+                        setFormAlunoTemBeneficio(e.target.checked)
+                      }
+                      disabled={salvandoNova}
+                      size="small"
+                    />
+                  }
+                  label="Benefício de governo"
+                />
+              </Stack>
+
+              <Stack
+                direction={{ xs: 'column', md: 'row' }}
+                spacing={2}
+                sx={{ mb: 1.5 }}
+              >
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Descrição da necessidade especial"
+                  value={formAlunoDescNecessidade}
+                  onChange={(e) =>
+                    setFormAlunoDescNecessidade(e.target.value)
+                  }
+                  disabled={salvandoNova || !formAlunoTemNecessidade}
+                />
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Descrição da restrição alimentar"
+                  value={formAlunoDescRestricao}
+                  onChange={(e) =>
+                    setFormAlunoDescRestricao(e.target.value)
+                  }
+                  disabled={salvandoNova || !formAlunoTemRestricao}
+                />
+              </Stack>
+
+              <Stack
+                direction={{ xs: 'column', md: 'row' }}
+                spacing={2}
+                sx={{ mb: 1.5 }}
+              >
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Benefício de governo (detalhes)"
+                  value={formAlunoDescBeneficio}
+                  onChange={(e) =>
+                    setFormAlunoDescBeneficio(e.target.value)
+                  }
+                  disabled={salvandoNova || !formAlunoTemBeneficio}
+                />
+              </Stack>
+
+              <TextField
+                fullWidth
+                size="small"
+                label="Observações gerais do aluno"
+                value={formAlunoObservacoes}
+                onChange={(e) =>
+                  setFormAlunoObservacoes(e.target.value)
+                }
+                disabled={salvandoNova}
+                multiline
+                minRows={2}
+              />
+            </Box>
+
+            <Divider />
+
+            {/* Seção: Dados da matrícula */}
+            <Box>
+              <Typography variant="subtitle2" fontWeight={700} gutterBottom>
+                Dados da matrícula
+              </Typography>
+
+              <Stack
+                direction={{ xs: 'column', md: 'row' }}
+                spacing={2}
+                sx={{ mb: 1.5 }}
+              >
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Número de inscrição"
+                  value={novoNumeroInscricao}
+                  onChange={(e) =>
+                    setNovoNumeroInscricao(e.target.value)
+                  }
+                  disabled={salvandoNova}
+                />
+
+                <FormControl fullWidth size="small">
+                  <InputLabel id="novo-nivel-label">
+                    Nível de ensino
+                  </InputLabel>
+                  <Select
+                    labelId="novo-nivel-label"
+                    label="Nível de ensino"
+                    value={novoNivelId === '' ? '' : String(novoNivelId)}
+                    onChange={(e) =>
+                      setNovoNivelId(
+                        e.target.value === ''
+                          ? ''
+                          : Number(e.target.value),
+                      )
+                    }
+                    disabled={salvandoNova}
                   >
-                    {!dadosAlunoSelecionado.usuario?.foto_url &&
-                      (dadosAlunoSelecionado.usuario?.name ?? '?')
-                        .charAt(0)
-                        .toUpperCase()}
-                  </Avatar>
-
-                  <Box sx={{ flex: 1 }}>
-                    <Typography variant="subtitle1" fontWeight={700}>
-                      {dadosAlunoSelecionado.usuario?.name ??
-                        'Aluno sem vínculo de usuário'}
-                    </Typography>
-                    {dadosAlunoSelecionado.usuario?.email && (
-                      <Typography
-                        variant="body2"
-                        color="text.secondary"
+                    {niveisDisponiveis.map((nivel) => (
+                      <MenuItem
+                        key={nivel.id_nivel_ensino}
+                        value={String(nivel.id_nivel_ensino)}
                       >
-                        {dadosAlunoSelecionado.usuario.email}
-                      </Typography>
-                    )}
-                    <Stack
-                      direction="row"
-                      spacing={1}
-                      flexWrap="wrap"
-                      sx={{ mt: 1 }}
-                    >
-                      {dadosAlunoSelecionado.aluno.nis && (
-                        <Chip
-                          size="small"
-                          icon={<AssignmentIndIcon fontSize="small" />}
-                          label={`NIS: ${dadosAlunoSelecionado.aluno.nis}`}
-                          variant="outlined"
-                        />
-                      )}
-                      {dadosAlunoSelecionado.usuario?.data_nascimento && (
-                        <Chip
-                          size="small"
-                          icon={<EventIcon fontSize="small" />}
-                          label={`Nasc.: ${dadosAlunoSelecionado.usuario.data_nascimento}`}
-                          variant="outlined"
-                        />
-                      )}
-                      {dadosAlunoSelecionado.usuario?.cpf && (
-                        <Chip
-                          size="small"
-                          label={`CPF: ${dadosAlunoSelecionado.usuario.cpf}`}
-                          variant="outlined"
-                        />
-                      )}
-                    </Stack>
-                  </Box>
-                </Stack>
+                        {nivel.nome}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
 
-                <Divider sx={{ my: 1.5 }} />
-
-                <Stack
-                  direction={{ xs: 'column', sm: 'row' }}
-                  spacing={2}
-                >
-                  <Box sx={{ flex: 1 }}>
-                    <Typography
-                      variant="caption"
-                      color="text.secondary"
-                      sx={{ fontWeight: 600 }}
-                    >
-                      Filiação
-                    </Typography>
-                    <Typography variant="body2">
-                      Mãe: {dadosAlunoSelecionado.aluno.nome_mae}
-                    </Typography>
-                    {dadosAlunoSelecionado.aluno.nome_pai && (
-                      <Typography variant="body2">
-                        Pai: {dadosAlunoSelecionado.aluno.nome_pai}
-                      </Typography>
-                    )}
-                  </Box>
-
-                  <Box sx={{ flex: 1 }}>
-                    <Typography
-                      variant="caption"
-                      color="text.secondary"
-                      sx={{ fontWeight: 600 }}
-                    >
-                      Endereço
-                    </Typography>
-                    <Typography variant="body2">
-                      <HomeIcon
-                        fontSize="inherit"
-                        style={{ marginRight: 4 }}
-                      />
-                      {dadosAlunoSelecionado.usuario?.logradouro ??
-                        '—'}
-                      {dadosAlunoSelecionado.usuario?.numero_endereco &&
-                        `, ${dadosAlunoSelecionado.usuario.numero_endereco}`}
-                    </Typography>
-                    <Typography variant="body2">
-                      {dadosAlunoSelecionado.usuario?.bairro ?? '—'} -{' '}
-                      {dadosAlunoSelecionado.usuario?.municipio ?? '—'}
-                    </Typography>
-                  </Box>
-                </Stack>
-
-                <Stack
-                  direction={{ xs: 'column', sm: 'row' }}
-                  spacing={1}
-                  sx={{ mt: 1 }}
-                >
-                  <Chip
-                    size="small"
-                    icon={<ElderlyIcon fontSize="small" />}
-                    label={
-                      dadosAlunoSelecionado.aluno
-                        .usa_transporte_escolar
-                        ? 'Usa transporte escolar'
-                        : 'Não usa transporte escolar'
-                    }
-                    variant="outlined"
-                  />
-                  <Chip
-                    size="small"
-                    icon={<AccessibleIcon fontSize="small" />}
-                    label={
-                      dadosAlunoSelecionado.aluno
-                        .possui_necessidade_especial
-                        ? 'Possui necessidade especial'
-                        : 'Sem necessidade especial'
-                    }
-                    variant="outlined"
-                  />
-                  <Chip
-                    size="small"
-                    icon={<RestaurantIcon fontSize="small" />}
-                    label={
-                      dadosAlunoSelecionado.aluno
-                        .possui_restricao_alimentar
-                        ? 'Restrição alimentar'
-                        : 'Sem restrição alimentar'
-                    }
-                    variant="outlined"
-                  />
-                  <Chip
-                    size="small"
-                    icon={<LocalAtmIcon fontSize="small" />}
-                    label={
-                      dadosAlunoSelecionado.aluno
-                        .possui_beneficio_governo
-                        ? 'Benefício de governo'
-                        : 'Sem benefício de governo'
-                    }
-                    variant="outlined"
-                  />
-                </Stack>
-
-                {dadosAlunoSelecionado.aluno.observacoes_gerais && (
-                  <Box sx={{ mt: 1.5 }}>
-                    <Typography
-                      variant="caption"
-                      color="text.secondary"
-                      sx={{ fontWeight: 600 }}
-                    >
-                      Observações gerais
-                    </Typography>
-                    <Typography variant="body2">
-                      {dadosAlunoSelecionado.aluno.observacoes_gerais}
-                    </Typography>
-                  </Box>
-                )}
-              </Paper>
-            )}
-
-            {/* Nível, ano letivo, modalidade */}
-            <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
-              <FormControl fullWidth size="small">
-                <InputLabel id="novo-nivel-label">
-                  Nível de ensino
-                </InputLabel>
-                <Select
-                  labelId="novo-nivel-label"
-                  label="Nível de ensino"
-                  value={novoNivelId === '' ? '' : String(novoNivelId)}
-                  onChange={(e) =>
-                    setNovoNivelId(
-                      e.target.value === '' ? '' : Number(e.target.value),
-                    )
-                  }
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Ano letivo"
+                  type="number"
+                  value={novoAnoLetivo}
+                  onChange={(e) => setNovoAnoLetivo(e.target.value)}
                   disabled={salvandoNova}
-                >
-                  {niveisDisponiveis.map((nivel) => (
-                    <MenuItem
-                      key={nivel.id_nivel_ensino}
-                      value={String(nivel.id_nivel_ensino)}
-                    >
-                      {nivel.nome}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
+                />
+              </Stack>
 
-              <TextField
-                fullWidth
-                size="small"
-                label="Ano letivo"
-                type="number"
-                value={novoAnoLetivo}
-                onChange={(e) => setNovoAnoLetivo(e.target.value)}
-                disabled={salvandoNova}
-              />
+              <Stack
+                direction={{ xs: 'column', md: 'row' }}
+                spacing={2}
+                sx={{ mb: 1.5 }}
+              >
+                <FormControl fullWidth size="small">
+                  <InputLabel id="nova-modalidade-label">
+                    Modalidade
+                  </InputLabel>
+                  <Select
+                    labelId="nova-modalidade-label"
+                    label="Modalidade"
+                    value={novaModalidade}
+                    onChange={(e) => setNovaModalidade(e.target.value)}
+                    disabled={salvandoNova}
+                  >
+                    {MODALIDADES_MATRICULA.map((mod) => (
+                      <MenuItem key={mod.value} value={mod.value}>
+                        {mod.label}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
 
-              <FormControl fullWidth size="small">
-                <InputLabel id="nova-modalidade-label">
-                  Modalidade
-                </InputLabel>
-                <Select
-                  labelId="nova-modalidade-label"
-                  label="Modalidade"
-                  value={novaModalidade}
-                  onChange={(e) => setNovaModalidade(e.target.value)}
+                <FormControl fullWidth size="small">
+                  <InputLabel id="novo-status-label">Status</InputLabel>
+                  <Select
+                    labelId="novo-status-label"
+                    label="Status"
+                    value={
+                      novoStatusId === '' ? '' : String(novoStatusId)
+                    }
+                    onChange={(e) =>
+                      setNovoStatusId(
+                        e.target.value === ''
+                          ? ''
+                          : Number(e.target.value),
+                      )
+                    }
+                    disabled={salvandoNova}
+                  >
+                    {statusDisponiveis.map((s) => (
+                      <MenuItem
+                        key={s.id_status_matricula}
+                        value={String(s.id_status_matricula)}
+                      >
+                        {s.nome}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Data da matrícula"
+                  type="date"
+                  value={novaDataMatricula}
+                  onChange={(e) => setNovaDataMatricula(e.target.value)}
+                  InputLabelProps={{ shrink: true }}
                   disabled={salvandoNova}
-                >
-                  {MODALIDADES_MATRICULA.map((mod) => (
-                    <MenuItem key={mod.value} value={mod.value}>
-                      {mod.label}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Stack>
+                />
 
-            {/* Status, datas */}
-            <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
-              <FormControl fullWidth size="small">
-                <InputLabel id="novo-status-label">Status</InputLabel>
-                <Select
-                  labelId="novo-status-label"
-                  label="Status"
-                  value={novoStatusId === '' ? '' : String(novoStatusId)}
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Data de conclusão (opcional)"
+                  type="date"
+                  value={novaDataConclusao}
                   onChange={(e) =>
-                    setNovoStatusId(
-                      e.target.value === '' ? '' : Number(e.target.value),
-                    )
+                    setNovaDataConclusao(e.target.value)
                   }
+                  InputLabelProps={{ shrink: true }}
                   disabled={salvandoNova}
-                >
-                  {statusDisponiveis.map((s) => (
-                    <MenuItem
-                      key={s.id_status_matricula}
-                      value={String(s.id_status_matricula)}
-                    >
-                      {s.nome}
+                />
+              </Stack>
+
+              <Stack
+                direction={{ xs: 'column', md: 'row' }}
+                spacing={2}
+                sx={{ mb: 1.5 }}
+              >
+                <FormControl fullWidth size="small">
+                  <InputLabel id="novo-turma-label">Turma</InputLabel>
+                  <Select
+                    labelId="novo-turma-label"
+                    label="Turma"
+                    value={novoTurmaId === '' ? '' : String(novoTurmaId)}
+                    onChange={(e) =>
+                      setNovoTurmaId(
+                        e.target.value === ''
+                          ? ''
+                          : Number(e.target.value),
+                      )
+                    }
+                    disabled={salvandoNova || turmasFiltradas.length === 0}
+                    displayEmpty
+                  >
+                    <MenuItem value="">
+                      <em>Sem turma vinculada</em>
                     </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-
-              <TextField
-                fullWidth
-                size="small"
-                label="Data da matrícula"
-                type="date"
-                value={novaDataMatricula}
-                onChange={(e) => setNovaDataMatricula(e.target.value)}
-                InputLabelProps={{ shrink: true }}
-                disabled={salvandoNova}
-              />
-
-              <TextField
-                fullWidth
-                size="small"
-                label="Data de conclusão (opcional)"
-                type="date"
-                value={novaDataConclusao}
-                onChange={(e) => setNovaDataConclusao(e.target.value)}
-                InputLabelProps={{ shrink: true }}
-                disabled={salvandoNova}
-              />
-            </Stack>
-
-            {/* Turma */}
-            <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
-              <FormControl fullWidth size="small">
-                <InputLabel id="novo-turma-label">Turma</InputLabel>
-                <Select
-                  labelId="novo-turma-label"
-                  label="Turma"
-                  value={novoTurmaId === '' ? '' : String(novoTurmaId)}
-                  onChange={(e) =>
-                    setNovoTurmaId(
-                      e.target.value === '' ? '' : Number(e.target.value),
-                    )
-                  }
-                  disabled={salvandoNova || turmasFiltradas.length === 0}
-                  displayEmpty
-                >
-                  <MenuItem value="">
-                    <em>Sem turma vinculada</em>
-                  </MenuItem>
-                  {turmasFiltradas.map((t) => (
-                    <MenuItem key={t.id_turma} value={String(t.id_turma)}>
-                      {t.nome} — {t.turno} ({t.ano_letivo})
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Stack>
+                    {turmasFiltradas.map((t) => (
+                      <MenuItem
+                        key={t.id_turma}
+                        value={String(t.id_turma)}
+                      >
+                        {t.nome} — {t.turno} ({t.ano_letivo})
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Stack>
+            </Box>
 
             {/* BLOCO: APROVEITAMENTO – séries concluídas */}
             {isAproveitamento && novoNivelId !== '' && (
@@ -1841,8 +2017,8 @@ const SecretariaMatriculasPage: FC = () => {
                 <Typography variant="body2" color="text.secondary">
                   Selecione as séries (anos escolares) que o aluno já
                   concluiu em outra escola. As disciplinas dessas séries
-                  serão marcadas como concluídas por aproveitamento; as
-                  séries restantes serão registradas como A Cursar.
+                  serão marcadas como concluídas; as séries restantes serão
+                  registradas como &quot;A Cursar&quot;.
                 </Typography>
 
                 <FormControl fullWidth size="small">
@@ -1859,10 +2035,12 @@ const SecretariaMatriculasPage: FC = () => {
                       let ids: number[] = []
 
                       if (typeof raw === 'string') {
-                        ids = raw.split(',').map((v: string) => Number(v))
+                        ids = raw
+                          .split(',')
+                          .map((v: string) => Number(v))
                       } else if (Array.isArray(raw)) {
-                        ids = (raw as Array<string | number>).map((v) =>
-                          Number(v),
+                        ids = (raw as Array<string | number>).map(
+                          (v) => Number(v),
                         )
                       }
 
@@ -1904,10 +2082,10 @@ const SecretariaMatriculasPage: FC = () => {
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
                   Selecione a série (ano escolar) e as disciplinas que o
-                  aluno irá cursar no CEJA nesta matrícula de progressão. As
-                  disciplinas serão registradas com status A Cursar. A
-                  liberação para Cursando (respeitando o limite de 3
-                  disciplinas ativas) será feita em outra tela pedagógica.
+                  aluno irá cursar no CEJA. As disciplinas serão registradas
+                  com status &quot;A Cursar&quot;. O controle de até 3
+                  disciplinas &quot;Cursando&quot; por vez será feito na
+                  tela pedagógica (professor/coordenação/direção).
                 </Typography>
 
                 <FormControl fullWidth size="small">
@@ -1956,10 +2134,12 @@ const SecretariaMatriculasPage: FC = () => {
                       let ids: number[] = []
 
                       if (typeof raw === 'string') {
-                        ids = raw.split(',').map((v: string) => Number(v))
+                        ids = raw
+                          .split(',')
+                          .map((v: string) => Number(v))
                       } else if (Array.isArray(raw)) {
-                        ids = (raw as Array<string | number>).map((v) =>
-                          Number(v),
+                        ids = (raw as Array<string | number>).map(
+                          (v) => Number(v),
                         )
                       }
 
@@ -1973,7 +2153,8 @@ const SecretariaMatriculasPage: FC = () => {
                       return nomes.join(', ')
                     }}
                     disabled={
-                      salvandoNova || disciplinasDaSerieProgressao.length === 0
+                      salvandoNova ||
+                      disciplinasDaSerieProgressao.length === 0
                     }
                   >
                     {disciplinasDaSerieProgressao.map((disc) => (
@@ -2043,7 +2224,9 @@ const SecretariaMatriculasPage: FC = () => {
                   }}
                 >
                   {!matriculaSelecionada.alunoFotoUrl &&
-                    matriculaSelecionada.alunoNome.charAt(0).toUpperCase()}
+                    matriculaSelecionada.alunoNome
+                      .charAt(0)
+                      .toUpperCase()}
                 </Avatar>
                 <Box sx={{ flex: 1 }}>
                   <Typography variant="h6" fontWeight={700}>
@@ -2158,7 +2341,8 @@ const SecretariaMatriculasPage: FC = () => {
                     Matrícula
                   </Typography>
                   <Typography variant="body2">
-                    Nº de inscrição: {matriculaSelecionada.numeroInscricao}
+                    Nº de inscrição:{' '}
+                    {matriculaSelecionada.numeroInscricao}
                   </Typography>
                   <Typography variant="body2">
                     Nível de ensino: {matriculaSelecionada.nivelNome}
@@ -2255,10 +2439,7 @@ const SecretariaMatriculasPage: FC = () => {
                 </Stack>
 
                 {matriculaSelecionada.qualNecessidadeEspecial && (
-                  <Typography
-                    variant="body2"
-                    sx={{ mt: 1 }}
-                  >
+                  <Typography variant="body2" sx={{ mt: 1 }}>
                     Necessidade especial:{' '}
                     {matriculaSelecionada.qualNecessidadeEspecial}
                   </Typography>
