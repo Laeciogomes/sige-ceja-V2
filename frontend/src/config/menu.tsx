@@ -110,6 +110,15 @@ export const menusPorContexto: Record<ContextoPainel, ItemMenuConfig[]> = {
       grupo: 'Acadêmico',
     },
 
+    // --- SECRETARIA: RELATÓRIOS ---
+    {
+      id: 'admin-sec-relatorios-fichas',
+      rotulo: 'Relatórios e fichas',
+      caminho: '/secretaria/relatorios-fichas',
+      icone: <DescriptionIcon />,
+      grupo: 'Relatórios',
+    },
+
     // --- PEDAGÓGICO ---
     {
       id: 'admin-ped-atendimentos',
@@ -318,6 +327,13 @@ export const menusPorContexto: Record<ContextoPainel, ItemMenuConfig[]> = {
       grupo: 'Secretaria',
     },
     {
+      id: 'coord-relatorios-fichas',
+      rotulo: 'Relatórios e fichas',
+      caminho: '/secretaria/relatorios-fichas',
+      icone: <DescriptionIcon />,
+      grupo: 'Secretaria',
+    },
+    {
       id: 'coord-sasp',
       rotulo: 'SASP',
       caminho: '/coordenacao/sasp',
@@ -397,6 +413,13 @@ export const menusPorContexto: Record<ContextoPainel, ItemMenuConfig[]> = {
       rotulo: 'Renovar matrícula',
       caminho: '/secretaria/renovacoes',
       icone: <AutorenewIcon />,
+      grupo: 'Secretaria',
+    },
+    {
+      id: 'dir-relatorios-fichas',
+      rotulo: 'Relatórios e fichas',
+      caminho: '/secretaria/relatorios-fichas',
+      icone: <DescriptionIcon />,
       grupo: 'Secretaria',
     },
     {
