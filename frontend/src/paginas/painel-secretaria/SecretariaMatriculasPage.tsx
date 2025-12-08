@@ -526,16 +526,18 @@ const SecretariaMatriculasPage: FC = () => {
       ) {
         const inserts: any[] = []
 
+        // Status de "Concluída/Aprovado"
         const statusConcluida =
-          statusDisciplinaDisponiveis.find((s) =>
-            s.nome.toLowerCase().includes('conclu'),
-          ) ?? statusDisciplinaDisponiveis[0]
-
-        const statusEmCurso =
           statusDisciplinaDisponiveis.find((s) => {
             const n = s.nome.toLowerCase()
-            return n.includes('andamento') || n.includes('cursando')
+            return n.includes('aprov') || n.includes('conclu')
           }) ?? statusDisciplinaDisponiveis[0]
+
+        // Status de "A Cursar" – aqui não marcamos nada como "Cursando" na matrícula
+        const statusACursar =
+          statusDisciplinaDisponiveis.find((s) =>
+            s.nome.toLowerCase().includes('cursar'),
+          ) ?? statusDisciplinaDisponiveis[0]
 
         const anosNivel = anosEscolaresDisponiveis.filter(
           (a) => a.id_nivel_ensino === (novoNivelId as number),
@@ -569,7 +571,7 @@ const SecretariaMatriculasPage: FC = () => {
             })
           })
 
-          // Séries restantes → disciplinas a cursar (em andamento)
+          // Séries restantes → disciplinas A Cursar (não Cursando)
           seriesRestantes.forEach((serie) => {
             const configs = configDisciplinaAnoDisponiveis.filter(
               (c) => c.id_ano_escolar === serie.id_ano_escolar,
@@ -579,11 +581,11 @@ const SecretariaMatriculasPage: FC = () => {
                 id_matricula: novaMatriculaId,
                 id_disciplina: c.id_disciplina,
                 id_ano_escolar: serie.id_ano_escolar,
-                id_status_disciplina: statusEmCurso.id_status_disciplina,
+                id_status_disciplina: statusACursar.id_status_disciplina,
                 nota_final: null,
                 data_conclusao: null,
                 observacoes:
-                  'Disciplina a cursar após aproveitamento de estudos.',
+                  'Disciplina marcada como A Cursar após aproveitamento de estudos.',
               })
             })
           })
@@ -602,11 +604,11 @@ const SecretariaMatriculasPage: FC = () => {
               id_matricula: novaMatriculaId,
               id_disciplina: c.id_disciplina,
               id_ano_escolar: serieIdNum,
-              id_status_disciplina: statusEmCurso.id_status_disciplina,
+              id_status_disciplina: statusACursar.id_status_disciplina,
               nota_final: null,
               data_conclusao: null,
               observacoes:
-                'Disciplina definida para progressão de estudos no CEJA.',
+                'Disciplina definida como A Cursar na matrícula de Progressão de Estudos.',
             })
           })
         }
@@ -1434,8 +1436,8 @@ const SecretariaMatriculasPage: FC = () => {
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
                   Selecione as séries (anos escolares) que o aluno já concluiu.
-                  As disciplinas dessas séries serão registradas como concluídas
-                  e as das séries restantes como a cursar.
+                  As disciplinas dessas séries serão registradas como concluídas,
+                  e as das séries restantes como A Cursar.
                 </Typography>
 
                 <FormControl fullWidth size="small">
@@ -1497,7 +1499,9 @@ const SecretariaMatriculasPage: FC = () => {
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
                   Selecione a série (ano escolar) e as disciplinas que o aluno
-                  irá cursar no CEJA nessa matrícula de progressão.
+                  irá cursar no CEJA nessa matrícula de progressão. Todas serão
+                  registradas com status A Cursar (a ativação para Cursando
+                  respeita a regra de no máximo 3 disciplinas ativas em outra tela).
                 </Typography>
 
                 <FormControl fullWidth size="small">
