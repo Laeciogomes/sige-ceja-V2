@@ -36,6 +36,8 @@ import {
   useMediaQuery,
   useTheme,
   alpha,
+  Checkbox,
+  ListItemText,
 } from '@mui/material'
 
 import SearchIcon from '@mui/icons-material/Search'
@@ -47,6 +49,22 @@ import GroupIcon from '@mui/icons-material/Group'
 
 import { useSupabase } from '../../contextos/SupabaseContext'
 import { useNotificacaoContext } from '../../contextos/NotificacaoContext'
+
+// Modalidades suportadas no enum modalidade_matricula_enum
+const MODALIDADES_MATRICULA = [
+  {
+    value: 'Orientação de Estudos',
+    label: 'Orientação de Estudos (com protocolos completos)',
+  },
+  {
+    value: 'Aproveitamento de Estudos',
+    label: 'Aproveitamento de Estudos',
+  },
+  {
+    value: 'Progressão de Estudos',
+    label: 'Progressão de Estudos',
+  },
+]
 
 interface MatriculaRow {
   id_matricula: number
@@ -110,6 +128,22 @@ interface AlunoDisplay {
   email: string
 }
 
+interface DisciplinaRow {
+  id_disciplina: number
+  nome_disciplina: string
+}
+
+interface AnoEscolarRow {
+  id_ano_escolar: number
+  nome_ano: string
+  id_nivel_ensino: number
+}
+
+interface StatusDisciplinaRow {
+  id_status_disciplina: number
+  nome: string
+}
+
 const SecretariaMatriculasPage: FC = () => {
   const theme = useTheme()
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'))
@@ -133,6 +167,12 @@ const SecretariaMatriculasPage: FC = () => {
   const [alunosDisponiveis, setAlunosDisponiveis] =
     useState<AlunoDisplay[]>([])
   const [turmasDisponiveis, setTurmasDisponiveis] = useState<TurmaRow[]>([])
+  const [disciplinasDisponiveis, setDisciplinasDisponiveis] =
+    useState<DisciplinaRow[]>([])
+  const [anosEscolaresDisponiveis, setAnosEscolaresDisponiveis] =
+    useState<AnoEscolarRow[]>([])
+  const [statusDisciplinaDisponiveis, setStatusDisciplinaDisponiveis] =
+    useState<StatusDisciplinaRow[]>([])
 
   const [page, setPage] = useState(0)
   const [rowsPerPage, setRowsPerPage] = useState(10)
@@ -156,6 +196,15 @@ const SecretariaMatriculasPage: FC = () => {
   )
   const [novaDataConclusao, setNovaDataConclusao] = useState<string>('')
 
+  // Disciplinas já concluídas (para Aproveitamento/Progressão)
+  const [disciplinasConcluidasIds, setDisciplinasConcluidasIds] = useState<
+    number[]
+  >([])
+  // Disciplina inicial que o aluno vai começar a cursar
+  const [disciplinaInicialId, setDisciplinaInicialId] = useState<number | ''>(
+    '',
+  )
+
   const carregarDados = async () => {
     if (!supabase) return
 
@@ -168,6 +217,9 @@ const SecretariaMatriculasPage: FC = () => {
         { data: niveisData, error: niveisError },
         { data: statusData, error: statusError },
         { data: turmasData, error: turmasError },
+        { data: disciplinasData, error: disciplinasError },
+        { data: anosEscolaresData, error: anosEscolaresError },
+        { data: statusDiscData, error: statusDiscError },
       ] = await Promise.all([
         supabase
           .from('matriculas')
@@ -195,6 +247,15 @@ const SecretariaMatriculasPage: FC = () => {
         supabase
           .from('turmas')
           .select('id_turma, nome, turno, ano_letivo, id_nivel_ensino'),
+        supabase
+          .from('disciplinas')
+          .select('id_disciplina, nome_disciplina'),
+        supabase
+          .from('anos_escolares')
+          .select('id_ano_escolar, nome_ano, id_nivel_ensino'),
+        supabase
+          .from('status_disciplina_aluno')
+          .select('id_status_disciplina, nome'),
       ])
 
       if (matriculasError) {
@@ -217,16 +278,34 @@ const SecretariaMatriculasPage: FC = () => {
         console.error(turmasError)
         erro('Erro ao carregar turmas.')
       }
+      if (disciplinasError) {
+        console.error(disciplinasError)
+        erro('Erro ao carregar disciplinas.')
+      }
+      if (anosEscolaresError) {
+        console.error(anosEscolaresError)
+        erro('Erro ao carregar anos escolares.')
+      }
+      if (statusDiscError) {
+        console.error(statusDiscError)
+        erro('Erro ao carregar status de disciplina.')
+      }
 
       const matriculasList = (matriculasData || []) as unknown as MatriculaRow[]
       const alunosList = (alunosData || []) as unknown as AlunoRow[]
       const niveisList = (niveisData || []) as unknown as NivelEnsinoRow[]
       const statusList = (statusData || []) as unknown as StatusMatriculaRow[]
       const turmasList = (turmasData || []) as unknown as TurmaRow[]
+      const disciplinasList = (disciplinasData || []) as unknown as DisciplinaRow[]
+      const anosEscolaresList = (anosEscolaresData || []) as unknown as AnoEscolarRow[]
+      const statusDiscList = (statusDiscData || []) as unknown as StatusDisciplinaRow[]
 
       setNiveisDisponiveis(niveisList)
       setStatusDisponiveis(statusList)
       setTurmasDisponiveis(turmasList)
+      setDisciplinasDisponiveis(disciplinasList)
+      setAnosEscolaresDisponiveis(anosEscolaresList)
+      setStatusDisciplinaDisponiveis(statusDiscList)
 
       const anos = Array.from(
         new Set(matriculasList.map((m) => m.ano_letivo)),
@@ -244,7 +323,6 @@ const SecretariaMatriculasPage: FC = () => {
         ),
       )
 
-      // Também vamos precisar dos usuários para montar o dropdown de alunos
       let usuariosById = new Map<string, UsuarioRow>()
       if (userIds.length > 0) {
         const { data: usuariosData, error: usuariosError } = await supabase
@@ -262,7 +340,7 @@ const SecretariaMatriculasPage: FC = () => {
         }
       }
 
-      // Monta lista de alunos para o formulário de nova matrícula
+      // Lista de alunos para o formulário de nova matrícula
       const alunosDisplay: AlunoDisplay[] = alunosList
         .map((a) => {
           const u = usuariosById.get(a.user_id)
@@ -350,6 +428,8 @@ const SecretariaMatriculasPage: FC = () => {
     setNovaModalidade('Orientação de Estudos')
     setNovaDataMatricula(hojeISO)
     setNovaDataConclusao('')
+    setDisciplinasConcluidasIds([])
+    setDisciplinaInicialId('')
     setNovaAberta(true)
 
     sucesso('Abrindo formulário de matrícula...', 'Nova Matrícula')
@@ -369,10 +449,11 @@ const SecretariaMatriculasPage: FC = () => {
       novoStatusId === '' ||
       !novoNumeroInscricao.trim() ||
       !novoAnoLetivo.trim() ||
-      !novaDataMatricula
+      !novaDataMatricula ||
+      !novaModalidade.trim()
     ) {
       erro(
-        'Preencha aluno, nível, status, número de inscrição, ano letivo e data de matrícula.',
+        'Preencha aluno, nível, status, número de inscrição, modalidade, ano letivo e data de matrícula.',
       )
       return
     }
@@ -391,21 +472,99 @@ const SecretariaMatriculasPage: FC = () => {
         numero_inscricao: novoNumeroInscricao.trim(),
         id_nivel_ensino: novoNivelId as number,
         id_status_matricula: novoStatusId as number,
-        modalidade: novaModalidade || 'Orientação de Estudos',
+        modalidade: novaModalidade.trim(),
         ano_letivo: ano,
         data_matricula: novaDataMatricula,
         data_conclusao: novaDataConclusao || null,
         id_turma: novoTurmaId === '' ? null : (novoTurmaId as number),
       }
 
-      const { error: insertError } = await supabase
+      const { data: novaMatriculaData, error: insertError } = await supabase
         .from('matriculas')
         .insert(payload)
+        .select('id_matricula')
+        .single<{ id_matricula: number }>()
 
-      if (insertError) {
+      if (insertError || !novaMatriculaData) {
         console.error(insertError)
         erro('Erro ao salvar matrícula.')
         return
+      }
+
+      const novaMatriculaId = novaMatriculaData.id_matricula
+
+      // Se modalidade for Aproveitamento/Progressão, registra as disciplinas no progresso_aluno
+      const isAproveitamento =
+        novaModalidade === 'Aproveitamento de Estudos'
+      const isProgressao = novaModalidade === 'Progressão de Estudos'
+
+      if (
+        (isAproveitamento || isProgressao) &&
+        statusDisciplinaDisponiveis.length > 0 &&
+        anosEscolaresDisponiveis.length > 0
+      ) {
+        // Escolhe um ano_escolar compatível com o nível
+        const anosNivel = anosEscolaresDisponiveis.filter(
+          (a) => a.id_nivel_ensino === (novoNivelId as number),
+        )
+        const anoEscolar = anosNivel[0] ?? anosEscolaresDisponiveis[0]
+        if (anoEscolar) {
+          const statusConcluida =
+            statusDisciplinaDisponiveis.find((s) =>
+              s.nome.toLowerCase().includes('conclu'),
+            ) ?? statusDisciplinaDisponiveis[0]
+
+          const statusEmCurso =
+            statusDisciplinaDisponiveis.find((s) => {
+              const n = s.nome.toLowerCase()
+              return n.includes('andamento') || n.includes('cursando')
+            }) ?? statusDisciplinaDisponiveis[0]
+
+          const inserts: any[] = []
+
+          // Disciplinas concluídas por aproveitamento/progressão
+          disciplinasConcluidasIds.forEach((idDisciplina) => {
+            inserts.push({
+              id_matricula: novaMatriculaId,
+              id_disciplina: idDisciplina,
+              id_ano_escolar: anoEscolar.id_ano_escolar,
+              id_status_disciplina: statusConcluida.id_status_disciplina,
+              nota_final: null,
+              data_conclusao: null,
+              observacoes: isAproveitamento
+                ? 'Disciplina aproveitada na matrícula de Aproveitamento de Estudos.'
+                : 'Disciplina registrada como concluída na matrícula de Progressão de Estudos.',
+            })
+          })
+
+          // Disciplina inicial da progressão/aproveitamento (o que o aluno começa a cursar agora)
+          if (disciplinaInicialId !== '') {
+            inserts.push({
+              id_matricula: novaMatriculaId,
+              id_disciplina: disciplinaInicialId as number,
+              id_ano_escolar: anoEscolar.id_ano_escolar,
+              id_status_disciplina: statusEmCurso.id_status_disciplina,
+              nota_final: null,
+              data_conclusao: null,
+              observacoes: isProgressao
+                ? 'Disciplina inicial definida na matrícula de Progressão de Estudos.'
+                : 'Disciplina inicial definida na matrícula de Aproveitamento de Estudos.',
+            })
+          }
+
+          if (inserts.length > 0) {
+            const { error: progError } = await supabase
+              .from('progresso_aluno')
+              .insert(inserts)
+
+            if (progError) {
+              console.error(progError)
+              erro(
+                'Matrícula criada, mas houve erro ao registrar o progresso das disciplinas.',
+              )
+            }
+          }
+        }
       }
 
       await carregarDados()
@@ -430,7 +589,8 @@ const SecretariaMatriculasPage: FC = () => {
           m.numeroInscricao.toLowerCase().includes(termo) ||
           m.nivelNome.toLowerCase().includes(termo) ||
           (m.turmaNome ?? '').toLowerCase().includes(termo) ||
-          m.statusNome.toLowerCase().includes(termo)
+          m.statusNome.toLowerCase().includes(termo) ||
+          m.modalidade.toLowerCase().includes(termo)
         )
       })
     }
@@ -511,6 +671,10 @@ const SecretariaMatriculasPage: FC = () => {
     return theme.palette.text.secondary
   }
 
+  const isModalidadeEspecial =
+    novaModalidade === 'Aproveitamento de Estudos' ||
+    novaModalidade === 'Progressão de Estudos'
+
   return (
     <Box
       sx={{
@@ -536,7 +700,7 @@ const SecretariaMatriculasPage: FC = () => {
             Matrículas
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            Acompanhe as matrículas por ano letivo, nível de ensino e status.
+            Acompanhe as matrículas por ano letivo, nível de ensino, modalidade e status.
           </Typography>
         </Box>
 
@@ -567,7 +731,7 @@ const SecretariaMatriculasPage: FC = () => {
           <TextField
             fullWidth
             size="small"
-            placeholder="Buscar por aluno, número de matrícula, turma, nível ou status..."
+            placeholder="Buscar por aluno, matrícula, turma, nível, modalidade ou status..."
             value={busca}
             onChange={(e) => setBusca(e.target.value)}
             InputProps={{
@@ -744,6 +908,18 @@ const SecretariaMatriculasPage: FC = () => {
                           variant="outlined"
                         />
                         <Chip
+                          label={m.modalidade}
+                          size="small"
+                          sx={{
+                            bgcolor: alpha(
+                              theme.palette.info.main,
+                              0.06,
+                            ),
+                            color: theme.palette.info.main,
+                            fontWeight: 600,
+                          }}
+                        />
+                        <Chip
                           label={m.statusNome}
                           size="small"
                           sx={{
@@ -769,12 +945,6 @@ const SecretariaMatriculasPage: FC = () => {
                             Conclusão: {m.dataConclusao}
                           </Typography>
                         )}
-                        <Typography
-                          variant="caption"
-                          color="text.secondary"
-                        >
-                          Modalidade: {m.modalidade}
-                        </Typography>
                       </Stack>
                     </Stack>
                   </Paper>
@@ -938,7 +1108,7 @@ const SecretariaMatriculasPage: FC = () => {
                                 size="small"
                                 variant="text"
                                 onClick={() => {
-                                  // futuro: abrir detalhes da matrícula
+                                  // Futuro: abrir detalhes/completo da matrícula
                                 }}
                               >
                                 Detalhes
@@ -1083,14 +1253,24 @@ const SecretariaMatriculasPage: FC = () => {
                 disabled={salvandoNova}
               />
 
-              <TextField
-                fullWidth
-                size="small"
-                label="Modalidade"
-                value={novaModalidade}
-                onChange={(e) => setNovaModalidade(e.target.value)}
-                disabled={salvandoNova}
-              />
+              <FormControl fullWidth size="small">
+                <InputLabel id="nova-modalidade-label">
+                  Modalidade
+                </InputLabel>
+                <Select
+                  labelId="nova-modalidade-label"
+                  label="Modalidade"
+                  value={novaModalidade}
+                  onChange={(e) => setNovaModalidade(e.target.value)}
+                  disabled={salvandoNova}
+                >
+                  {MODALIDADES_MATRICULA.map((mod) => (
+                    <MenuItem key={mod.value} value={mod.value}>
+                      {mod.label}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
             </Stack>
 
             {/* Status, datas */}
@@ -1169,6 +1349,99 @@ const SecretariaMatriculasPage: FC = () => {
                 </Select>
               </FormControl>
             </Stack>
+
+            {/* Bloco específico para Aproveitamento/Progressão */}
+            {isModalidadeEspecial && (
+              <Stack spacing={2}>
+                <Typography variant="subtitle2" fontWeight={700}>
+                  Disciplinas do aluno (Aproveitamento / Progressão)
+                </Typography>
+
+                {/* Disciplinas já concluídas */}
+                <FormControl fullWidth size="small">
+                  <InputLabel id="disciplinas-concluidas-label">
+                    Disciplinas já concluídas
+                  </InputLabel>
+                  <Select
+                    labelId="disciplinas-concluidas-label"
+                    multiple
+                    label="Disciplinas já concluídas"
+                    value={disciplinasConcluidasIds}
+                    onChange={(e) => {
+                    const raw = e.target.value as unknown
+                    let ids: number[] = []
+
+                    if (typeof raw === 'string') {
+                      ids = raw.split(',').map((v: string) => Number(v))
+                    } else if (Array.isArray(raw)) {
+                      ids = (raw as Array<string | number>).map((v) => Number(v))
+                    }
+
+                    setDisciplinasConcluidasIds(ids)
+                  }}
+
+                    renderValue={(selected) => {
+                      const ids = selected as number[]
+                      const nomes = disciplinasDisponiveis
+                        .filter((d) => ids.includes(d.id_disciplina))
+                        .map((d) => d.nome_disciplina)
+                      return nomes.join(', ')
+                    }}
+                    disabled={salvandoNova || disciplinasDisponiveis.length === 0}
+                  >
+                    {disciplinasDisponiveis.map((disc) => (
+                      <MenuItem
+                        key={disc.id_disciplina}
+                        value={disc.id_disciplina}
+                      >
+                        <Checkbox
+                          size="small"
+                          checked={disciplinasConcluidasIds.includes(
+                            disc.id_disciplina,
+                          )}
+                        />
+                        <ListItemText primary={disc.nome_disciplina} />
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+
+                {/* Disciplina inicial a cursar */}
+                <FormControl fullWidth size="small">
+                  <InputLabel id="disciplina-inicial-label">
+                    Disciplina inicial a cursar
+                  </InputLabel>
+                  <Select
+                    labelId="disciplina-inicial-label"
+                    label="Disciplina inicial a cursar"
+                    value={
+                      disciplinaInicialId === ''
+                        ? ''
+                        : String(disciplinaInicialId)
+                    }
+                    onChange={(e) =>
+                      setDisciplinaInicialId(
+                        e.target.value === '' ? '' : Number(e.target.value),
+                      )
+                    }
+                    disabled={salvandoNova || disciplinasDisponiveis.length === 0}
+                    displayEmpty
+                  >
+                    <MenuItem value="">
+                      <em>Não definir agora</em>
+                    </MenuItem>
+                    {disciplinasDisponiveis.map((disc) => (
+                      <MenuItem
+                        key={disc.id_disciplina}
+                        value={disc.id_disciplina}
+                      >
+                        {disc.nome_disciplina}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Stack>
+            )}
           </Stack>
         </DialogContent>
         <DialogActions sx={{ p: 2 }}>
