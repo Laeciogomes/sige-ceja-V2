@@ -144,6 +144,13 @@ interface StatusDisciplinaRow {
   nome: string
 }
 
+interface ConfigDisciplinaAnoRow {
+  id_config: number
+  id_disciplina: number
+  id_ano_escolar: number
+  quantidade_protocolos: number
+}
+
 const SecretariaMatriculasPage: FC = () => {
   const theme = useTheme()
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'))
@@ -173,6 +180,8 @@ const SecretariaMatriculasPage: FC = () => {
     useState<AnoEscolarRow[]>([])
   const [statusDisciplinaDisponiveis, setStatusDisciplinaDisponiveis] =
     useState<StatusDisciplinaRow[]>([])
+  const [configDisciplinaAnoDisponiveis, setConfigDisciplinaAnoDisponiveis] =
+    useState<ConfigDisciplinaAnoRow[]>([])
 
   const [page, setPage] = useState(0)
   const [rowsPerPage, setRowsPerPage] = useState(10)
@@ -196,14 +205,13 @@ const SecretariaMatriculasPage: FC = () => {
   )
   const [novaDataConclusao, setNovaDataConclusao] = useState<string>('')
 
-  // Disciplinas já concluídas (para Aproveitamento/Progressão)
-  const [disciplinasConcluidasIds, setDisciplinasConcluidasIds] = useState<
+  // Aproveitamento: séries concluídas (anos_escolares)
+  const [seriesConcluidasIds, setSeriesConcluidasIds] = useState<number[]>([])
+  // Progressão: série escolhida + disciplinas a cursar
+  const [serieProgressaoId, setSerieProgressaoId] = useState<number | ''>('')
+  const [disciplinasProgressaoIds, setDisciplinasProgressaoIds] = useState<
     number[]
   >([])
-  // Disciplina inicial que o aluno vai começar a cursar
-  const [disciplinaInicialId, setDisciplinaInicialId] = useState<number | ''>(
-    '',
-  )
 
   const carregarDados = async () => {
     if (!supabase) return
@@ -220,6 +228,7 @@ const SecretariaMatriculasPage: FC = () => {
         { data: disciplinasData, error: disciplinasError },
         { data: anosEscolaresData, error: anosEscolaresError },
         { data: statusDiscData, error: statusDiscError },
+        { data: configDiscAnoData, error: configDiscAnoError },
       ] = await Promise.all([
         supabase
           .from('matriculas')
@@ -256,6 +265,9 @@ const SecretariaMatriculasPage: FC = () => {
         supabase
           .from('status_disciplina_aluno')
           .select('id_status_disciplina, nome'),
+        supabase
+          .from('config_disciplina_ano')
+          .select('id_config, id_disciplina, id_ano_escolar, quantidade_protocolos'),
       ])
 
       if (matriculasError) {
@@ -290,6 +302,10 @@ const SecretariaMatriculasPage: FC = () => {
         console.error(statusDiscError)
         erro('Erro ao carregar status de disciplina.')
       }
+      if (configDiscAnoError) {
+        console.error(configDiscAnoError)
+        erro('Erro ao carregar configuração de disciplinas por série.')
+      }
 
       const matriculasList = (matriculasData || []) as unknown as MatriculaRow[]
       const alunosList = (alunosData || []) as unknown as AlunoRow[]
@@ -299,6 +315,8 @@ const SecretariaMatriculasPage: FC = () => {
       const disciplinasList = (disciplinasData || []) as unknown as DisciplinaRow[]
       const anosEscolaresList = (anosEscolaresData || []) as unknown as AnoEscolarRow[]
       const statusDiscList = (statusDiscData || []) as unknown as StatusDisciplinaRow[]
+      const configDiscAnoList =
+        (configDiscAnoData || []) as unknown as ConfigDisciplinaAnoRow[]
 
       setNiveisDisponiveis(niveisList)
       setStatusDisponiveis(statusList)
@@ -306,6 +324,7 @@ const SecretariaMatriculasPage: FC = () => {
       setDisciplinasDisponiveis(disciplinasList)
       setAnosEscolaresDisponiveis(anosEscolaresList)
       setStatusDisciplinaDisponiveis(statusDiscList)
+      setConfigDisciplinaAnoDisponiveis(configDiscAnoList)
 
       const anos = Array.from(
         new Set(matriculasList.map((m) => m.ano_letivo)),
@@ -428,8 +447,9 @@ const SecretariaMatriculasPage: FC = () => {
     setNovaModalidade('Orientação de Estudos')
     setNovaDataMatricula(hojeISO)
     setNovaDataConclusao('')
-    setDisciplinasConcluidasIds([])
-    setDisciplinaInicialId('')
+    setSeriesConcluidasIds([])
+    setSerieProgressaoId('')
+    setDisciplinasProgressaoIds([])
     setNovaAberta(true)
 
     sucesso('Abrindo formulário de matrícula...', 'Nova Matrícula')
@@ -493,7 +513,7 @@ const SecretariaMatriculasPage: FC = () => {
 
       const novaMatriculaId = novaMatriculaData.id_matricula
 
-      // Se modalidade for Aproveitamento/Progressão, registra as disciplinas no progresso_aluno
+      // Modalidades especiais: Aproveitamento / Progressão
       const isAproveitamento =
         novaModalidade === 'Aproveitamento de Estudos'
       const isProgressao = novaModalidade === 'Progressão de Estudos'
@@ -501,68 +521,106 @@ const SecretariaMatriculasPage: FC = () => {
       if (
         (isAproveitamento || isProgressao) &&
         statusDisciplinaDisponiveis.length > 0 &&
-        anosEscolaresDisponiveis.length > 0
+        anosEscolaresDisponiveis.length > 0 &&
+        configDisciplinaAnoDisponiveis.length > 0
       ) {
-        // Escolhe um ano_escolar compatível com o nível
+        const inserts: any[] = []
+
+        const statusConcluida =
+          statusDisciplinaDisponiveis.find((s) =>
+            s.nome.toLowerCase().includes('conclu'),
+          ) ?? statusDisciplinaDisponiveis[0]
+
+        const statusEmCurso =
+          statusDisciplinaDisponiveis.find((s) => {
+            const n = s.nome.toLowerCase()
+            return n.includes('andamento') || n.includes('cursando')
+          }) ?? statusDisciplinaDisponiveis[0]
+
         const anosNivel = anosEscolaresDisponiveis.filter(
           (a) => a.id_nivel_ensino === (novoNivelId as number),
         )
-        const anoEscolar = anosNivel[0] ?? anosEscolaresDisponiveis[0]
-        if (anoEscolar) {
-          const statusConcluida =
-            statusDisciplinaDisponiveis.find((s) =>
-              s.nome.toLowerCase().includes('conclu'),
-            ) ?? statusDisciplinaDisponiveis[0]
 
-          const statusEmCurso =
-            statusDisciplinaDisponiveis.find((s) => {
-              const n = s.nome.toLowerCase()
-              return n.includes('andamento') || n.includes('cursando')
-            }) ?? statusDisciplinaDisponiveis[0]
+        if (isAproveitamento) {
+          // Séries concluídas → disciplinas concluídas
+          const concluidasSet = new Set(seriesConcluidasIds)
+          const seriesConcluidas = anosNivel.filter((a) =>
+            concluidasSet.has(a.id_ano_escolar),
+          )
+          const seriesRestantes = anosNivel.filter(
+            (a) => !concluidasSet.has(a.id_ano_escolar),
+          )
 
-          const inserts: any[] = []
-
-          // Disciplinas concluídas por aproveitamento/progressão
-          disciplinasConcluidasIds.forEach((idDisciplina) => {
-            inserts.push({
-              id_matricula: novaMatriculaId,
-              id_disciplina: idDisciplina,
-              id_ano_escolar: anoEscolar.id_ano_escolar,
-              id_status_disciplina: statusConcluida.id_status_disciplina,
-              nota_final: null,
-              data_conclusao: null,
-              observacoes: isAproveitamento
-                ? 'Disciplina aproveitada na matrícula de Aproveitamento de Estudos.'
-                : 'Disciplina registrada como concluída na matrícula de Progressão de Estudos.',
+          seriesConcluidas.forEach((serie) => {
+            const configs = configDisciplinaAnoDisponiveis.filter(
+              (c) => c.id_ano_escolar === serie.id_ano_escolar,
+            )
+            configs.forEach((c) => {
+              inserts.push({
+                id_matricula: novaMatriculaId,
+                id_disciplina: c.id_disciplina,
+                id_ano_escolar: serie.id_ano_escolar,
+                id_status_disciplina: statusConcluida.id_status_disciplina,
+                nota_final: null,
+                data_conclusao: null,
+                observacoes:
+                  'Disciplina concluída por aproveitamento de estudos.',
+              })
             })
           })
 
-          // Disciplina inicial da progressão/aproveitamento (o que o aluno começa a cursar agora)
-          if (disciplinaInicialId !== '') {
+          // Séries restantes → disciplinas a cursar (em andamento)
+          seriesRestantes.forEach((serie) => {
+            const configs = configDisciplinaAnoDisponiveis.filter(
+              (c) => c.id_ano_escolar === serie.id_ano_escolar,
+            )
+            configs.forEach((c) => {
+              inserts.push({
+                id_matricula: novaMatriculaId,
+                id_disciplina: c.id_disciplina,
+                id_ano_escolar: serie.id_ano_escolar,
+                id_status_disciplina: statusEmCurso.id_status_disciplina,
+                nota_final: null,
+                data_conclusao: null,
+                observacoes:
+                  'Disciplina a cursar após aproveitamento de estudos.',
+              })
+            })
+          })
+        }
+
+        if (isProgressao && serieProgressaoId !== '') {
+          const serieIdNum = Number(serieProgressaoId)
+          const configs = configDisciplinaAnoDisponiveis.filter(
+            (c) =>
+              c.id_ano_escolar === serieIdNum &&
+              disciplinasProgressaoIds.includes(c.id_disciplina),
+          )
+
+          configs.forEach((c) => {
             inserts.push({
               id_matricula: novaMatriculaId,
-              id_disciplina: disciplinaInicialId as number,
-              id_ano_escolar: anoEscolar.id_ano_escolar,
+              id_disciplina: c.id_disciplina,
+              id_ano_escolar: serieIdNum,
               id_status_disciplina: statusEmCurso.id_status_disciplina,
               nota_final: null,
               data_conclusao: null,
-              observacoes: isProgressao
-                ? 'Disciplina inicial definida na matrícula de Progressão de Estudos.'
-                : 'Disciplina inicial definida na matrícula de Aproveitamento de Estudos.',
+              observacoes:
+                'Disciplina definida para progressão de estudos no CEJA.',
             })
-          }
+          })
+        }
 
-          if (inserts.length > 0) {
-            const { error: progError } = await supabase
-              .from('progresso_aluno')
-              .insert(inserts)
+        if (inserts.length > 0) {
+          const { error: progError } = await supabase
+            .from('progresso_aluno')
+            .insert(inserts)
 
-            if (progError) {
-              console.error(progError)
-              erro(
-                'Matrícula criada, mas houve erro ao registrar o progresso das disciplinas.',
-              )
-            }
+          if (progError) {
+            console.error(progError)
+            erro(
+              'Matrícula criada, mas houve erro ao registrar o progresso das disciplinas.',
+            )
           }
         }
       }
@@ -646,6 +704,24 @@ const SecretariaMatriculasPage: FC = () => {
     return lista
   }, [turmasDisponiveis, novoNivelId, novoAnoLetivo])
 
+  const seriesDoNivel = useMemo(() => {
+    if (novoNivelId === '') return []
+    const nivelIdNum = Number(novoNivelId)
+    return anosEscolaresDisponiveis
+      .filter((a) => a.id_nivel_ensino === nivelIdNum)
+      .sort((a, b) => a.nome_ano.localeCompare(b.nome_ano))
+  }, [anosEscolaresDisponiveis, novoNivelId])
+
+  const disciplinasDaSerieProgressao = useMemo(() => {
+    if (serieProgressaoId === '') return []
+    const serieIdNum = Number(serieProgressaoId)
+    const configs = configDisciplinaAnoDisponiveis.filter(
+      (c) => c.id_ano_escolar === serieIdNum,
+    )
+    const ids = configs.map((c) => c.id_disciplina)
+    return disciplinasDisponiveis.filter((d) => ids.includes(d.id_disciplina))
+  }, [serieProgressaoId, configDisciplinaAnoDisponiveis, disciplinasDisponiveis])
+
   const headerBgColor =
     theme.palette.mode === 'light'
       ? alpha(theme.palette.primary.light, 0.18)
@@ -671,9 +747,9 @@ const SecretariaMatriculasPage: FC = () => {
     return theme.palette.text.secondary
   }
 
-  const isModalidadeEspecial =
-    novaModalidade === 'Aproveitamento de Estudos' ||
-    novaModalidade === 'Progressão de Estudos'
+  const isAproveitamento =
+    novaModalidade === 'Aproveitamento de Estudos'
+  const isProgressao = novaModalidade === 'Progressão de Estudos'
 
   return (
     <Box
@@ -1350,92 +1426,158 @@ const SecretariaMatriculasPage: FC = () => {
               </FormControl>
             </Stack>
 
-            {/* Bloco específico para Aproveitamento/Progressão */}
-            {isModalidadeEspecial && (
-              <Stack spacing={2}>
+            {/* BLOCO: APROVEITAMENTO → séries concluídas */}
+            {isAproveitamento && novoNivelId !== '' && (
+              <Stack spacing={1.5}>
                 <Typography variant="subtitle2" fontWeight={700}>
-                  Disciplinas do aluno (Aproveitamento / Progressão)
+                  Aproveitamento de Estudos – Séries concluídas
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Selecione as séries (anos escolares) que o aluno já concluiu.
+                  As disciplinas dessas séries serão registradas como concluídas
+                  e as das séries restantes como a cursar.
                 </Typography>
 
-                {/* Disciplinas já concluídas */}
                 <FormControl fullWidth size="small">
-                  <InputLabel id="disciplinas-concluidas-label">
-                    Disciplinas já concluídas
+                  <InputLabel id="series-concluidas-label">
+                    Séries concluídas
                   </InputLabel>
                   <Select
-                    labelId="disciplinas-concluidas-label"
+                    labelId="series-concluidas-label"
                     multiple
-                    label="Disciplinas já concluídas"
-                    value={disciplinasConcluidasIds}
+                    label="Séries concluídas"
+                    value={seriesConcluidasIds}
                     onChange={(e) => {
-                    const raw = e.target.value as unknown
-                    let ids: number[] = []
+                      const raw = e.target.value as unknown
+                      let ids: number[] = []
 
-                    if (typeof raw === 'string') {
-                      ids = raw.split(',').map((v: string) => Number(v))
-                    } else if (Array.isArray(raw)) {
-                      ids = (raw as Array<string | number>).map((v) => Number(v))
-                    }
+                      if (typeof raw === 'string') {
+                        ids = raw.split(',').map((v: string) => Number(v))
+                      } else if (Array.isArray(raw)) {
+                        ids = (raw as Array<string | number>).map((v) =>
+                          Number(v),
+                        )
+                      }
 
-                    setDisciplinasConcluidasIds(ids)
-                  }}
-
+                      setSeriesConcluidasIds(ids)
+                    }}
                     renderValue={(selected) => {
                       const ids = selected as number[]
-                      const nomes = disciplinasDisponiveis
+                      const nomes = seriesDoNivel
+                        .filter((s) => ids.includes(s.id_ano_escolar))
+                        .map((s) => s.nome_ano)
+                      return nomes.join(', ')
+                    }}
+                    disabled={salvandoNova || seriesDoNivel.length === 0}
+                  >
+                    {seriesDoNivel.map((serie) => (
+                      <MenuItem
+                        key={serie.id_ano_escolar}
+                        value={serie.id_ano_escolar}
+                      >
+                        <Checkbox
+                          size="small"
+                          checked={seriesConcluidasIds.includes(
+                            serie.id_ano_escolar,
+                          )}
+                        />
+                        <ListItemText primary={serie.nome_ano} />
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Stack>
+            )}
+
+            {/* BLOCO: PROGRESSÃO → série e disciplinas a cursar */}
+            {isProgressao && novoNivelId !== '' && (
+              <Stack spacing={1.5}>
+                <Typography variant="subtitle2" fontWeight={700}>
+                  Progressão de Estudos – Série e disciplinas
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Selecione a série (ano escolar) e as disciplinas que o aluno
+                  irá cursar no CEJA nessa matrícula de progressão.
+                </Typography>
+
+                <FormControl fullWidth size="small">
+                  <InputLabel id="serie-progressao-label">
+                    Série (ano escolar)
+                  </InputLabel>
+                  <Select
+                    labelId="serie-progressao-label"
+                    label="Série (ano escolar)"
+                    value={
+                      serieProgressaoId === ''
+                        ? ''
+                        : String(serieProgressaoId)
+                    }
+                    onChange={(e) =>
+                      setSerieProgressaoId(
+                        e.target.value === ''
+                          ? ''
+                          : Number(e.target.value),
+                      )
+                    }
+                    disabled={salvandoNova || seriesDoNivel.length === 0}
+                  >
+                    {seriesDoNivel.map((serie) => (
+                      <MenuItem
+                        key={serie.id_ano_escolar}
+                        value={serie.id_ano_escolar}
+                      >
+                        {serie.nome_ano}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+
+                <FormControl fullWidth size="small">
+                  <InputLabel id="disciplinas-progressao-label">
+                    Disciplinas a cursar
+                  </InputLabel>
+                  <Select
+                    labelId="disciplinas-progressao-label"
+                    multiple
+                    label="Disciplinas a cursar"
+                    value={disciplinasProgressaoIds}
+                    onChange={(e) => {
+                      const raw = e.target.value as unknown
+                      let ids: number[] = []
+
+                      if (typeof raw === 'string') {
+                        ids = raw.split(',').map((v: string) => Number(v))
+                      } else if (Array.isArray(raw)) {
+                        ids = (raw as Array<string | number>).map((v) =>
+                          Number(v),
+                        )
+                      }
+
+                      setDisciplinasProgressaoIds(ids)
+                    }}
+                    renderValue={(selected) => {
+                      const ids = selected as number[]
+                      const nomes = disciplinasDaSerieProgressao
                         .filter((d) => ids.includes(d.id_disciplina))
                         .map((d) => d.nome_disciplina)
                       return nomes.join(', ')
                     }}
-                    disabled={salvandoNova || disciplinasDisponiveis.length === 0}
+                    disabled={
+                      salvandoNova || disciplinasDaSerieProgressao.length === 0
+                    }
                   >
-                    {disciplinasDisponiveis.map((disc) => (
+                    {disciplinasDaSerieProgressao.map((disc) => (
                       <MenuItem
                         key={disc.id_disciplina}
                         value={disc.id_disciplina}
                       >
                         <Checkbox
                           size="small"
-                          checked={disciplinasConcluidasIds.includes(
+                          checked={disciplinasProgressaoIds.includes(
                             disc.id_disciplina,
                           )}
                         />
                         <ListItemText primary={disc.nome_disciplina} />
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-
-                {/* Disciplina inicial a cursar */}
-                <FormControl fullWidth size="small">
-                  <InputLabel id="disciplina-inicial-label">
-                    Disciplina inicial a cursar
-                  </InputLabel>
-                  <Select
-                    labelId="disciplina-inicial-label"
-                    label="Disciplina inicial a cursar"
-                    value={
-                      disciplinaInicialId === ''
-                        ? ''
-                        : String(disciplinaInicialId)
-                    }
-                    onChange={(e) =>
-                      setDisciplinaInicialId(
-                        e.target.value === '' ? '' : Number(e.target.value),
-                      )
-                    }
-                    disabled={salvandoNova || disciplinasDisponiveis.length === 0}
-                    displayEmpty
-                  >
-                    <MenuItem value="">
-                      <em>Não definir agora</em>
-                    </MenuItem>
-                    {disciplinasDisponiveis.map((disc) => (
-                      <MenuItem
-                        key={disc.id_disciplina}
-                        value={disc.id_disciplina}
-                      >
-                        {disc.nome_disciplina}
                       </MenuItem>
                     ))}
                   </Select>
