@@ -25,6 +25,7 @@ import SecretariaDisciplinasPage from '../paginas/painel-secretaria/SecretariaDi
 import SecretariaAreasConhecimentoPage from '../paginas/painel-secretaria/SecretariaAreasConhecimentoPage'
 import SecretariaSalasPage from '../paginas/painel-secretaria/SecretariaSalasPage'
 import SecretariaProtocolosPage from '../paginas/painel-secretaria/SecretariaProtocolosPage'
+import SecretariaTurmaAlunosPage from '../paginas/painel-secretaria/SecretariaTurmaAlunosPage'
 
 export const AppRoutes: React.FC = () => {
   // Inclui "carregando" para evitar redirecionar enquanto a sessão está sendo restaurada
@@ -83,6 +84,11 @@ export const AppRoutes: React.FC = () => {
 
           <Route path="usuarios" element={<SecretariaUsuariosPage />} />
           <Route path="turmas" element={<SecretariaTurmasPage />} />
+          {/* NOVA ROTA: alunos da turma */}
+          <Route
+            path="turmas/:turmaId/alunos"
+            element={<SecretariaTurmaAlunosPage />}
+          />
           <Route path="salas" element={<SecretariaSalasPage />} />
           <Route
             path="areas-conhecimento"

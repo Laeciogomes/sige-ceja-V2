@@ -9,7 +9,6 @@ import {
   Tooltip,
   useTheme,
   Divider,
-  Box,
   type Theme,
   alpha,
 } from '@mui/material'
@@ -48,7 +47,7 @@ const useSidebarStyles = (theme: Theme, mode: SidebarMode) => {
       listItemButton: {
         minHeight: 44,
         my: 0.5,
-        mx: 1,
+        mx: 1, // Barra aberta: espaçamento lateral padrão
         borderRadius: 2,
         position: 'relative',
         overflow: 'hidden',
@@ -56,6 +55,17 @@ const useSidebarStyles = (theme: Theme, mode: SidebarMode) => {
         '&:focus-visible': {
           outline: `2px solid ${COR_LARANJA}`,
           outlineOffset: 2,
+        },
+      },
+      // Estilo específico para quando a barra está fechada
+      listItemButtonClosed: {
+        mx: 'auto', // Centraliza o botão na barra lateral fechada
+        width: 44, // Garante que o botão tenha o tamanho do ícone
+        p: 0, // Remove padding interno desnecessário
+        justifyContent: 'center',
+        '&:hover': {
+          backgroundColor: hoverBgColor,
+          transform: 'scale(1.05)', // Efeito sutil de zoom no hover
         },
       },
       active: {
@@ -87,7 +97,6 @@ const useSidebarStyles = (theme: Theme, mode: SidebarMode) => {
         '&:hover': {
           backgroundColor: hoverBgColor,
           color: COR_LARANJA,
-          transform: 'translateX(4px)',
           '& .MuiListItemIcon-root': { color: COR_LARANJA },
         },
       },
@@ -98,7 +107,16 @@ const useSidebarStyles = (theme: Theme, mode: SidebarMode) => {
         transition: 'all 0.2s ease',
         color: 'inherit',
       },
+      listItemIconClosed: {
+        // Ajuste de minWidth e mr quando fechado
+        minWidth: 'auto',
+        mr: 0,
+        transition: 'all 0.2s ease',
+        color: 'inherit',
+      },
       activeIcon: {
+        // Garante que o ícone ativo tenha a cor laranja, mesmo quando fechado
+        color: COR_LARANJA,
         transform: 'scale(1.1)',
         filter: `drop-shadow(0 0 2px ${alpha(COR_LARANJA, 0.26)})`,
       },
@@ -173,7 +191,7 @@ const useAnyMenuActive = (items: ItemMenuConfig[]) => {
   return useMemo(() => {
     if (!items.length) return false
     const pathAtual = location.pathname.toLowerCase().replace(/\/$/, '')
-    return items.some(item => {
+    return items.some((item) => {
       const pathMenu = item.caminho.toLowerCase().replace(/\/$/, '')
       if (!pathMenu) return false
       if (pathAtual === pathMenu) return true
@@ -194,8 +212,15 @@ const ItemBarraLateral: React.FC<ItemProps> = React.memo(
 
     const handleClick = () => navigate(item.caminho)
 
+    // Estilos do botão e ícone
+    const listItemButtonStyles = {
+      ...styles.listItemButton,
+      ...(aberta ? {} : styles.listItemButtonClosed),
+      ...(ativo ? styles.active : styles.inactive),
+    }
+
     const iconStyle = {
-      ...styles.listItemIcon,
+      ...(aberta ? styles.listItemIcon : styles.listItemIconClosed),
       ...(ativo ? styles.activeIcon : {}),
       transitionDelay: `${index * 0.05}s`,
     }
@@ -206,10 +231,7 @@ const ItemBarraLateral: React.FC<ItemProps> = React.memo(
         onClick={handleClick}
         role="menuitem"
         aria-label={`${item.rotulo} - ${ativo ? 'ativo' : 'navegar para'}`}
-        sx={{
-          ...styles.listItemButton,
-          ...(ativo ? styles.active : styles.inactive),
-        }}
+        sx={listItemButtonStyles}
         disableRipple={false}
       >
         <ListItemIcon sx={iconStyle}>{item.icone}</ListItemIcon>
@@ -232,6 +254,7 @@ const ItemBarraLateral: React.FC<ItemProps> = React.memo(
 
     if (aberta) return conteudoBotao
 
+    // Barra fechada: usa apenas Tooltip em volta do botão
     return (
       <Tooltip
         title={item.rotulo}
@@ -240,7 +263,7 @@ const ItemBarraLateral: React.FC<ItemProps> = React.memo(
         disableInteractive
         componentsProps={{ tooltip: { sx: styles.tooltip } }}
       >
-        <Box sx={{ mx: 0.5 }}>{conteudoBotao}</Box>
+        {conteudoBotao}
       </Tooltip>
     )
   },
@@ -279,7 +302,8 @@ const BarraLateral: React.FC<BarraLateralProps> = ({ aberta }) => {
       outrosItens.map((item, index) => {
         const grupoAtual = item.grupo
         const grupoAnterior = index > 0 ? outrosItens[index - 1].grupo : null
-        const mostrarHeader = aberta && grupoAtual && grupoAtual !== grupoAnterior
+        const mostrarHeader =
+          aberta && grupoAtual && grupoAtual !== grupoAnterior
         const mostrarDivisorFechado =
           !aberta && grupoAtual !== grupoAnterior && index > 0
 

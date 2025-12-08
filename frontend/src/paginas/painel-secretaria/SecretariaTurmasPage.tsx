@@ -39,6 +39,7 @@ import {
   alpha,
 } from '@mui/material'
 import { green } from '@mui/material/colors'
+import { useNavigate } from 'react-router-dom'
 
 import ClassIcon from '@mui/icons-material/Class'
 import AddIcon from '@mui/icons-material/Add'
@@ -76,13 +77,15 @@ interface MapaQtdAlunos {
 const SecretariaTurmasPage: FC = () => {
   const theme = useTheme()
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'))
+  const navigate = useNavigate()
 
   const { supabase } = useSupabase()
   const { sucesso, aviso, erro } = useNotificacaoContext()
 
   const [turmas, setTurmas] = useState<TurmaRow[]>([])
   const [niveis, setNiveis] = useState<NivelEnsinoRow[]>([])
-  const [quantidadeAlunosPorTurma, setQuantidadeAlunosPorTurma] = useState<MapaQtdAlunos>({})
+  const [quantidadeAlunosPorTurma, setQuantidadeAlunosPorTurma] =
+    useState<MapaQtdAlunos>({})
   const [carregando, setCarregando] = useState<boolean>(true)
 
   const [busca, setBusca] = useState<string>('')
@@ -96,7 +99,9 @@ const SecretariaTurmasPage: FC = () => {
   const [formCodigo, setFormCodigo] = useState<string>('')
   const [formNivelId, setFormNivelId] = useState<string>('')
   const [formTurno, setFormTurno] = useState<string>('Multiturno')
-  const [formAnoLetivo, setFormAnoLetivo] = useState<string>(new Date().getFullYear().toString())
+  const [formAnoLetivo, setFormAnoLetivo] = useState<string>(
+    new Date().getFullYear().toString(),
+  )
   const [formAtiva, setFormAtiva] = useState<boolean>(true)
   const [salvando, setSalvando] = useState<boolean>(false)
 
@@ -104,8 +109,11 @@ const SecretariaTurmasPage: FC = () => {
   const [rowsPerPage, setRowsPerPage] = useState(10)
 
   // Estado para modal de exclusão
-  const [dialogExcluirAberto, setDialogExcluirAberto] = useState<boolean>(false)
-  const [turmaParaExcluir, setTurmaParaExcluir] = useState<TurmaRow | null>(null)
+  const [dialogExcluirAberto, setDialogExcluirAberto] =
+    useState<boolean>(false)
+  const [turmaParaExcluir, setTurmaParaExcluir] = useState<TurmaRow | null>(
+    null,
+  )
 
   const carregarDados = async () => {
     if (!supabase) return
@@ -119,7 +127,9 @@ const SecretariaTurmasPage: FC = () => {
       ] = await Promise.all([
         supabase
           .from('turmas')
-          .select('id_turma, nome, codigo_turma, id_nivel_ensino, turno, ano_letivo, is_ativa')
+          .select(
+            'id_turma, nome, codigo_turma, id_nivel_ensino, turno, ano_letivo, is_ativa',
+          )
           .order('ano_letivo', { ascending: false })
           .order('nome', { ascending: true }),
         supabase
@@ -151,7 +161,10 @@ const SecretariaTurmasPage: FC = () => {
         erro('Erro ao carregar matrículas para contagem de alunos.')
       } else if (matriculasData) {
         const mapa: MapaQtdAlunos = {}
-        for (const m of matriculasData as { id_turma: number | null; id_status_matricula: number | null }[]) {
+        for (const m of matriculasData as {
+          id_turma: number | null
+          id_status_matricula: number | null
+        }[]) {
           if (m.id_turma == null) continue
           // só conta matrículas ativas (id_status_matricula = 1)
           if (m.id_status_matricula !== 1) continue
@@ -192,7 +205,11 @@ const SecretariaTurmasPage: FC = () => {
     setFormCodigo(turma.codigo_turma ?? '')
     setFormNivelId(String(turma.id_nivel_ensino))
     setFormTurno(turma.turno || 'Multiturno')
-    setFormAnoLetivo(turma.ano_letivo ? String(turma.ano_letivo) : new Date().getFullYear().toString())
+    setFormAnoLetivo(
+      turma.ano_letivo
+        ? String(turma.ano_letivo)
+        : new Date().getFullYear().toString(),
+    )
     setFormAtiva(turma.is_ativa !== false)
     setDialogAberto(true)
   }
@@ -251,7 +268,11 @@ const SecretariaTurmasPage: FC = () => {
         }
 
         if (data) {
-          setTurmas((prev) => prev.map((t) => (t.id_turma === editando.id_turma ? (data as TurmaRow) : t)))
+          setTurmas((prev) =>
+            prev.map((t) =>
+              t.id_turma === editando.id_turma ? (data as TurmaRow) : t,
+            ),
+          )
           sucesso('Turma atualizada com sucesso!')
         }
       } else {
@@ -265,7 +286,9 @@ const SecretariaTurmasPage: FC = () => {
           console.error(error)
           const codigo = (error as any).code as string | undefined
           if (codigo === '42501') {
-            erro('Você não tem permissão para criar turmas. Fale com o administrador do sistema.')
+            erro(
+              'Você não tem permissão para criar turmas. Fale com o administrador do sistema.',
+            )
           } else {
             erro('Erro ao criar turma.')
           }
@@ -306,22 +329,31 @@ const SecretariaTurmasPage: FC = () => {
 
     try {
       setSalvando(true)
-      const { error } = await supabase.from('turmas').delete().eq('id_turma', turmaParaExcluir.id_turma)
+      const { error } = await supabase
+        .from('turmas')
+        .delete()
+        .eq('id_turma', turmaParaExcluir.id_turma)
 
       if (error) {
         console.error(error)
         const codigo = (error as any).code as string | undefined
         if (codigo === '23503') {
-          erro('Não é possível excluir uma turma que possui matrículas vinculadas.')
+          erro(
+            'Não é possível excluir uma turma que possui matrículas vinculadas.',
+          )
         } else if (codigo === '42501') {
-          erro('Você não tem permissão para excluir turmas. Fale com o administrador do sistema.')
+          erro(
+            'Você não tem permissão para excluir turmas. Fale com o administrador do sistema.',
+          )
         } else {
           erro('Erro ao excluir turma.')
         }
         return
       }
 
-      setTurmas((prev) => prev.filter((t) => t.id_turma !== turmaParaExcluir.id_turma))
+      setTurmas((prev) =>
+        prev.filter((t) => t.id_turma !== turmaParaExcluir.id_turma),
+      )
       setQuantidadeAlunosPorTurma((prev) => {
         const novo = { ...prev }
         delete novo[turmaParaExcluir.id_turma]
@@ -338,8 +370,17 @@ const SecretariaTurmasPage: FC = () => {
     }
   }
 
+  // Navegação para página de alunos da turma
+  const handleVerAlunosTurma = (turma: TurmaRow) => {
+    navigate(`/secretaria/turmas/${turma.id_turma}/alunos`, {
+      state: { turmaId: turma.id_turma, turmaNome: turma.nome },
+    })
+  }
+
   const anosDisponiveis = useMemo(() => {
-    const anos = Array.from(new Set(turmas.map((t) => t.ano_letivo))).filter((ano): ano is number => !!ano)
+    const anos = Array.from(
+      new Set(turmas.map((t) => t.ano_letivo)),
+    ).filter((ano): ano is number => !!ano)
     return anos.sort((a, b) => b - a)
   }, [turmas])
 
@@ -352,13 +393,17 @@ const SecretariaTurmasPage: FC = () => {
     const termo = busca.trim().toLowerCase()
 
     return turmas.filter((turma) => {
-      const textoBase = `${turma.nome ?? ''} ${turma.codigo_turma ?? ''} ${getNomeNivel(
-        turma.id_nivel_ensino,
-      )} ${turma.turno ?? ''} ${turma.ano_letivo ?? ''}`.toLowerCase()
+      const textoBase = `${turma.nome ?? ''} ${
+        turma.codigo_turma ?? ''
+      } ${getNomeNivel(turma.id_nivel_ensino)} ${turma.turno ?? ''} ${
+        turma.ano_letivo ?? ''
+      }`.toLowerCase()
 
       const matchBusca = termo === '' || textoBase.includes(termo)
-      const matchNivel = !filtroNivel || String(turma.id_nivel_ensino) === filtroNivel
-      const matchAno = !filtroAno || String(turma.ano_letivo) === filtroAno
+      const matchNivel =
+        !filtroNivel || String(turma.id_nivel_ensino) === filtroNivel
+      const matchAno =
+        !filtroAno || String(turma.ano_letivo) === filtroAno
       const matchStatus =
         filtroStatus === 'todos'
           ? true
@@ -375,13 +420,22 @@ const SecretariaTurmasPage: FC = () => {
   }, [busca, filtroNivel, filtroAno, filtroStatus])
 
   const turmasPaginadas = useMemo(
-    () => turmasFiltradas.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage),
+    () =>
+      turmasFiltradas.slice(
+        page * rowsPerPage,
+        page * rowsPerPage + rowsPerPage,
+      ),
     [turmasFiltradas, page, rowsPerPage],
   )
 
   const totalTurmas = turmas.length
-  const totalTurmasAtivas = turmas.filter((t) => t.is_ativa !== false).length
-  const totalAlunosAtivos = Object.values(quantidadeAlunosPorTurma).reduce((acc, val) => acc + val, 0)
+  const totalTurmasAtivas = turmas.filter(
+    (t) => t.is_ativa !== false,
+  ).length
+  const totalAlunosAtivos = Object.values(quantidadeAlunosPorTurma).reduce(
+    (acc, val) => acc + val,
+    0,
+  )
 
   const cardBorderColor = theme.palette.divider
   const cardBgColor = theme.palette.background.paper
@@ -393,7 +447,9 @@ const SecretariaTurmasPage: FC = () => {
   const headerBgColor =
     theme.palette.mode === 'light' ? green[100] : alpha(green[900], 0.4)
   const headerTextColor =
-    theme.palette.mode === 'light' ? theme.palette.success.dark : theme.palette.success.light
+    theme.palette.mode === 'light'
+      ? theme.palette.success.dark
+      : theme.palette.success.light
 
   const handleChangePage = (_: unknown, newPage: number) => {
     setPage(newPage)
@@ -412,7 +468,9 @@ const SecretariaTurmasPage: FC = () => {
   }
 
   const qtdAlunosTurmaSelecionada =
-    turmaParaExcluir ? quantidadeAlunosPorTurma[turmaParaExcluir.id_turma] ?? 0 : 0
+    turmaParaExcluir
+      ? quantidadeAlunosPorTurma[turmaParaExcluir.id_turma] ?? 0
+      : 0
 
   return (
     <Box
@@ -441,7 +499,8 @@ const SecretariaTurmasPage: FC = () => {
             Turmas
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            Gerencie as turmas do CEJA e acompanhe quantos alunos estão ativos em cada turma.
+            Gerencie as turmas do CEJA e acompanhe quantos alunos estão ativos
+            em cada turma.
           </Typography>
         </Box>
         <Button
@@ -613,7 +672,10 @@ const SecretariaTurmasPage: FC = () => {
                   <em>Todos</em>
                 </MenuItem>
                 {niveis.map((nivel) => (
-                  <MenuItem key={nivel.id_nivel_ensino} value={String(nivel.id_nivel_ensino)}>
+                  <MenuItem
+                    key={nivel.id_nivel_ensino}
+                    value={String(nivel.id_nivel_ensino)}
+                  >
                     {nivel.nome}
                   </MenuItem>
                 ))}
@@ -645,7 +707,9 @@ const SecretariaTurmasPage: FC = () => {
                 labelId="filtro-status-label"
                 label="Situação"
                 value={filtroStatus}
-                onChange={(e) => setFiltroStatus(e.target.value as FiltroStatus)}
+                onChange={(e) =>
+                  setFiltroStatus(e.target.value as FiltroStatus)
+                }
               >
                 <MenuItem value="ativos">Ativas</MenuItem>
                 <MenuItem value="inativos">Inativas</MenuItem>
@@ -667,7 +731,7 @@ const SecretariaTurmasPage: FC = () => {
         </Stack>
       </Paper>
 
-      {/* Lista de turmas: tabela (desktop) ou cards (mobile) */}
+      {/* Lista de turmas */}
       <TableContainer
         component={Paper}
         elevation={0}
@@ -681,7 +745,7 @@ const SecretariaTurmasPage: FC = () => {
         ) : (
           <>
             {isMobile ? (
-              // MOBILE: cards no lugar da tabela
+              // MOBILE: CARDS
               <Box sx={{ p: 2 }}>
                 <Stack spacing={2}>
                   {turmasFiltradas.length === 0 && (
@@ -696,7 +760,8 @@ const SecretariaTurmasPage: FC = () => {
                   )}
 
                   {turmasFiltradas.map((turma) => {
-                    const qtdAlunos = quantidadeAlunosPorTurma[turma.id_turma] ?? 0
+                    const qtdAlunos =
+                      quantidadeAlunosPorTurma[turma.id_turma] ?? 0
                     const isAtiva = turma.is_ativa !== false
 
                     return (
@@ -741,17 +806,24 @@ const SecretariaTurmasPage: FC = () => {
                           </Stack>
 
                           <Stack spacing={0.5}>
-                            <Typography variant="caption" color="text.secondary">
+                            <Typography
+                              variant="caption"
+                              color="text.secondary"
+                            >
                               Nível / Ano letivo
                             </Typography>
                             <Typography variant="body2">
-                              {getNomeNivel(turma.id_nivel_ensino)} • Ano letivo {turma.ano_letivo}
+                              {getNomeNivel(turma.id_nivel_ensino)} • Ano letivo{' '}
+                              {turma.ano_letivo}
                             </Typography>
                           </Stack>
 
                           <Stack direction="row" spacing={2}>
                             <Box>
-                              <Typography variant="caption" color="text.secondary">
+                              <Typography
+                                variant="caption"
+                                color="text.secondary"
+                              >
                                 Turno
                               </Typography>
                               <Box sx={{ mt: 0.5 }}>
@@ -764,10 +836,17 @@ const SecretariaTurmasPage: FC = () => {
                               </Box>
                             </Box>
                             <Box>
-                              <Typography variant="caption" color="text.secondary">
+                              <Typography
+                                variant="caption"
+                                color="text.secondary"
+                              >
                                 Alunos ativos
                               </Typography>
-                              <Typography variant="body2" fontWeight={600} sx={{ mt: 0.5 }}>
+                              <Typography
+                                variant="body2"
+                                fontWeight={600}
+                                sx={{ mt: 0.5 }}
+                              >
                                 {qtdAlunos}{' '}
                                 <Typography
                                   component="span"
@@ -780,7 +859,20 @@ const SecretariaTurmasPage: FC = () => {
                             </Box>
                           </Stack>
 
-                          <Stack direction="row" spacing={1} justifyContent="flex-end" sx={{ pt: 1 }}>
+                          <Stack
+                            direction="row"
+                            spacing={1}
+                            justifyContent="flex-end"
+                            sx={{ pt: 1 }}
+                          >
+                            <Button
+                              size="small"
+                              variant="text"
+                              onClick={() => handleVerAlunosTurma(turma)}
+                              startIcon={<GroupsIcon fontSize="small" />}
+                            >
+                              Alunos
+                            </Button>
                             <Button
                               size="small"
                               variant="text"
@@ -807,24 +899,34 @@ const SecretariaTurmasPage: FC = () => {
                 </Stack>
               </Box>
             ) : (
-              // DESKTOP: tabela com paginação
+              // DESKTOP: TABELA
               <>
                 <Table size="medium">
                   <TableHead>
                     <TableRow sx={{ bgcolor: headerBgColor }}>
-                      <TableCell sx={{ fontWeight: 'bold', color: headerTextColor }}>
+                      <TableCell
+                        sx={{ fontWeight: 'bold', color: headerTextColor }}
+                      >
                         Identificação
                       </TableCell>
-                      <TableCell sx={{ fontWeight: 'bold', color: headerTextColor }}>
+                      <TableCell
+                        sx={{ fontWeight: 'bold', color: headerTextColor }}
+                      >
                         Nível / Ano letivo
                       </TableCell>
-                      <TableCell sx={{ fontWeight: 'bold', color: headerTextColor }}>
+                      <TableCell
+                        sx={{ fontWeight: 'bold', color: headerTextColor }}
+                      >
                         Turno
                       </TableCell>
-                      <TableCell sx={{ fontWeight: 'bold', color: headerTextColor }}>
+                      <TableCell
+                        sx={{ fontWeight: 'bold', color: headerTextColor }}
+                      >
                         Alunos ativos
                       </TableCell>
-                      <TableCell sx={{ fontWeight: 'bold', color: headerTextColor }}>
+                      <TableCell
+                        sx={{ fontWeight: 'bold', color: headerTextColor }}
+                      >
                         Situação
                       </TableCell>
                       <TableCell
@@ -837,7 +939,8 @@ const SecretariaTurmasPage: FC = () => {
                   </TableHead>
                   <TableBody>
                     {turmasPaginadas.map((turma, index) => {
-                      const qtdAlunos = quantidadeAlunosPorTurma[turma.id_turma] ?? 0
+                      const qtdAlunos =
+                        quantidadeAlunosPorTurma[turma.id_turma] ?? 0
                       const isAtiva = turma.is_ativa !== false
                       const isEven = index % 2 === 0
 
@@ -848,7 +951,10 @@ const SecretariaTurmasPage: FC = () => {
                           sx={{
                             bgcolor: isEven ? 'inherit' : zebraColor,
                             '&:hover': {
-                              bgcolor: alpha(theme.palette.primary.main, 0.08),
+                              bgcolor: alpha(
+                                theme.palette.primary.main,
+                                0.08,
+                              ),
                             },
                           }}
                         >
@@ -856,11 +962,18 @@ const SecretariaTurmasPage: FC = () => {
                             <Typography
                               variant="body2"
                               fontWeight={600}
-                              sx={{ wordBreak: 'break-word', lineHeight: 1.3, mb: 0.5 }}
+                              sx={{
+                                wordBreak: 'break-word',
+                                lineHeight: 1.3,
+                                mb: 0.5,
+                              }}
                             >
                               {turma.nome}
                             </Typography>
-                            <Typography variant="caption" color="text.secondary">
+                            <Typography
+                              variant="caption"
+                              color="text.secondary"
+                            >
                               Código: {turma.codigo_turma || '—'}
                             </Typography>
                           </TableCell>
@@ -870,7 +983,10 @@ const SecretariaTurmasPage: FC = () => {
                               <Typography variant="body2">
                                 {getNomeNivel(turma.id_nivel_ensino)}
                               </Typography>
-                              <Typography variant="caption" color="text.secondary">
+                              <Typography
+                                variant="caption"
+                                color="text.secondary"
+                              >
                                 Ano letivo {turma.ano_letivo}
                               </Typography>
                             </Stack>
@@ -890,7 +1006,10 @@ const SecretariaTurmasPage: FC = () => {
                               <Typography variant="body2" fontWeight={600}>
                                 {qtdAlunos}
                               </Typography>
-                              <Typography variant="caption" color="text.secondary">
+                              <Typography
+                                variant="caption"
+                                color="text.secondary"
+                              >
                                 alunos ativos
                               </Typography>
                             </Stack>
@@ -906,13 +1025,33 @@ const SecretariaTurmasPage: FC = () => {
                           </TableCell>
 
                           <TableCell align="right">
-                            <Stack direction="row" justifyContent="flex-end" spacing={1}>
+                            <Stack
+                              direction="row"
+                              justifyContent="flex-end"
+                              spacing={1}
+                            >
+                              <Tooltip title="Ver alunos da turma">
+                                <span>
+                                  <Button
+                                    variant="text"
+                                    size="small"
+                                    onClick={() =>
+                                      handleVerAlunosTurma(turma)
+                                    }
+                                    startIcon={<GroupsIcon fontSize="small" />}
+                                  >
+                                    Alunos
+                                  </Button>
+                                </span>
+                              </Tooltip>
                               <Tooltip title="Editar">
                                 <span>
                                   <Button
                                     variant="text"
                                     size="small"
-                                    onClick={() => abrirDialogEditarTurma(turma)}
+                                    onClick={() =>
+                                      abrirDialogEditarTurma(turma)
+                                    }
                                     startIcon={<EditIcon fontSize="small" />}
                                   >
                                     Editar
@@ -925,8 +1064,12 @@ const SecretariaTurmasPage: FC = () => {
                                     variant="text"
                                     size="small"
                                     color="error"
-                                    onClick={() => abrirDialogExcluirTurma(turma)}
-                                    startIcon={<DeleteOutlineIcon fontSize="small" />}
+                                    onClick={() =>
+                                      abrirDialogExcluirTurma(turma)
+                                    }
+                                    startIcon={
+                                      <DeleteOutlineIcon fontSize="small" />
+                                    }
                                     disabled={salvando}
                                   >
                                     Excluir
@@ -942,7 +1085,10 @@ const SecretariaTurmasPage: FC = () => {
                     {turmasPaginadas.length === 0 && !carregando && (
                       <TableRow>
                         <TableCell colSpan={6} align="center" sx={{ py: 4 }}>
-                          <Typography variant="body2" color="text.secondary">
+                          <Typography
+                            variant="body2"
+                            color="text.secondary"
+                          >
                             Nenhuma turma encontrada com os filtros aplicados.
                           </Typography>
                         </TableCell>
@@ -988,7 +1134,9 @@ const SecretariaTurmasPage: FC = () => {
               />
 
               <FormControl fullWidth required>
-                <InputLabel id="nivel-ensino-label">Nível de ensino</InputLabel>
+                <InputLabel id="nivel-ensino-label">
+                  Nível de ensino
+                </InputLabel>
                 <Select
                   labelId="nivel-ensino-label"
                   label="Nível de ensino"
@@ -996,7 +1144,10 @@ const SecretariaTurmasPage: FC = () => {
                   onChange={(e) => setFormNivelId(e.target.value)}
                 >
                   {niveis.map((nivel) => (
-                    <MenuItem key={nivel.id_nivel_ensino} value={String(nivel.id_nivel_ensino)}>
+                    <MenuItem
+                      key={nivel.id_nivel_ensino}
+                      value={String(nivel.id_nivel_ensino)}
+                    >
                       {nivel.nome}
                     </MenuItem>
                   ))}
@@ -1093,10 +1244,15 @@ const SecretariaTurmasPage: FC = () => {
           </Typography>
 
           {qtdAlunosTurmaSelecionada > 0 && (
-            <Typography variant="body2" color="error" sx={{ fontWeight: 500 }}>
+            <Typography
+              variant="body2"
+              color="error"
+              sx={{ fontWeight: 500 }}
+            >
               Atenção: existem {qtdAlunosTurmaSelecionada}{' '}
-              {qtdAlunosTurmaSelecionada === 1 ? 'aluno' : 'alunos'} com matrícula ativa vinculados
-              a esta turma. A exclusão poderá falhar se houver vínculos no sistema.
+              {qtdAlunosTurmaSelecionada === 1 ? 'aluno' : 'alunos'} com
+              matrícula ativa vinculados a esta turma. A exclusão poderá falhar
+              se houver vínculos no sistema.
             </Typography>
           )}
         </DialogContent>
