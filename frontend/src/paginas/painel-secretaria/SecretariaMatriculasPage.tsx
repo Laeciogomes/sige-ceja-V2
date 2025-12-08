@@ -12,6 +12,10 @@ import {
   Button,
   Chip,
   CircularProgress,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
   FormControl,
   InputAdornment,
   InputLabel,
@@ -65,6 +69,7 @@ interface AlunoRow {
 interface UsuarioRow {
   id: string
   name: string
+  email: string
 }
 
 interface NivelEnsinoRow {
@@ -82,6 +87,7 @@ interface TurmaRow {
   nome: string
   turno: string
   ano_letivo: number
+  id_nivel_ensino: number
 }
 
 interface MatriculaLista {
@@ -96,6 +102,12 @@ interface MatriculaLista {
   statusNome: string
   dataMatricula: string
   dataConclusao?: string | null
+}
+
+interface AlunoDisplay {
+  id_aluno: number
+  nome: string
+  email: string
 }
 
 const SecretariaMatriculasPage: FC = () => {
@@ -118,9 +130,31 @@ const SecretariaMatriculasPage: FC = () => {
     useState<NivelEnsinoRow[]>([])
   const [statusDisponiveis, setStatusDisponiveis] =
     useState<StatusMatriculaRow[]>([])
+  const [alunosDisponiveis, setAlunosDisponiveis] =
+    useState<AlunoDisplay[]>([])
+  const [turmasDisponiveis, setTurmasDisponiveis] = useState<TurmaRow[]>([])
 
   const [page, setPage] = useState(0)
   const [rowsPerPage, setRowsPerPage] = useState(10)
+
+  // Estado do diálogo de nova matrícula
+  const [novaAberta, setNovaAberta] = useState(false)
+  const [salvandoNova, setSalvandoNova] = useState(false)
+
+  const [novoAlunoId, setNovoAlunoId] = useState<number | ''>('')
+  const [novoNumeroInscricao, setNovoNumeroInscricao] = useState('')
+  const [novoNivelId, setNovoNivelId] = useState<number | ''>('')
+  const [novoStatusId, setNovoStatusId] = useState<number | ''>('')
+  const [novoTurmaId, setNovoTurmaId] = useState<number | ''>('')
+  const [novoAnoLetivo, setNovoAnoLetivo] = useState<string>(
+    new Date().getFullYear().toString(),
+  )
+  const [novaModalidade, setNovaModalidade] =
+    useState<string>('Orientação de Estudos')
+  const [novaDataMatricula, setNovaDataMatricula] = useState<string>(
+    new Date().toISOString().slice(0, 10),
+  )
+  const [novaDataConclusao, setNovaDataConclusao] = useState<string>('')
 
   const carregarDados = async () => {
     if (!supabase) return
@@ -158,7 +192,9 @@ const SecretariaMatriculasPage: FC = () => {
         supabase.from('status_matricula').select(
           'id_status_matricula, nome',
         ),
-        supabase.from('turmas').select('id_turma, nome, turno, ano_letivo'),
+        supabase
+          .from('turmas')
+          .select('id_turma, nome, turno, ano_letivo, id_nivel_ensino'),
       ])
 
       if (matriculasError) {
@@ -190,6 +226,7 @@ const SecretariaMatriculasPage: FC = () => {
 
       setNiveisDisponiveis(niveisList)
       setStatusDisponiveis(statusList)
+      setTurmasDisponiveis(turmasList)
 
       const anos = Array.from(
         new Set(matriculasList.map((m) => m.ano_letivo)),
@@ -207,11 +244,12 @@ const SecretariaMatriculasPage: FC = () => {
         ),
       )
 
+      // Também vamos precisar dos usuários para montar o dropdown de alunos
       let usuariosById = new Map<string, UsuarioRow>()
       if (userIds.length > 0) {
         const { data: usuariosData, error: usuariosError } = await supabase
           .from('usuarios')
-          .select('id, name')
+          .select('id, name, email')
           .in('id', userIds)
 
         if (usuariosError) {
@@ -223,6 +261,20 @@ const SecretariaMatriculasPage: FC = () => {
           usuariosList.forEach((u) => usuariosById.set(u.id, u))
         }
       }
+
+      // Monta lista de alunos para o formulário de nova matrícula
+      const alunosDisplay: AlunoDisplay[] = alunosList
+        .map((a) => {
+          const u = usuariosById.get(a.user_id)
+          return {
+            id_aluno: a.id_aluno,
+            nome: u?.name ?? 'Aluno sem vínculo de usuário',
+            email: u?.email ?? '',
+          }
+        })
+        .sort((a, b) => a.nome.localeCompare(b.nome))
+
+      setAlunosDisponiveis(alunosDisplay)
 
       const niveisById = new Map<number, NivelEnsinoRow>()
       niveisList.forEach((n) => niveisById.set(n.id_nivel_ensino, n))
@@ -280,10 +332,91 @@ const SecretariaMatriculasPage: FC = () => {
     setPage(0)
   }
 
-  const handleNovaMatricula = () => {
-    // Mesmo comportamento da versão original:
-    // apenas notifica que o formulário será aberto (fluxo completo vem depois)
+  const handleAbrirNovaMatricula = () => {
+    const hoje = new Date()
+    const hojeISO = hoje.toISOString().slice(0, 10)
+    const anoAtual = hoje.getFullYear().toString()
+
+    const statusAtivo = statusDisponiveis.find((s) =>
+      s.nome.toLowerCase().includes('ativo'),
+    )
+
+    setNovoAlunoId('')
+    setNovoNumeroInscricao('')
+    setNovoNivelId('')
+    setNovoStatusId(statusAtivo ? statusAtivo.id_status_matricula : '')
+    setNovoTurmaId('')
+    setNovoAnoLetivo(anoAtual)
+    setNovaModalidade('Orientação de Estudos')
+    setNovaDataMatricula(hojeISO)
+    setNovaDataConclusao('')
+    setNovaAberta(true)
+
     sucesso('Abrindo formulário de matrícula...', 'Nova Matrícula')
+  }
+
+  const handleFecharNovaMatricula = () => {
+    if (salvandoNova) return
+    setNovaAberta(false)
+  }
+
+  const handleSalvarNovaMatricula = async () => {
+    if (!supabase) return
+
+    if (
+      novoAlunoId === '' ||
+      novoNivelId === '' ||
+      novoStatusId === '' ||
+      !novoNumeroInscricao.trim() ||
+      !novoAnoLetivo.trim() ||
+      !novaDataMatricula
+    ) {
+      erro(
+        'Preencha aluno, nível, status, número de inscrição, ano letivo e data de matrícula.',
+      )
+      return
+    }
+
+    const ano = Number(novoAnoLetivo)
+    if (!Number.isFinite(ano)) {
+      erro('Ano letivo inválido.')
+      return
+    }
+
+    try {
+      setSalvandoNova(true)
+
+      const payload = {
+        id_aluno: novoAlunoId as number,
+        numero_inscricao: novoNumeroInscricao.trim(),
+        id_nivel_ensino: novoNivelId as number,
+        id_status_matricula: novoStatusId as number,
+        modalidade: novaModalidade || 'Orientação de Estudos',
+        ano_letivo: ano,
+        data_matricula: novaDataMatricula,
+        data_conclusao: novaDataConclusao || null,
+        id_turma: novoTurmaId === '' ? null : (novoTurmaId as number),
+      }
+
+      const { error: insertError } = await supabase
+        .from('matriculas')
+        .insert(payload)
+
+      if (insertError) {
+        console.error(insertError)
+        erro('Erro ao salvar matrícula.')
+        return
+      }
+
+      await carregarDados()
+      sucesso('Matrícula criada com sucesso.', 'Nova Matrícula')
+      setNovaAberta(false)
+    } catch (e) {
+      console.error(e)
+      erro('Erro inesperado ao salvar matrícula.')
+    } finally {
+      setSalvandoNova(false)
+    }
   }
 
   const matriculasFiltradas = useMemo(() => {
@@ -334,6 +467,24 @@ const SecretariaMatriculasPage: FC = () => {
       ),
     [matriculasFiltradas, page, rowsPerPage],
   )
+
+  const turmasFiltradas = useMemo(() => {
+    let lista = [...turmasDisponiveis]
+
+    if (novoNivelId !== '') {
+      const nivelIdNum = Number(novoNivelId)
+      lista = lista.filter((t) => t.id_nivel_ensino === nivelIdNum)
+    }
+
+    if (novoAnoLetivo.trim() !== '') {
+      const ano = Number(novoAnoLetivo)
+      if (Number.isFinite(ano)) {
+        lista = lista.filter((t) => t.ano_letivo === ano)
+      }
+    }
+
+    return lista
+  }, [turmasDisponiveis, novoNivelId, novoAnoLetivo])
 
   const headerBgColor =
     theme.palette.mode === 'light'
@@ -393,7 +544,7 @@ const SecretariaMatriculasPage: FC = () => {
           variant="contained"
           startIcon={<AddIcon />}
           sx={{ fontWeight: 600 }}
-          onClick={handleNovaMatricula}
+          onClick={handleAbrirNovaMatricula}
         >
           Nova matrícula
         </Button>
@@ -786,8 +937,9 @@ const SecretariaMatriculasPage: FC = () => {
                               <Button
                                 size="small"
                                 variant="text"
-                                // TODO: ligar com tela de detalhes de matrícula
-                                onClick={() => {}}
+                                onClick={() => {
+                                  // futuro: abrir detalhes da matrícula
+                                }}
                               >
                                 Detalhes
                               </Button>
@@ -814,6 +966,227 @@ const SecretariaMatriculasPage: FC = () => {
           </>
         )}
       </TableContainer>
+
+      {/* Dialog de nova matrícula */}
+      <Dialog
+        open={novaAberta}
+        onClose={handleFecharNovaMatricula}
+        fullWidth
+        maxWidth="md"
+      >
+        <DialogTitle>Nova matrícula</DialogTitle>
+        <DialogContent dividers>
+          <Stack spacing={3} sx={{ mt: 1 }}>
+            {/* Aluno + nº inscrição */}
+            <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
+              <FormControl fullWidth size="small">
+                <InputLabel id="novo-aluno-label">Aluno</InputLabel>
+                <Select
+                  labelId="novo-aluno-label"
+                  label="Aluno"
+                  value={novoAlunoId === '' ? '' : String(novoAlunoId)}
+                  onChange={(e) =>
+                    setNovoAlunoId(
+                      e.target.value === '' ? '' : Number(e.target.value),
+                    )
+                  }
+                  disabled={salvandoNova || alunosDisponiveis.length === 0}
+                >
+                  {alunosDisponiveis.map((aluno) => (
+                    <MenuItem
+                      key={aluno.id_aluno}
+                      value={String(aluno.id_aluno)}
+                    >
+                      <Stack
+                        direction="row"
+                        spacing={1}
+                        alignItems="center"
+                      >
+                        <Avatar
+                          sx={{
+                            width: 24,
+                            height: 24,
+                            bgcolor: alpha(
+                              theme.palette.primary.main,
+                              0.12,
+                            ),
+                            color: theme.palette.primary.main,
+                            fontSize: 12,
+                          }}
+                        >
+                          {aluno.nome.charAt(0).toUpperCase()}
+                        </Avatar>
+                        <Box>
+                          <Typography variant="body2">
+                            {aluno.nome}
+                          </Typography>
+                          {aluno.email && (
+                            <Typography
+                              variant="caption"
+                              color="text.secondary"
+                            >
+                              {aluno.email}
+                            </Typography>
+                          )}
+                        </Box>
+                      </Stack>
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+
+              <TextField
+                fullWidth
+                size="small"
+                label="Número de inscrição"
+                value={novoNumeroInscricao}
+                onChange={(e) => setNovoNumeroInscricao(e.target.value)}
+                disabled={salvandoNova}
+              />
+            </Stack>
+
+            {/* Nível, ano letivo, modalidade */}
+            <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
+              <FormControl fullWidth size="small">
+                <InputLabel id="novo-nivel-label">
+                  Nível de ensino
+                </InputLabel>
+                <Select
+                  labelId="novo-nivel-label"
+                  label="Nível de ensino"
+                  value={novoNivelId === '' ? '' : String(novoNivelId)}
+                  onChange={(e) =>
+                    setNovoNivelId(
+                      e.target.value === '' ? '' : Number(e.target.value),
+                    )
+                  }
+                  disabled={salvandoNova}
+                >
+                  {niveisDisponiveis.map((nivel) => (
+                    <MenuItem
+                      key={nivel.id_nivel_ensino}
+                      value={String(nivel.id_nivel_ensino)}
+                    >
+                      {nivel.nome}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+
+              <TextField
+                fullWidth
+                size="small"
+                label="Ano letivo"
+                type="number"
+                value={novoAnoLetivo}
+                onChange={(e) => setNovoAnoLetivo(e.target.value)}
+                disabled={salvandoNova}
+              />
+
+              <TextField
+                fullWidth
+                size="small"
+                label="Modalidade"
+                value={novaModalidade}
+                onChange={(e) => setNovaModalidade(e.target.value)}
+                disabled={salvandoNova}
+              />
+            </Stack>
+
+            {/* Status, datas */}
+            <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
+              <FormControl fullWidth size="small">
+                <InputLabel id="novo-status-label">Status</InputLabel>
+                <Select
+                  labelId="novo-status-label"
+                  label="Status"
+                  value={novoStatusId === '' ? '' : String(novoStatusId)}
+                  onChange={(e) =>
+                    setNovoStatusId(
+                      e.target.value === '' ? '' : Number(e.target.value),
+                    )
+                  }
+                  disabled={salvandoNova}
+                >
+                  {statusDisponiveis.map((s) => (
+                    <MenuItem
+                      key={s.id_status_matricula}
+                      value={String(s.id_status_matricula)}
+                    >
+                      {s.nome}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+
+              <TextField
+                fullWidth
+                size="small"
+                label="Data da matrícula"
+                type="date"
+                value={novaDataMatricula}
+                onChange={(e) => setNovaDataMatricula(e.target.value)}
+                InputLabelProps={{ shrink: true }}
+                disabled={salvandoNova}
+              />
+
+              <TextField
+                fullWidth
+                size="small"
+                label="Data de conclusão (opcional)"
+                type="date"
+                value={novaDataConclusao}
+                onChange={(e) => setNovaDataConclusao(e.target.value)}
+                InputLabelProps={{ shrink: true }}
+                disabled={salvandoNova}
+              />
+            </Stack>
+
+            {/* Turma */}
+            <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
+              <FormControl fullWidth size="small">
+                <InputLabel id="novo-turma-label">Turma</InputLabel>
+                <Select
+                  labelId="novo-turma-label"
+                  label="Turma"
+                  value={novoTurmaId === '' ? '' : String(novoTurmaId)}
+                  onChange={(e) =>
+                    setNovoTurmaId(
+                      e.target.value === '' ? '' : Number(e.target.value),
+                    )
+                  }
+                  disabled={salvandoNova || turmasFiltradas.length === 0}
+                  displayEmpty
+                >
+                  <MenuItem value="">
+                    <em>Sem turma vinculada</em>
+                  </MenuItem>
+                  {turmasFiltradas.map((t) => (
+                    <MenuItem key={t.id_turma} value={String(t.id_turma)}>
+                      {t.nome} — {t.turno} ({t.ano_letivo})
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Stack>
+          </Stack>
+        </DialogContent>
+        <DialogActions sx={{ p: 2 }}>
+          <Button
+            onClick={handleFecharNovaMatricula}
+            disabled={salvandoNova}
+          >
+            Cancelar
+          </Button>
+          <Button
+            variant="contained"
+            onClick={handleSalvarNovaMatricula}
+            disabled={salvandoNova}
+          >
+            {salvandoNova ? 'Salvando...' : 'Salvar matrícula'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   )
 }
