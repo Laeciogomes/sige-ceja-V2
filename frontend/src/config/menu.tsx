@@ -43,110 +43,110 @@ export const menusPorContexto: Record<ContextoPainel, ItemMenuConfig[]> = {
    */
   ADMIN: [
     // 1. Dashboard (Topo)
-    { 
-      id: 'admin-dashboard', 
-      rotulo: 'Visão Geral', 
-      caminho: '/admin', 
-      icone: <DashboardIcon /> 
+    {
+      id: 'admin-dashboard',
+      rotulo: 'Visão Geral',
+      caminho: '/admin',
+      icone: <DashboardIcon />,
     },
-    
+
     // --- SECRETARIA: ADMINISTRATIVO ---
-    { 
-      id: 'admin-sec-usuarios', 
-      rotulo: 'Usuários', 
-      caminho: '/secretaria/usuarios', 
-      icone: <PeopleIcon />, 
-      grupo: 'Administrativo' 
+    {
+      id: 'admin-sec-usuarios',
+      rotulo: 'Usuários',
+      caminho: '/secretaria/usuarios',
+      icone: <PeopleIcon />,
+      grupo: 'Administrativo',
     },
-    { 
-      id: 'admin-sec-turmas', 
-      rotulo: 'Turmas', 
-      caminho: '/secretaria/turmas', 
-      icone: <ClassIcon />, 
-      grupo: 'Administrativo' 
+    {
+      id: 'admin-sec-turmas',
+      rotulo: 'Turmas',
+      caminho: '/secretaria/turmas',
+      icone: <ClassIcon />,
+      grupo: 'Administrativo',
     },
-    { 
-      id: 'admin-sec-salas', 
-      rotulo: 'Salas', 
-      caminho: '/secretaria/salas', 
-      icone: <DoorFrontIcon />, 
-      grupo: 'Administrativo' 
+    {
+      id: 'admin-sec-salas',
+      rotulo: 'Salas',
+      caminho: '/secretaria/salas',
+      icone: <DoorFrontIcon />,
+      grupo: 'Administrativo',
     },
-    { 
-      id: 'admin-sec-areas', 
-      rotulo: 'Áreas de conhecimento', 
-      caminho: '/secretaria/areas-conhecimento', 
-      icone: <CategoryIcon />, 
-      grupo: 'Administrativo' 
+    {
+      id: 'admin-sec-areas',
+      rotulo: 'Áreas de conhecimento',
+      caminho: '/secretaria/areas-conhecimento',
+      icone: <CategoryIcon />,
+      grupo: 'Administrativo',
     },
-    { 
-      id: 'admin-sec-disciplinas', 
-      rotulo: 'Disciplinas', 
-      caminho: '/secretaria/disciplinas', 
-      icone: <MenuBookIcon />, 
-      grupo: 'Administrativo' 
+    {
+      id: 'admin-sec-disciplinas',
+      rotulo: 'Disciplinas',
+      caminho: '/secretaria/disciplinas',
+      icone: <MenuBookIcon />,
+      grupo: 'Administrativo',
     },
-    { 
-      id: 'admin-sec-protocolos', 
-      rotulo: 'Protocolos', 
-      caminho: '/secretaria/protocolos', 
-      icone: <DescriptionIcon />, 
-      grupo: 'Administrativo' 
+    {
+      id: 'admin-sec-protocolos',
+      rotulo: 'Protocolos',
+      caminho: '/secretaria/protocolos',
+      icone: <DescriptionIcon />,
+      grupo: 'Administrativo',
     },
 
     // --- SECRETARIA: ACADÊMICO ---
-    { 
-      id: 'admin-sec-matriculas', 
-      rotulo: 'Matrículas', 
-      caminho: '/secretaria/matriculas', 
-      icone: <AssignmentIndIcon />, 
-      grupo: 'Acadêmico' 
+    {
+      id: 'admin-sec-matriculas',
+      rotulo: 'Matrículas',
+      caminho: '/secretaria/matriculas',
+      icone: <AssignmentIndIcon />,
+      grupo: 'Acadêmico',
     },
-    { 
-      id: 'admin-sec-renovacoes', 
-      rotulo: 'Renovar matrícula', 
-      caminho: '/secretaria/renovacoes', 
-      icone: <AutorenewIcon />, 
-      grupo: 'Acadêmico' 
+    {
+      id: 'admin-sec-renovacoes',
+      rotulo: 'Renovar matrícula',
+      caminho: '/secretaria/renovacoes',
+      icone: <AutorenewIcon />,
+      grupo: 'Acadêmico',
     },
 
     // --- PEDAGÓGICO ---
-    { 
-      id: 'admin-ped-atendimentos', 
-      rotulo: 'Atendimentos', 
-      caminho: '/professores/atendimentos', 
-      icone: <MeetingRoomIcon />, 
-      grupo: 'Pedagógico' 
+    {
+      id: 'admin-ped-atendimentos',
+      rotulo: 'Atendimentos',
+      caminho: '/professores/atendimentos',
+      icone: <MeetingRoomIcon />,
+      grupo: 'Pedagógico',
     },
-    { 
-      id: 'admin-ped-acompanhamento', 
-      rotulo: 'Acompanhamento', 
-      caminho: '/coordenacao/acompanhamento', 
-      icone: <AssessmentIcon />, 
-      grupo: 'Pedagógico' 
+    {
+      id: 'admin-ped-acompanhamento',
+      rotulo: 'Acompanhamento',
+      caminho: '/coordenacao/acompanhamento',
+      icone: <AssessmentIcon />,
+      grupo: 'Pedagógico',
     },
-    { 
-      id: 'admin-ped-sasp', 
-      rotulo: 'SASP', 
-      caminho: '/coordenacao/sasp', 
-      icone: <ListAltIcon />, 
-      grupo: 'Pedagógico' 
+    {
+      id: 'admin-ped-sasp',
+      rotulo: 'SASP',
+      caminho: '/coordenacao/sasp',
+      icone: <ListAltIcon />,
+      grupo: 'Pedagógico',
     },
 
     // --- VISÃO ALUNO ---
-    { 
-      id: 'admin-aluno-matriculas', 
-      rotulo: 'Matrículas (Aluno)', 
-      caminho: '/alunos/matriculas', 
-      icone: <AssignmentIndIcon />, 
-      grupo: 'Visão Aluno' 
+    {
+      id: 'admin-aluno-matriculas',
+      rotulo: 'Matrículas (Aluno)',
+      caminho: '/alunos/matriculas',
+      icone: <AssignmentIndIcon />,
+      grupo: 'Visão Aluno',
     },
-    { 
-      id: 'admin-aluno-progresso', 
-      rotulo: 'Progresso (Aluno)', 
-      caminho: '/alunos/progresso', 
-      icone: <AssessmentIcon />, 
-      grupo: 'Visão Aluno' 
+    {
+      id: 'admin-aluno-progresso',
+      rotulo: 'Progresso (Aluno)',
+      caminho: '/alunos/progresso',
+      icone: <AssessmentIcon />,
+      grupo: 'Visão Aluno',
     },
   ],
 
@@ -154,67 +154,74 @@ export const menusPorContexto: Record<ContextoPainel, ItemMenuConfig[]> = {
    * SECRETARIA
    */
   SECRETARIA: [
-    { 
-      id: 'sec-dashboard', 
-      rotulo: 'Dashboard', 
-      caminho: '/secretaria', 
-      icone: <DashboardIcon /> 
+    {
+      id: 'sec-dashboard',
+      rotulo: 'Dashboard',
+      caminho: '/secretaria',
+      icone: <DashboardIcon />,
     },
-    { 
-      id: 'sec-usuarios', 
-      rotulo: 'Usuários', 
-      caminho: '/secretaria/usuarios', 
-      icone: <PeopleIcon />, 
-      grupo: 'Gestão' 
+    {
+      id: 'sec-usuarios',
+      rotulo: 'Usuários',
+      caminho: '/secretaria/usuarios',
+      icone: <PeopleIcon />,
+      grupo: 'Gestão',
     },
-    { 
-      id: 'sec-turmas', 
-      rotulo: 'Turmas', 
-      caminho: '/secretaria/turmas', 
-      icone: <ClassIcon />, 
-      grupo: 'Gestão' 
+    {
+      id: 'sec-turmas',
+      rotulo: 'Turmas',
+      caminho: '/secretaria/turmas',
+      icone: <ClassIcon />,
+      grupo: 'Gestão',
     },
-    { 
-      id: 'sec-salas', 
-      rotulo: 'Salas', 
-      caminho: '/secretaria/salas', 
-      icone: <DoorFrontIcon />, 
-      grupo: 'Gestão' 
+    {
+      id: 'sec-salas',
+      rotulo: 'Salas',
+      caminho: '/secretaria/salas',
+      icone: <DoorFrontIcon />,
+      grupo: 'Gestão',
     },
-    { 
-      id: 'sec-areas', 
-      rotulo: 'Áreas de conhecimento', 
-      caminho: '/secretaria/areas-conhecimento', 
-      icone: <CategoryIcon />, 
-      grupo: 'Gestão' 
+    {
+      id: 'sec-areas',
+      rotulo: 'Áreas de conhecimento',
+      caminho: '/secretaria/areas-conhecimento',
+      icone: <CategoryIcon />,
+      grupo: 'Gestão',
     },
-    { 
-      id: 'sec-disciplinas', 
-      rotulo: 'Disciplinas', 
-      caminho: '/secretaria/disciplinas', 
-      icone: <MenuBookIcon />, 
-      grupo: 'Gestão' 
+    {
+      id: 'sec-disciplinas',
+      rotulo: 'Disciplinas',
+      caminho: '/secretaria/disciplinas',
+      icone: <MenuBookIcon />,
+      grupo: 'Gestão',
     },
-    { 
-      id: 'sec-protocolos', 
-      rotulo: 'Protocolos', 
-      caminho: '/secretaria/protocolos', 
-      icone: <DescriptionIcon />, 
-      grupo: 'Atendimento' 
+    {
+      id: 'sec-protocolos',
+      rotulo: 'Protocolos',
+      caminho: '/secretaria/protocolos',
+      icone: <DescriptionIcon />,
+      grupo: 'Atendimento',
     },
-    { 
-      id: 'sec-matriculas', 
-      rotulo: 'Matrículas', 
-      caminho: '/secretaria/matriculas', 
-      icone: <AssignmentIndIcon />, 
-      grupo: 'Atendimento' 
+    {
+      id: 'sec-matriculas',
+      rotulo: 'Matrículas',
+      caminho: '/secretaria/matriculas',
+      icone: <AssignmentIndIcon />,
+      grupo: 'Atendimento',
     },
-    { 
-      id: 'sec-renovacoes', 
-      rotulo: 'Renovar matrícula', 
-      caminho: '/secretaria/renovacoes', 
-      icone: <AutorenewIcon />, 
-      grupo: 'Atendimento' 
+    {
+      id: 'sec-renovacoes',
+      rotulo: 'Renovar matrícula',
+      caminho: '/secretaria/renovacoes',
+      icone: <AutorenewIcon />,
+      grupo: 'Atendimento',
+    },
+    {
+      id: 'sec-relatorios-fichas',
+      rotulo: 'Relatórios e fichas',
+      caminho: '/secretaria/relatorios-fichas',
+      icone: <DescriptionIcon />,
+      grupo: 'Relatórios',
     },
   ],
 
@@ -222,25 +229,25 @@ export const menusPorContexto: Record<ContextoPainel, ItemMenuConfig[]> = {
    * PROFESSOR
    */
   PROFESSOR: [
-    { 
-      id: 'prof-dashboard', 
-      rotulo: 'Dashboard', 
-      caminho: '/professores', 
-      icone: <DashboardIcon /> 
+    {
+      id: 'prof-dashboard',
+      rotulo: 'Dashboard',
+      caminho: '/professores',
+      icone: <DashboardIcon />,
     },
-    { 
-      id: 'prof-atendimentos', 
-      rotulo: 'Meus Atendimentos', 
-      caminho: '/professores/atendimentos', 
-      icone: <MeetingRoomIcon />, 
-      grupo: 'Pedagógico' 
+    {
+      id: 'prof-atendimentos',
+      rotulo: 'Meus Atendimentos',
+      caminho: '/professores/atendimentos',
+      icone: <MeetingRoomIcon />,
+      grupo: 'Pedagógico',
     },
-    { 
-      id: 'prof-acompanhamento', 
-      rotulo: 'Acompanhamento', 
-      caminho: '/professores/acompanhamento', 
-      icone: <AssessmentIcon />, 
-      grupo: 'Pedagógico' 
+    {
+      id: 'prof-acompanhamento',
+      rotulo: 'Acompanhamento',
+      caminho: '/professores/acompanhamento',
+      icone: <AssessmentIcon />,
+      grupo: 'Pedagógico',
     },
   ],
 
@@ -248,81 +255,81 @@ export const menusPorContexto: Record<ContextoPainel, ItemMenuConfig[]> = {
    * COORDENAÇÃO
    */
   COORDENACAO: [
-    { 
-      id: 'coord-dashboard', 
-      rotulo: 'Dashboard', 
-      caminho: '/coordenacao', 
-      icone: <DashboardIcon /> 
+    {
+      id: 'coord-dashboard',
+      rotulo: 'Dashboard',
+      caminho: '/coordenacao',
+      icone: <DashboardIcon />,
     },
-    { 
-      id: 'coord-usuarios', 
-      rotulo: 'Usuários', 
-      caminho: '/secretaria/usuarios', 
-      icone: <PeopleIcon />, 
-      grupo: 'Administração' 
+    {
+      id: 'coord-usuarios',
+      rotulo: 'Usuários',
+      caminho: '/secretaria/usuarios',
+      icone: <PeopleIcon />,
+      grupo: 'Administração',
     },
-    { 
-      id: 'coord-turmas', 
-      rotulo: 'Turmas', 
-      caminho: '/secretaria/turmas', 
-      icone: <ClassIcon />, 
-      grupo: 'Administração' 
+    {
+      id: 'coord-turmas',
+      rotulo: 'Turmas',
+      caminho: '/secretaria/turmas',
+      icone: <ClassIcon />,
+      grupo: 'Administração',
     },
-    { 
-      id: 'coord-salas', 
-      rotulo: 'Salas', 
-      caminho: '/secretaria/salas', 
-      icone: <DoorFrontIcon />, 
-      grupo: 'Administração' 
+    {
+      id: 'coord-salas',
+      rotulo: 'Salas',
+      caminho: '/secretaria/salas',
+      icone: <DoorFrontIcon />,
+      grupo: 'Administração',
     },
-    { 
-      id: 'coord-areas', 
-      rotulo: 'Áreas de conhecimento', 
-      caminho: '/secretaria/areas-conhecimento', 
-      icone: <CategoryIcon />, 
-      grupo: 'Administração' 
+    {
+      id: 'coord-areas',
+      rotulo: 'Áreas de conhecimento',
+      caminho: '/secretaria/areas-conhecimento',
+      icone: <CategoryIcon />,
+      grupo: 'Administração',
     },
-    { 
-      id: 'coord-disciplinas', 
-      rotulo: 'Disciplinas', 
-      caminho: '/secretaria/disciplinas', 
-      icone: <MenuBookIcon />, 
-      grupo: 'Administração' 
+    {
+      id: 'coord-disciplinas',
+      rotulo: 'Disciplinas',
+      caminho: '/secretaria/disciplinas',
+      icone: <MenuBookIcon />,
+      grupo: 'Administração',
     },
-    { 
-      id: 'coord-protocolos', 
-      rotulo: 'Protocolos', 
-      caminho: '/secretaria/protocolos', 
-      icone: <DescriptionIcon />, 
-      grupo: 'Secretaria' 
+    {
+      id: 'coord-protocolos',
+      rotulo: 'Protocolos',
+      caminho: '/secretaria/protocolos',
+      icone: <DescriptionIcon />,
+      grupo: 'Secretaria',
     },
-    { 
-      id: 'coord-matriculas', 
-      rotulo: 'Matrículas', 
-      caminho: '/secretaria/matriculas', 
-      icone: <AssignmentIndIcon />, 
-      grupo: 'Secretaria' 
+    {
+      id: 'coord-matriculas',
+      rotulo: 'Matrículas',
+      caminho: '/secretaria/matriculas',
+      icone: <AssignmentIndIcon />,
+      grupo: 'Secretaria',
     },
-    { 
-      id: 'coord-renovacoes', 
-      rotulo: 'Renovar matrícula', 
-      caminho: '/secretaria/renovacoes', 
-      icone: <AutorenewIcon />, 
-      grupo: 'Secretaria' 
+    {
+      id: 'coord-renovacoes',
+      rotulo: 'Renovar matrícula',
+      caminho: '/secretaria/renovacoes',
+      icone: <AutorenewIcon />,
+      grupo: 'Secretaria',
     },
-    { 
-      id: 'coord-sasp', 
-      rotulo: 'SASP', 
-      caminho: '/coordenacao/sasp', 
-      icone: <ListAltIcon />, 
-      grupo: 'Pedagógico' 
+    {
+      id: 'coord-sasp',
+      rotulo: 'SASP',
+      caminho: '/coordenacao/sasp',
+      icone: <ListAltIcon />,
+      grupo: 'Pedagógico',
     },
-    { 
-      id: 'coord-acompanhamento', 
-      rotulo: 'Acompanhamento', 
-      caminho: '/coordenacao/acompanhamento', 
-      icone: <AssessmentIcon />, 
-      grupo: 'Pedagógico' 
+    {
+      id: 'coord-acompanhamento',
+      rotulo: 'Acompanhamento',
+      caminho: '/coordenacao/acompanhamento',
+      icone: <AssessmentIcon />,
+      grupo: 'Pedagógico',
     },
   ],
 
@@ -330,81 +337,81 @@ export const menusPorContexto: Record<ContextoPainel, ItemMenuConfig[]> = {
    * DIREÇÃO
    */
   DIRECAO: [
-    { 
-      id: 'dir-dashboard', 
-      rotulo: 'Dashboard', 
-      caminho: '/direcao', 
-      icone: <DashboardIcon /> 
+    {
+      id: 'dir-dashboard',
+      rotulo: 'Dashboard',
+      caminho: '/direcao',
+      icone: <DashboardIcon />,
     },
-    { 
-      id: 'dir-usuarios', 
-      rotulo: 'Usuários', 
-      caminho: '/secretaria/usuarios', 
-      icone: <PeopleIcon />, 
-      grupo: 'Gestão Escolar' 
+    {
+      id: 'dir-usuarios',
+      rotulo: 'Usuários',
+      caminho: '/secretaria/usuarios',
+      icone: <PeopleIcon />,
+      grupo: 'Gestão Escolar',
     },
-    { 
-      id: 'dir-turmas', 
-      rotulo: 'Turmas', 
-      caminho: '/secretaria/turmas', 
-      icone: <ClassIcon />, 
-      grupo: 'Gestão Escolar' 
+    {
+      id: 'dir-turmas',
+      rotulo: 'Turmas',
+      caminho: '/secretaria/turmas',
+      icone: <ClassIcon />,
+      grupo: 'Gestão Escolar',
     },
-    { 
-      id: 'dir-salas', 
-      rotulo: 'Salas', 
-      caminho: '/secretaria/salas', 
-      icone: <DoorFrontIcon />, 
-      grupo: 'Gestão Escolar' 
+    {
+      id: 'dir-salas',
+      rotulo: 'Salas',
+      caminho: '/secretaria/salas',
+      icone: <DoorFrontIcon />,
+      grupo: 'Gestão Escolar',
     },
-    { 
-      id: 'dir-areas', 
-      rotulo: 'Áreas de conhecimento', 
-      caminho: '/secretaria/areas-conhecimento', 
-      icone: <CategoryIcon />, 
-      grupo: 'Gestão Escolar' 
+    {
+      id: 'dir-areas',
+      rotulo: 'Áreas de conhecimento',
+      caminho: '/secretaria/areas-conhecimento',
+      icone: <CategoryIcon />,
+      grupo: 'Gestão Escolar',
     },
-    { 
-      id: 'dir-disciplinas', 
-      rotulo: 'Disciplinas', 
-      caminho: '/secretaria/disciplinas', 
-      icone: <MenuBookIcon />, 
-      grupo: 'Gestão Escolar' 
+    {
+      id: 'dir-disciplinas',
+      rotulo: 'Disciplinas',
+      caminho: '/secretaria/disciplinas',
+      icone: <MenuBookIcon />,
+      grupo: 'Gestão Escolar',
     },
-    { 
-      id: 'dir-protocolos', 
-      rotulo: 'Protocolos', 
-      caminho: '/secretaria/protocolos', 
-      icone: <DescriptionIcon />, 
-      grupo: 'Secretaria' 
+    {
+      id: 'dir-protocolos',
+      rotulo: 'Protocolos',
+      caminho: '/secretaria/protocolos',
+      icone: <DescriptionIcon />,
+      grupo: 'Secretaria',
     },
-    { 
-      id: 'dir-matriculas', 
-      rotulo: 'Matrículas', 
-      caminho: '/secretaria/matriculas', 
-      icone: <AssignmentIndIcon />, 
-      grupo: 'Secretaria' 
+    {
+      id: 'dir-matriculas',
+      rotulo: 'Matrículas',
+      caminho: '/secretaria/matriculas',
+      icone: <AssignmentIndIcon />,
+      grupo: 'Secretaria',
     },
-    { 
-      id: 'dir-renovacoes', 
-      rotulo: 'Renovar matrícula', 
-      caminho: '/secretaria/renovacoes', 
-      icone: <AutorenewIcon />, 
-      grupo: 'Secretaria' 
+    {
+      id: 'dir-renovacoes',
+      rotulo: 'Renovar matrícula',
+      caminho: '/secretaria/renovacoes',
+      icone: <AutorenewIcon />,
+      grupo: 'Secretaria',
     },
-    { 
-      id: 'dir-sasp', 
-      rotulo: 'SASP', 
-      caminho: '/direcao/sasp', 
-      icone: <ListAltIcon />, 
-      grupo: 'Pedagógico' 
+    {
+      id: 'dir-sasp',
+      rotulo: 'SASP',
+      caminho: '/direcao/sasp',
+      icone: <ListAltIcon />,
+      grupo: 'Pedagógico',
     },
-    { 
-      id: 'dir-acompanhamento', 
-      rotulo: 'Acompanhamento', 
-      caminho: '/direcao/acompanhamento', 
-      icone: <AssessmentIcon />, 
-      grupo: 'Pedagógico' 
+    {
+      id: 'dir-acompanhamento',
+      rotulo: 'Acompanhamento',
+      caminho: '/direcao/acompanhamento',
+      icone: <AssessmentIcon />,
+      grupo: 'Pedagógico',
     },
   ],
 
@@ -412,25 +419,25 @@ export const menusPorContexto: Record<ContextoPainel, ItemMenuConfig[]> = {
    * ALUNO
    */
   ALUNO: [
-    { 
-      id: 'aluno-dashboard', 
-      rotulo: 'Minha área', 
-      caminho: '/alunos', 
-      icone: <DashboardIcon /> 
+    {
+      id: 'aluno-dashboard',
+      rotulo: 'Minha área',
+      caminho: '/alunos',
+      icone: <DashboardIcon />,
     },
-    { 
-      id: 'aluno-matriculas', 
-      rotulo: 'Minhas matrículas', 
-      caminho: '/alunos/matriculas', 
-      icone: <AssignmentIndIcon />, 
-      grupo: 'Secretaria' 
+    {
+      id: 'aluno-matriculas',
+      rotulo: 'Minhas matrículas',
+      caminho: '/alunos/matriculas',
+      icone: <AssignmentIndIcon />,
+      grupo: 'Secretaria',
     },
-    { 
-      id: 'aluno-progresso', 
-      rotulo: 'Meu progresso', 
-      caminho: '/alunos/progresso', 
-      icone: <AssessmentIcon />, 
-      grupo: 'Acadêmico' 
+    {
+      id: 'aluno-progresso',
+      rotulo: 'Meu progresso',
+      caminho: '/alunos/progresso',
+      icone: <AssessmentIcon />,
+      grupo: 'Acadêmico',
     },
   ],
 }

@@ -26,6 +26,7 @@ import SecretariaAreasConhecimentoPage from '../paginas/painel-secretaria/Secret
 import SecretariaSalasPage from '../paginas/painel-secretaria/SecretariaSalasPage'
 import SecretariaProtocolosPage from '../paginas/painel-secretaria/SecretariaProtocolosPage'
 import SecretariaTurmaAlunosPage from '../paginas/painel-secretaria/SecretariaTurmaAlunosPage'
+import SecretariaRelatoriosFichasPage from '../paginas/painel-secretaria/SecretariaRelatoriosFichasPage'
 
 export const AppRoutes: React.FC = () => {
   // Inclui "carregando" para evitar redirecionar enquanto a sessão está sendo restaurada
@@ -100,6 +101,10 @@ export const AppRoutes: React.FC = () => {
           <Route
             path="renovacoes"
             element={<PaginaSimples titulo="Renovar matrícula" />}
+          />
+          <Route
+            path="relatorios-fichas"
+            element={<SecretariaRelatoriosFichasPage />}
           />
         </Route>
 
