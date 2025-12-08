@@ -103,7 +103,7 @@ const SecretariaMatriculasPage: FC = () => {
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'))
 
   const { supabase } = useSupabase()
-  const { erro } = useNotificacaoContext()
+  const { erro, sucesso } = useNotificacaoContext()
 
   const [matriculas, setMatriculas] = useState<MatriculaLista[]>([])
   const [carregando, setCarregando] = useState<boolean>(true)
@@ -280,6 +280,12 @@ const SecretariaMatriculasPage: FC = () => {
     setPage(0)
   }
 
+  const handleNovaMatricula = () => {
+    // Mesmo comportamento da versão original:
+    // apenas notifica que o formulário será aberto (fluxo completo vem depois)
+    sucesso('Abrindo formulário de matrícula...', 'Nova Matrícula')
+  }
+
   const matriculasFiltradas = useMemo(() => {
     let lista = [...matriculas]
 
@@ -387,8 +393,7 @@ const SecretariaMatriculasPage: FC = () => {
           variant="contained"
           startIcon={<AddIcon />}
           sx={{ fontWeight: 600 }}
-          // TODO: ligar com fluxo de nova matrícula
-          onClick={() => {}}
+          onClick={handleNovaMatricula}
         >
           Nova matrícula
         </Button>
