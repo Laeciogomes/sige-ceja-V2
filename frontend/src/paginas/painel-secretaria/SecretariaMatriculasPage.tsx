@@ -1,13 +1,15 @@
 // src/paginas/painel-secretaria/SecretariaMatriculasPage.tsx
 
 import {
-  useEffect,
-  useMemo,
-  useState,
-  useRef,
   type FC,
   type ChangeEvent,
+  useState,
+  useEffect,
+  useMemo,
+  useRef,
 } from 'react'
+
+
 import {
   Avatar,
   Box,
@@ -43,6 +45,7 @@ import {
   ListItemText,
   Divider,
   Switch,
+  IconButton,
 } from '@mui/material'
 
 import SearchIcon from '@mui/icons-material/Search'
@@ -56,9 +59,12 @@ import AccessibleIcon from '@mui/icons-material/Accessible'
 import RestaurantIcon from '@mui/icons-material/Restaurant'
 import LocalAtmIcon from '@mui/icons-material/LocalAtm'
 import PhotoCameraIcon from '@mui/icons-material/PhotoCamera'
+import EditIcon from '@mui/icons-material/Edit'
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
 
 import { useSupabase } from '../../contextos/SupabaseContext'
 import { useNotificacaoContext } from '../../contextos/NotificacaoContext'
+
 
 // Tipo de usuário ALUNO na tabela tipos_usuario
 const TIPO_USUARIO_ALUNO_ID = 5
@@ -307,9 +313,30 @@ const SecretariaMatriculasPage: FC = () => {
   const [disciplinasProgressaoIds, setDisciplinasProgressaoIds] =
     useState<number[]>([])
 
-  // Ficha de matrícula selecionada
+    // Ficha de matrícula selecionada
   const [matriculaSelecionada, setMatriculaSelecionada] =
     useState<MatriculaLista | null>(null)
+
+  // Edição de matrícula
+  const [editarAberto, setEditarAberto] = useState(false)
+  const [salvandoEdicao, setSalvandoEdicao] = useState(false)
+  const [editandoMatricula, setEditandoMatricula] =
+    useState<MatriculaLista | null>(null)
+
+  const [editNumeroInscricao, setEditNumeroInscricao] = useState('')
+  const [editNivelId, setEditNivelId] = useState<string>('')
+  const [editStatusId, setEditStatusId] = useState<string>('')
+  const [editAnoLetivo, setEditAnoLetivo] = useState<string>('')
+  const [editModalidade, setEditModalidade] = useState<string>('')
+  const [editDataMatricula, setEditDataMatricula] = useState<string>('')
+  const [editDataConclusao, setEditDataConclusao] = useState<string>('')
+  const [editTurmaId, setEditTurmaId] = useState<string>('')
+
+  // Exclusão de matrícula
+  const [dialogExcluirAberto, setDialogExcluirAberto] = useState(false)
+  const [matriculaParaExcluir, setMatriculaParaExcluir] =
+    useState<MatriculaLista | null>(null)
+  const [excluindoMatricula, setExcluindoMatricula] = useState(false)
 
   // === Helpers ===
 
@@ -650,6 +677,236 @@ const SecretariaMatriculasPage: FC = () => {
       setCarregando(false)
     }
   }
+
+    const abrirDialogEditarMatricula = (matricula: MatriculaLista) => {
+    setEditandoMatricula(matricula)
+
+    setEditNumeroInscricao(matricula.numeroInscricao ?? '')
+    setEditAnoLetivo(
+      matricula.anoLetivo != null
+        ? String(matricula.anoLetivo)
+        : new Date().getFullYear().toString(),
+    )
+
+    const nivelRow = niveisDisponiveis.find(
+      (n) => n.nome === matricula.nivelNome,
+    )
+    setEditNivelId(
+      nivelRow ? String(nivelRow.id_nivel_ensino) : '',
+    )
+
+    const statusRow = statusDisponiveis.find(
+      (s) => s.nome === matricula.statusNome,
+    )
+    setEditStatusId(
+      statusRow ? String(statusRow.id_status_matricula) : '',
+    )
+
+    let turmaId = ''
+    if (matricula.turmaNome) {
+      const turmaRow = turmasDisponiveis.find((t) => {
+        const mesmoNome = t.nome === matricula.turmaNome
+        const mesmoAno =
+          matricula.anoLetivo != null
+            ? t.ano_letivo === matricula.anoLetivo
+            : true
+        const mesmoTurno = matricula.turno
+          ? t.turno === matricula.turno
+          : true
+        return mesmoNome && mesmoAno && mesmoTurno
+      })
+      if (turmaRow) {
+        turmaId = String(turmaRow.id_turma)
+      }
+    }
+    setEditTurmaId(turmaId)
+
+    setEditModalidade(matricula.modalidade ?? '')
+    setEditDataMatricula(
+      matricula.dataMatricula ??
+        new Date().toISOString().slice(0, 10),
+    )
+    setEditDataConclusao(matricula.dataConclusao ?? '')
+
+    setEditarAberto(true)
+  }
+
+  const handleFecharEditarMatricula = () => {
+    if (salvandoEdicao) return
+    setEditarAberto(false)
+    setEditandoMatricula(null)
+  }
+
+  const handleSalvarEdicaoMatricula = async () => {
+    if (!supabase || !editandoMatricula) return
+
+    const numeroInscricao = editNumeroInscricao.trim() || null
+    const nivelId =
+      editNivelId.trim() === '' ? null : Number(editNivelId)
+    const statusId =
+      editStatusId.trim() === '' ? null : Number(editStatusId)
+    const turmaId =
+      editTurmaId.trim() === '' ? null : Number(editTurmaId)
+    const ano =
+      editAnoLetivo.trim() === '' ? null : Number(editAnoLetivo)
+    const dataMatricula =
+      editDataMatricula.trim() === ''
+        ? null
+        : editDataMatricula
+    const dataConclusao =
+      editDataConclusao.trim() === ''
+        ? null
+        : editDataConclusao
+    const modalidade = editModalidade.trim() || null
+
+    try {
+      setSalvandoEdicao(true)
+
+      const { data, error } = await supabase
+        .from('matriculas')
+        .update({
+          numero_inscricao: numeroInscricao,
+          id_nivel_ensino: nivelId,
+          id_status_matricula: statusId,
+          id_turma: turmaId,
+          ano_letivo: ano,
+          data_matricula: dataMatricula,
+          data_conclusao: dataConclusao,
+          modalidade,
+        })
+        .eq('id_matricula', editandoMatricula.id)
+        .select(
+          'id_matricula, id_aluno, numero_inscricao, id_nivel_ensino, id_status_matricula, modalidade, ano_letivo, data_matricula, data_conclusao, id_turma',
+        )
+        .maybeSingle<MatriculaRow>()
+
+      if (error) {
+        console.error(error)
+        erro('Erro ao atualizar matrícula.')
+        return
+      }
+
+      if (data) {
+        const nivel = data.id_nivel_ensino
+          ? niveisDisponiveis.find(
+              (n) => n.id_nivel_ensino === data.id_nivel_ensino,
+            )
+          : undefined
+
+        const status = data.id_status_matricula
+          ? statusDisponiveis.find(
+              (s) =>
+                s.id_status_matricula === data.id_status_matricula,
+            )
+          : undefined
+
+        const turma = data.id_turma
+          ? turmasDisponiveis.find(
+              (t) => t.id_turma === data.id_turma,
+            )
+          : undefined
+
+        setMatriculas((prev) =>
+          prev.map((m) =>
+            m.id === data.id_matricula
+              ? {
+                  ...m,
+                  numeroInscricao: data.numero_inscricao,
+                  anoLetivo: data.ano_letivo,
+                  nivelNome: nivel?.nome ?? m.nivelNome,
+                  turmaNome: turma?.nome ?? null,
+                  turno: turma?.turno ?? null,
+                  modalidade: data.modalidade,
+                  statusNome: status?.nome ?? m.statusNome,
+                  dataMatricula: data.data_matricula,
+                  dataConclusao: data.data_conclusao,
+                }
+              : m,
+          ),
+        )
+
+        setMatriculaSelecionada((atual) =>
+          atual && atual.id === data.id_matricula
+            ? {
+                ...atual,
+                numeroInscricao: data.numero_inscricao,
+                anoLetivo: data.ano_letivo,
+                nivelNome: nivel?.nome ?? atual.nivelNome,
+                turmaNome: turma?.nome ?? null,
+                turno: turma?.turno ?? null,
+                modalidade: data.modalidade,
+                statusNome: status?.nome ?? atual.statusNome,
+                dataMatricula: data.data_matricula,
+                dataConclusao: data.data_conclusao,
+              }
+            : atual,
+        )
+      }
+
+      sucesso('Matrícula atualizada com sucesso.')
+      setEditarAberto(false)
+      setEditandoMatricula(null)
+    } catch (e) {
+      console.error(e)
+      erro('Erro inesperado ao atualizar matrícula.')
+    } finally {
+      setSalvandoEdicao(false)
+    }
+  }
+
+  const abrirDialogExcluirMatricula = (matricula: MatriculaLista) => {
+    setMatriculaParaExcluir(matricula)
+    setDialogExcluirAberto(true)
+  }
+
+  const fecharDialogExcluirMatricula = () => {
+    if (excluindoMatricula) return
+    setDialogExcluirAberto(false)
+    setMatriculaParaExcluir(null)
+  }
+
+  const handleConfirmarExcluirMatricula = async () => {
+    if (!supabase || !matriculaParaExcluir) return
+
+    try {
+      setExcluindoMatricula(true)
+
+      const { error } = await supabase
+        .from('matriculas')
+        .delete()
+        .eq('id_matricula', matriculaParaExcluir.id)
+
+      if (error) {
+        console.error(error)
+        if (error.code === '23503') {
+          erro(
+            'Não é possível excluir esta matrícula porque existem registros vinculados (progresso, atendimentos ou protocolos).',
+          )
+        } else {
+          erro('Erro ao excluir matrícula.')
+        }
+        return
+      }
+
+      setMatriculas((prev) =>
+        prev.filter((m) => m.id !== matriculaParaExcluir.id),
+      )
+
+      setMatriculaSelecionada((atual) =>
+        atual && atual.id === matriculaParaExcluir.id ? null : atual,
+      )
+
+      sucesso('Matrícula excluída com sucesso.')
+      setDialogExcluirAberto(false)
+      setMatriculaParaExcluir(null)
+    } catch (e) {
+      console.error(e)
+      erro('Erro inesperado ao excluir matrícula.')
+    } finally {
+      setExcluindoMatricula(false)
+    }
+  }
+
 
   useEffect(() => {
     void carregarDados()
@@ -1430,14 +1687,39 @@ const SecretariaMatriculasPage: FC = () => {
                       </Stack>
 
                       <Box sx={{ pt: 1, textAlign: 'right' }}>
-                        <Button
-                          size="small"
-                          variant="text"
-                          onClick={() => setMatriculaSelecionada(m)}
+                        <Stack
+                          direction="row"
+                          spacing={1}
+                          justifyContent="flex-end"
                         >
-                          Ver ficha
-                        </Button>
+                          <Button
+                            size="small"
+                            variant="text"
+                            onClick={() => setMatriculaSelecionada(m)}
+                            disabled={salvandoEdicao || excluindoMatricula}
+                          >
+                            Ver ficha
+                          </Button>
+                          <Button
+                            size="small"
+                            variant="text"
+                            onClick={() => abrirDialogEditarMatricula(m)}
+                            disabled={salvandoEdicao || excluindoMatricula}
+                          >
+                            Editar
+                          </Button>
+                          <Button
+                            size="small"
+                            color="error"
+                            variant="text"
+                            onClick={() => abrirDialogExcluirMatricula(m)}
+                            disabled={excluindoMatricula}
+                          >
+                            Excluir
+                          </Button>
+                        </Stack>
                       </Box>
+
                     </Stack>
                   </Paper>
                 )
@@ -1617,24 +1899,49 @@ const SecretariaMatriculasPage: FC = () => {
                         )}
                       </TableCell>
                       <TableCell align="right">
-                        <Stack
-                          direction="row"
-                          spacing={1}
-                          justifyContent="flex-end"
-                        >
-                          <Tooltip title="Ver ficha completa do aluno e da matrícula">
-                            <span>
-                              <Button
-                                size="small"
-                                variant="text"
-                                onClick={() => setMatriculaSelecionada(m)}
-                              >
-                                Detalhes
-                              </Button>
-                            </span>
-                          </Tooltip>
-                        </Stack>
-                      </TableCell>
+  <Stack
+    direction="row"
+    spacing={1}
+    justifyContent="flex-end"
+  >
+    <Tooltip title="Ver ficha completa do aluno e da matrícula">
+      <span>
+        <Button
+          size="small"
+          variant="text"
+          onClick={() => setMatriculaSelecionada(m)}
+          disabled={salvandoEdicao || excluindoMatricula}
+        >
+          Detalhes
+        </Button>
+      </span>
+    </Tooltip>
+    <Tooltip title="Editar matrícula">
+      <span>
+        <IconButton
+          size="small"
+          onClick={() => abrirDialogEditarMatricula(m)}
+          disabled={salvandoEdicao || excluindoMatricula}
+        >
+          <EditIcon fontSize="small" />
+        </IconButton>
+      </span>
+    </Tooltip>
+    <Tooltip title="Excluir matrícula">
+      <span>
+        <IconButton
+          size="small"
+          color="error"
+          onClick={() => abrirDialogExcluirMatricula(m)}
+          disabled={excluindoMatricula}
+        >
+          <DeleteOutlineIcon fontSize="small" />
+        </IconButton>
+      </span>
+    </Tooltip>
+  </Stack>
+</TableCell>
+
                     </TableRow>
                   )
                 })}
@@ -2348,6 +2655,308 @@ const SecretariaMatriculasPage: FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
+
+            {/* Dialog Editar matrícula */}
+      <Dialog
+        open={editarAberto}
+        onClose={handleFecharEditarMatricula}
+        fullWidth
+        maxWidth="md"
+      >
+        <DialogTitle>Editar matrícula</DialogTitle>
+        <DialogContent dividers>
+          <Stack spacing={3} sx={{ mt: 1 }}>
+            {editandoMatricula && (
+              <>
+                <Box>
+                  <Typography
+                    variant="subtitle2"
+                    fontWeight={700}
+                    gutterBottom
+                  >
+                    Aluno
+                  </Typography>
+                  <Stack
+                    direction="row"
+                    spacing={2}
+                    alignItems="center"
+                  >
+                    <Avatar
+                      src={editandoMatricula.alunoFotoUrl ?? undefined}
+                      sx={{
+                        width: 56,
+                        height: 56,
+                        bgcolor: editandoMatricula.alunoFotoUrl
+                          ? undefined
+                          : alpha(theme.palette.primary.main, 0.12),
+                        color: theme.palette.primary.main,
+                        fontWeight: 600,
+                      }}
+                    >
+                      {!editandoMatricula.alunoFotoUrl &&
+                        editandoMatricula.alunoNome
+                          .charAt(0)
+                          .toUpperCase()}
+                    </Avatar>
+                    <Box>
+                      <Typography variant="subtitle1" fontWeight={700}>
+                        {editandoMatricula.alunoNome}
+                      </Typography>
+                      {editandoMatricula.numeroInscricao && (
+                        <Typography
+                          variant="caption"
+                          color="text.secondary"
+                        >
+                          Matrícula: {editandoMatricula.numeroInscricao}
+                        </Typography>
+                      )}
+                    </Box>
+                  </Stack>
+                </Box>
+
+                <Box>
+                  <Typography
+                    variant="subtitle2"
+                    fontWeight={700}
+                    gutterBottom
+                  >
+                    Dados da matrícula
+                  </Typography>
+
+                  <Stack
+                    direction={{ xs: 'column', md: 'row' }}
+                    spacing={2}
+                    sx={{ mb: 1.5 }}
+                  >
+                    <TextField
+                      fullWidth
+                      size="small"
+                      label="Número de inscrição"
+                      value={editNumeroInscricao}
+                      onChange={(e) =>
+                        setEditNumeroInscricao(e.target.value)
+                      }
+                      disabled={salvandoEdicao || excluindoMatricula}
+                    />
+
+                    <TextField
+                      fullWidth
+                      size="small"
+                      label="Ano letivo"
+                      type="number"
+                      value={editAnoLetivo}
+                      onChange={(e) =>
+                        setEditAnoLetivo(e.target.value)
+                      }
+                      disabled={salvandoEdicao || excluindoMatricula}
+                    />
+                  </Stack>
+
+                  <Stack
+                    direction={{ xs: 'column', md: 'row' }}
+                    spacing={2}
+                    sx={{ mb: 1.5 }}
+                  >
+                    <FormControl fullWidth size="small">
+                      <InputLabel id="edit-nivel-label">
+                        Nível de ensino
+                      </InputLabel>
+                      <Select
+                        labelId="edit-nivel-label"
+                        label="Nível de ensino"
+                        value={editNivelId}
+                        onChange={(e) =>
+                          setEditNivelId(e.target.value as string)
+                        }
+                        disabled={salvandoEdicao || excluindoMatricula}
+                      >
+                        <MenuItem value="">
+                          <em>Não definido</em>
+                        </MenuItem>
+                        {niveisDisponiveis.map((nivel) => (
+                          <MenuItem
+                            key={nivel.id_nivel_ensino}
+                            value={String(nivel.id_nivel_ensino)}
+                          >
+                            {nivel.nome}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+
+                    <FormControl fullWidth size="small">
+                      <InputLabel id="edit-status-label">
+                        Status da matrícula
+                      </InputLabel>
+                      <Select
+                        labelId="edit-status-label"
+                        label="Status da matrícula"
+                        value={editStatusId}
+                        onChange={(e) =>
+                          setEditStatusId(e.target.value as string)
+                        }
+                        disabled={salvandoEdicao || excluindoMatricula}
+                      >
+                        <MenuItem value="">
+                          <em>Não definido</em>
+                        </MenuItem>
+                        {statusDisponiveis.map((status) => (
+                          <MenuItem
+                            key={status.id_status_matricula}
+                            value={String(status.id_status_matricula)}
+                          >
+                            {status.nome}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  </Stack>
+
+                  <Stack
+                    direction={{ xs: 'column', md: 'row' }}
+                    spacing={2}
+                    sx={{ mb: 1.5 }}
+                  >
+                    <FormControl fullWidth size="small">
+                      <InputLabel id="edit-modalidade-label">
+                        Modalidade
+                      </InputLabel>
+                      <Select
+                        labelId="edit-modalidade-label"
+                        label="Modalidade"
+                        value={editModalidade}
+                        onChange={(e) =>
+                          setEditModalidade(e.target.value as string)
+                        }
+                        disabled={salvandoEdicao || excluindoMatricula}
+                      >
+                        {MODALIDADES_MATRICULA.map((mod) => (
+                          <MenuItem key={mod.value} value={mod.value}>
+                            {mod.label}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+
+                    <FormControl fullWidth size="small">
+                      <InputLabel id="edit-turma-label">
+                        Turma
+                      </InputLabel>
+                      <Select
+                        labelId="edit-turma-label"
+                        label="Turma"
+                        value={editTurmaId}
+                        onChange={(e) =>
+                          setEditTurmaId(e.target.value as string)
+                        }
+                        disabled={salvandoEdicao || excluindoMatricula}
+                      >
+                        <MenuItem value="">
+                          <em>Sem turma</em>
+                        </MenuItem>
+                        {turmasDisponiveis.map((t) => (
+                          <MenuItem
+                            key={t.id_turma}
+                            value={String(t.id_turma)}
+                          >
+                            {t.nome} — {t.turno} ({t.ano_letivo})
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  </Stack>
+
+                  <Stack
+                    direction={{ xs: 'column', md: 'row' }}
+                    spacing={2}
+                  >
+                    <TextField
+                      fullWidth
+                      size="small"
+                      label="Data da matrícula"
+                      type="date"
+                      value={editDataMatricula}
+                      onChange={(e) =>
+                        setEditDataMatricula(e.target.value)
+                      }
+                      InputLabelProps={{ shrink: true }}
+                      disabled={salvandoEdicao || excluindoMatricula}
+                    />
+                    <TextField
+                      fullWidth
+                      size="small"
+                      label="Data de conclusão"
+                      type="date"
+                      value={editDataConclusao}
+                      onChange={(e) =>
+                        setEditDataConclusao(e.target.value)
+                      }
+                      InputLabelProps={{ shrink: true }}
+                      disabled={salvandoEdicao || excluindoMatricula}
+                    />
+                  </Stack>
+                </Box>
+              </>
+            )}
+          </Stack>
+        </DialogContent>
+        <DialogActions sx={{ p: 2 }}>
+          <Button
+            onClick={handleFecharEditarMatricula}
+            disabled={salvandoEdicao || excluindoMatricula}
+          >
+            Cancelar
+          </Button>
+          <Button
+            variant="contained"
+            onClick={handleSalvarEdicaoMatricula}
+            disabled={salvandoEdicao || excluindoMatricula}
+          >
+            {salvandoEdicao ? 'Salvando...' : 'Salvar alterações'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Dialog de confirmação de exclusão */}
+      <Dialog
+        open={dialogExcluirAberto}
+        onClose={fecharDialogExcluirMatricula}
+        fullWidth
+        maxWidth="xs"
+      >
+        <DialogTitle>Confirmar exclusão</DialogTitle>
+        <DialogContent sx={{ pt: 2 }}>
+          <Typography variant="body2" sx={{ mb: 1.5 }}>
+            Tem certeza de que deseja excluir a matrícula do aluno{' '}
+            <strong>
+              {matriculaParaExcluir?.alunoNome ?? 'selecionado'}
+            </strong>
+            ?
+          </Typography>
+          {matriculaParaExcluir?.numeroInscricao && (
+            <Typography variant="body2" color="text.secondary">
+              Matrícula: {matriculaParaExcluir.numeroInscricao}
+            </Typography>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ p: 2.5, pt: 0 }}>
+          <Button
+            onClick={fecharDialogExcluirMatricula}
+            disabled={excluindoMatricula}
+          >
+            Cancelar
+          </Button>
+          <Button
+            variant="contained"
+            color="error"
+            onClick={handleConfirmarExcluirMatricula}
+            disabled={excluindoMatricula}
+          >
+            {excluindoMatricula ? 'Excluindo...' : 'Excluir matrícula'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
 
       {/* Dialog de ficha completa (aluno + matrícula) */}
       {matriculaSelecionada && (
