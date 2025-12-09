@@ -1,5 +1,3 @@
-// src/paginas/painel-secretaria/SecretariaMatriculasPage.tsx
-
 import {
   useEffect,
   useMemo,
@@ -58,9 +56,6 @@ import LocalAtmIcon from '@mui/icons-material/LocalAtm'
 import { useSupabase } from '../../contextos/SupabaseContext'
 import { useNotificacaoContext } from '../../contextos/NotificacaoContext'
 
-const SENHA_PADRAO_ALUNO = 'Ceja@2024'
-const TIPO_USUARIO_ALUNO_ID = 5
-
 // === MODALIDADES (enum modalidade_matricula_enum em Supabase) ===
 const MODALIDADES_MATRICULA = [
   {
@@ -94,7 +89,7 @@ interface MatriculaRow {
 
 interface AlunoRow {
   id_aluno: number
-  user_id: string
+  user_id: string | null
   nis: string | null
   nome_mae: string
   nome_pai: string | null
@@ -201,14 +196,14 @@ interface MatriculaLista {
   raca?: string | null
 
   // Matrícula
-  numeroInscricao: string
-  anoLetivo: number
+  numeroInscricao: string | null
+  anoLetivo: number | null
   nivelNome: string
   turmaNome?: string | null
   turno?: string | null
-  modalidade: string
-  statusNome: string
-  dataMatricula: string
+  modalidade: string | null
+  statusNome: string | null
+  dataMatricula: string | null
   dataConclusao?: string | null
 }
 
@@ -256,7 +251,7 @@ const SecretariaMatriculasPage: FC = () => {
   const [formAlunoEmail, setFormAlunoEmail] = useState('')
   const [formAlunoDataNasc, setFormAlunoDataNasc] = useState('')
   const [formAlunoCpf, setFormAlunoCpf] = useState('')
-  const [formAlunoRg, setFormAlunoRg] = useState('')
+  
   const [formAlunoCelular, setFormAlunoCelular] = useState('')
   const [formAlunoNis, setFormAlunoNis] = useState('')
   const [formAlunoNomeMae, setFormAlunoNomeMae] = useState('')
@@ -266,15 +261,20 @@ const SecretariaMatriculasPage: FC = () => {
   const [formAlunoBairro, setFormAlunoBairro] = useState('')
   const [formAlunoMunicipio, setFormAlunoMunicipio] = useState('')
   const [formAlunoPontoRef, setFormAlunoPontoRef] = useState('')
-  const [formAlunoUsaTransporte, setFormAlunoUsaTransporte] = useState(false)
+  const [formAlunoUsaTransporte, setFormAlunoUsaTransporte] =
+    useState(false)
   const [formAlunoTemNecessidade, setFormAlunoTemNecessidade] =
     useState(false)
   const [formAlunoDescNecessidade, setFormAlunoDescNecessidade] =
     useState('')
-  const [formAlunoTemRestricao, setFormAlunoTemRestricao] = useState(false)
-  const [formAlunoDescRestricao, setFormAlunoDescRestricao] = useState('')
-  const [formAlunoTemBeneficio, setFormAlunoTemBeneficio] = useState(false)
-  const [formAlunoDescBeneficio, setFormAlunoDescBeneficio] = useState('')
+  const [formAlunoTemRestricao, setFormAlunoTemRestricao] =
+    useState(false)
+  const [formAlunoDescRestricao, setFormAlunoDescRestricao] =
+    useState('')
+  const [formAlunoTemBeneficio, setFormAlunoTemBeneficio] =
+    useState(false)
+  const [formAlunoDescBeneficio, setFormAlunoDescBeneficio] =
+    useState('')
   const [formAlunoObservacoes, setFormAlunoObservacoes] = useState('')
 
   // --- Dados da matrícula ---
@@ -416,11 +416,13 @@ const SecretariaMatriculasPage: FC = () => {
         erro('Erro ao carregar configuração de disciplinas por série.')
       }
 
-      const matriculasList: MatriculaRow[] = ((matriculasData ?? []) as unknown as MatriculaRow[])
-      const alunosList: AlunoRow[] = ((alunosData ?? []) as unknown as AlunoRow[])
-
+      const matriculasList: MatriculaRow[] =
+        ((matriculasData ?? []) as unknown as MatriculaRow[])
+      const alunosList: AlunoRow[] =
+        ((alunosData ?? []) as unknown as AlunoRow[])
       const niveisList = (niveisData || []) as NivelEnsinoRow[]
-      const statusList = (statusData || []) as StatusMatriculaRow[]
+      const statusList =
+        (statusData || []) as StatusMatriculaRow[]
       const turmasList = (turmasData || []) as TurmaRow[]
       const disciplinasList =
         (disciplinasData || []) as DisciplinaRow[]
@@ -441,14 +443,20 @@ const SecretariaMatriculasPage: FC = () => {
 
       const anos = Array.from(
         new Set(matriculasList.map((m) => m.ano_letivo)),
-      ).sort((a, b) => b - a)
-      setAnosDisponiveis(anos)
+      )
+        .filter((a) => a != null)
+        .sort((a, b) => (b ?? 0) - (a ?? 0))
+      setAnosDisponiveis(anos as number[])
 
       const alunosById = new Map<number, AlunoRow>()
       alunosList.forEach((a) => alunosById.set(a.id_aluno, a))
 
       const userIds = Array.from(
-        new Set(alunosList.map((a) => a.user_id)),
+        new Set(
+          alunosList
+            .map((a) => a.user_id)
+            .filter((id): id is string => !!id),
+        ),
       )
 
       let usuariosById = new Map<string, UsuarioRow>()
@@ -480,7 +488,8 @@ const SecretariaMatriculasPage: FC = () => {
           console.error(usuariosError)
           erro('Erro ao carregar dados dos usuários (alunos).')
         } else if (usuariosData) {
-          const list: UsuarioRow[] = (usuariosData as unknown as UsuarioRow[])
+          const list: UsuarioRow[] =
+            usuariosData as unknown as UsuarioRow[]
           usuariosById = new Map<string, UsuarioRow>()
           list.forEach((u) => usuariosById.set(u.id, u))
         }
@@ -499,7 +508,10 @@ const SecretariaMatriculasPage: FC = () => {
 
       const normalizados: MatriculaLista[] = matriculasList.map((m) => {
         const aluno = alunosById.get(m.id_aluno)
-        const usuario = aluno ? usuariosById.get(aluno.user_id) : undefined
+        const usuario =
+          aluno && aluno.user_id
+            ? usuariosById.get(aluno.user_id)
+            : undefined
         const nivel = niveisById.get(m.id_nivel_ensino)
         const status = statusById.get(m.id_status_matricula)
         const turma = m.id_turma ? turmasById.get(m.id_turma) : undefined
@@ -539,15 +551,15 @@ const SecretariaMatriculasPage: FC = () => {
           pontoReferencia: usuario?.ponto_referencia ?? null,
           raca: usuario?.raca ?? null,
 
-          numeroInscricao: m.numero_inscricao,
-          anoLetivo: m.ano_letivo,
+          numeroInscricao: m.numero_inscricao ?? null,
+          anoLetivo: m.ano_letivo ?? null,
           nivelNome: nivel?.nome ?? 'Nível não definido',
           turmaNome: turma?.nome ?? null,
           turno: turma?.turno ?? null,
-          modalidade: m.modalidade,
-          statusNome: status?.nome ?? 'Status não definido',
-          dataMatricula: m.data_matricula,
-          dataConclusao: m.data_conclusao,
+          modalidade: m.modalidade ?? null,
+          statusNome: status?.nome ?? null,
+          dataMatricula: m.data_matricula ?? null,
+          dataConclusao: m.data_conclusao ?? null,
         }
       })
 
@@ -588,7 +600,7 @@ const SecretariaMatriculasPage: FC = () => {
     setFormAlunoEmail('')
     setFormAlunoDataNasc('')
     setFormAlunoCpf('')
-    setFormAlunoRg('')
+    
     setFormAlunoCelular('')
     setFormAlunoNis('')
     setFormAlunoNomeMae('')
@@ -633,111 +645,14 @@ const SecretariaMatriculasPage: FC = () => {
   const handleSalvarNovaMatricula = async () => {
     if (!supabase) return
 
-    const nome = formAlunoNome.trim()
-    const email = formAlunoEmail.trim()
-    const nomeMae = formAlunoNomeMae.trim()
-
-    if (!nome) {
-      erro('Informe o nome completo do aluno.')
-      return
-    }
-    if (!email) {
-      erro('Informe o e-mail do aluno (necessário para o usuário do sistema).')
-      return
-    }
-    if (!nomeMae) {
-      erro('Informe o nome da mãe do aluno (campo obrigatório).')
-      return
-    }
-    if (
-      novoNivelId === '' ||
-      novoStatusId === '' ||
-      !novoNumeroInscricao.trim() ||
-      !novoAnoLetivo.trim() ||
-      !novaDataMatricula ||
-      !novaModalidade.trim()
-    ) {
-      erro(
-        'Preencha nível de ensino, status, número de inscrição, modalidade, ano letivo e data de matrícula.',
-      )
-      return
-    }
-
-    const ano = Number(novoAnoLetivo)
-    if (!Number.isFinite(ano)) {
-      erro('Ano letivo inválido.')
-      return
-    }
-
-    if (novaModalidade === 'Progressão de Estudos') {
-      if (serieProgressaoId === '') {
-        erro('Selecione a série (ano escolar) para a Progressão de Estudos.')
-        return
-      }
-      if (disciplinasProgressaoIds.length === 0) {
-        erro(
-          'Selecione pelo menos uma disciplina que o aluno irá cursar na Progressão de Estudos.',
-        )
-        return
-      }
-    }
-
     try {
       setSalvandoNova(true)
 
-      // 1) Cria usuário de autenticação do aluno
-      const { data: signUpData, error: signUpError } =
-        await supabase.auth.signUp({
-          email,
-          password: SENHA_PADRAO_ALUNO,
-        })
+      const nomeMae = formAlunoNomeMae.trim() || null
 
-      if (signUpError || !signUpData.user) {
-        console.error(signUpError)
-        erro('Erro ao criar usuário de autenticação do aluno.')
-        return
-      }
-
-      const authUserId = signUpData.user.id
-
-      // 2) Cria registro em public.usuarios
-      const usuarioPayload = {
-        id: authUserId,
-        id_tipo_usuario: TIPO_USUARIO_ALUNO_ID,
-        name: nome,
-        username: null as string | null,
-        email,
-        data_nascimento: formAlunoDataNasc || null,
-        cpf: formAlunoCpf.trim() || null,
-        rg: formAlunoRg.trim() || null,
-        celular: formAlunoCelular.trim() || null,
-        logradouro: formAlunoLogradouro.trim() || null,
-        numero_endereco: formAlunoNumeroEnd.trim() || null,
-        bairro: formAlunoBairro.trim() || null,
-        municipio: formAlunoMunicipio.trim() || null,
-        ponto_referencia: formAlunoPontoRef.trim() || null,
-        raca: null as string | null,
-        foto_url: null as string | null,
-        facebook_url: null as string | null,
-        instagram_url: null as string | null,
-        status: 'Ativo',
-      }
-
-      const { error: usuarioError } = await supabase
-        .from('usuarios')
-        .insert(usuarioPayload)
-
-      if (usuarioError) {
-        console.error(usuarioError)
-        erro(
-          'Erro ao salvar dados básicos do aluno (tabela de usuários).',
-        )
-        return
-      }
-
-      // 3) Cria registro em public.alunos
+      // 1) Cria registro em public.alunos (sem usuário vinculado por enquanto)
       const alunoPayload = {
-        user_id: authUserId,
+        user_id: null as string | null,
         nis: formAlunoNis.trim() || null,
         nome_mae: nomeMae,
         nome_pai: formAlunoNomePai.trim() || null,
@@ -765,23 +680,34 @@ const SecretariaMatriculasPage: FC = () => {
 
       if (alunoError || !alunoData) {
         console.error(alunoError)
-        erro('Erro ao salvar dados específicos do aluno.')
+        erro('Erro ao salvar dados do aluno.')
         return
       }
 
       const novoAlunoId = alunoData.id_aluno
 
-      // 4) Cria matrícula
-      const payloadMatricula = {
+      // 2) Cria matrícula (campos podem vir nulos; banco valida o que for obrigatório)
+      const nivelId =
+        novoNivelId === '' ? null : Number(novoNivelId)
+      const statusId =
+        novoStatusId === '' ? null : Number(novoStatusId)
+      const turmaId =
+        novoTurmaId === '' ? null : Number(novoTurmaId)
+      const ano =
+        novoAnoLetivo.trim() === ''
+          ? null
+          : Number(novoAnoLetivo)
+
+      const payloadMatricula: any = {
         id_aluno: novoAlunoId,
-        numero_inscricao: novoNumeroInscricao.trim(),
-        id_nivel_ensino: novoNivelId as number,
-        id_status_matricula: novoStatusId as number,
-        modalidade: novaModalidade.trim(),
+        numero_inscricao: novoNumeroInscricao.trim() || null,
+        id_nivel_ensino: nivelId,
+        id_status_matricula: statusId,
+        modalidade: novaModalidade || null,
         ano_letivo: ano,
-        data_matricula: novaDataMatricula,
+        data_matricula: novaDataMatricula || null,
         data_conclusao: novaDataConclusao || null,
-        id_turma: novoTurmaId === '' ? null : (novoTurmaId as number),
+        id_turma: turmaId,
       }
 
       const { data: novaMatriculaData, error: insertError } =
@@ -799,13 +725,16 @@ const SecretariaMatriculasPage: FC = () => {
 
       const novaMatriculaId = novaMatriculaData.id_matricula
 
-      // 5) Aproveitamento ou Progressão → registros em progresso_aluno
+      // 3) Aproveitamento / Progressão → registros em progresso_aluno (apenas se houver dados suficientes)
+      const temNivel = novoNivelId !== ''
+
       const isAproveitamento =
         novaModalidade === 'Aproveitamento de Estudos'
       const isProgressao =
         novaModalidade === 'Progressão de Estudos'
 
       if (
+        temNivel &&
         (isAproveitamento || isProgressao) &&
         statusDisciplinaDisponiveis.length > 0 &&
         anosEscolaresDisponiveis.length > 0 &&
@@ -824,8 +753,9 @@ const SecretariaMatriculasPage: FC = () => {
             s.nome.toLowerCase().includes('cursar'),
           ) ?? statusDisciplinaDisponiveis[0]
 
+        const nivelIdNum = Number(novoNivelId)
         const anosNivel = anosEscolaresDisponiveis.filter(
-          (a) => a.id_nivel_ensino === (novoNivelId as number),
+          (a) => a.id_nivel_ensino === nivelIdNum,
         )
 
         if (isAproveitamento) {
@@ -837,6 +767,7 @@ const SecretariaMatriculasPage: FC = () => {
             (a) => !concluidasSet.has(a.id_ano_escolar),
           )
 
+          // Séries concluídas → disciplinas concluídas
           seriesConcluidas.forEach((serie) => {
             const configs = configDisciplinaAnoDisponiveis.filter(
               (c) => c.id_ano_escolar === serie.id_ano_escolar,
@@ -856,6 +787,7 @@ const SecretariaMatriculasPage: FC = () => {
             })
           })
 
+          // Séries restantes → disciplinas A Cursar
           seriesRestantes.forEach((serie) => {
             const configs = configDisciplinaAnoDisponiveis.filter(
               (c) => c.id_ano_escolar === serie.id_ano_escolar,
@@ -876,7 +808,11 @@ const SecretariaMatriculasPage: FC = () => {
           })
         }
 
-        if (isProgressao && serieProgressaoId !== '') {
+        if (
+          isProgressao &&
+          serieProgressaoId !== '' &&
+          disciplinasProgressaoIds.length > 0
+        ) {
           const serieIdNum = Number(serieProgressaoId)
           const configs = configDisciplinaAnoDisponiveis.filter(
             (c) =>
@@ -914,10 +850,7 @@ const SecretariaMatriculasPage: FC = () => {
       }
 
       await carregarDados()
-      sucesso(
-        `Matrícula criada com sucesso. Senha inicial do aluno: ${SENHA_PADRAO_ALUNO}`,
-        'Nova Matrícula',
-      )
+      sucesso('Matrícula criada com sucesso.')
       setNovaAberta(false)
     } catch (e) {
       console.error(e)
@@ -935,11 +868,13 @@ const SecretariaMatriculasPage: FC = () => {
       lista = lista.filter((m) => {
         return (
           m.alunoNome.toLowerCase().includes(termo) ||
-          m.numeroInscricao.toLowerCase().includes(termo) ||
+          (m.numeroInscricao ?? '')
+            .toLowerCase()
+            .includes(termo) ||
           m.nivelNome.toLowerCase().includes(termo) ||
           (m.turmaNome ?? '').toLowerCase().includes(termo) ||
-          m.statusNome.toLowerCase().includes(termo) ||
-          m.modalidade.toLowerCase().includes(termo) ||
+          (m.statusNome ?? '').toLowerCase().includes(termo) ||
+          (m.modalidade ?? '').toLowerCase().includes(termo) ||
           (m.alunoNis ?? '').toLowerCase().includes(termo)
         )
       })
@@ -1029,7 +964,8 @@ const SecretariaMatriculasPage: FC = () => {
       ? alpha(theme.palette.grey[400], 0.12)
       : alpha(theme.palette.common.white, 0.04)
 
-  const getStatusColor = (status: string) => {
+  const getStatusColor = (status: string | null) => {
+    if (!status) return theme.palette.text.secondary
     const normalized = status.toLowerCase()
     if (normalized.includes('ativo')) return theme.palette.success.main
     if (normalized.includes('conclu')) return theme.palette.info.main
@@ -1202,7 +1138,7 @@ const SecretariaMatriculasPage: FC = () => {
           <Box sx={{ p: 2 }}>
             <Stack spacing={2}>
               {matriculasFiltradas.map((m) => {
-                const statusColor = getStatusColor(m.statusNome)
+                const statusColor = getStatusColor(m.statusNome ?? null)
                 return (
                   <Paper
                     key={m.id}
@@ -1246,7 +1182,8 @@ const SecretariaMatriculasPage: FC = () => {
                             color="text.secondary"
                             display="block"
                           >
-                            Matrícula: {m.numeroInscricao}
+                            Matrícula:{' '}
+                            {m.numeroInscricao ?? '—'}
                           </Typography>
                           {m.alunoNis && (
                             <Typography
@@ -1285,42 +1222,50 @@ const SecretariaMatriculasPage: FC = () => {
                             variant="outlined"
                           />
                         )}
-                        <Chip
-                          icon={<EventIcon fontSize="small" />}
-                          label={`Ano: ${m.anoLetivo}`}
-                          size="small"
-                          variant="outlined"
-                        />
-                        <Chip
-                          label={m.modalidade}
-                          size="small"
-                          sx={{
-                            bgcolor: alpha(
-                              theme.palette.info.main,
-                              0.06,
-                            ),
-                            color: theme.palette.info.main,
-                            fontWeight: 600,
-                          }}
-                        />
-                        <Chip
-                          label={m.statusNome}
-                          size="small"
-                          sx={{
-                            bgcolor: alpha(statusColor, 0.08),
-                            color: statusColor,
-                            fontWeight: 600,
-                          }}
-                        />
+                        {m.anoLetivo && (
+                          <Chip
+                            icon={<EventIcon fontSize="small" />}
+                            label={`Ano: ${m.anoLetivo}`}
+                            size="small"
+                            variant="outlined"
+                          />
+                        )}
+                        {m.modalidade && (
+                          <Chip
+                            label={m.modalidade}
+                            size="small"
+                            sx={{
+                              bgcolor: alpha(
+                                theme.palette.info.main,
+                                0.06,
+                              ),
+                              color: theme.palette.info.main,
+                              fontWeight: 600,
+                            }}
+                          />
+                        )}
+                        {m.statusNome && (
+                          <Chip
+                            label={m.statusNome}
+                            size="small"
+                            sx={{
+                              bgcolor: alpha(statusColor, 0.08),
+                              color: statusColor,
+                              fontWeight: 600,
+                            }}
+                          />
+                        )}
                       </Stack>
 
                       <Stack spacing={0.25}>
-                        <Typography
-                          variant="caption"
-                          color="text.secondary"
-                        >
-                          Início: {m.dataMatricula}
-                        </Typography>
+                        {m.dataMatricula && (
+                          <Typography
+                            variant="caption"
+                            color="text.secondary"
+                          >
+                            Início: {m.dataMatricula}
+                          </Typography>
+                        )}
                         {m.dataConclusao && (
                           <Typography
                             variant="caption"
@@ -1393,7 +1338,7 @@ const SecretariaMatriculasPage: FC = () => {
               <TableBody>
                 {matriculasPaginadas.map((m, index) => {
                   const isEven = index % 2 === 0
-                  const statusColor = getStatusColor(m.statusNome)
+                  const statusColor = getStatusColor(m.statusNome ?? null)
 
                   return (
                     <TableRow
@@ -1453,7 +1398,7 @@ const SecretariaMatriculasPage: FC = () => {
                       </TableCell>
                       <TableCell>
                         <Typography variant="body2">
-                          {m.numeroInscricao}
+                          {m.numeroInscricao ?? '—'}
                         </Typography>
                         {m.alunoNis && (
                           <Typography
@@ -1469,13 +1414,15 @@ const SecretariaMatriculasPage: FC = () => {
                         <Typography variant="body2">
                           {m.nivelNome}
                         </Typography>
-                        <Typography
-                          variant="caption"
-                          color="text.secondary"
-                          display="block"
-                        >
-                          {m.modalidade}
-                        </Typography>
+                        {m.modalidade && (
+                          <Typography
+                            variant="caption"
+                            color="text.secondary"
+                            display="block"
+                          >
+                            {m.modalidade}
+                          </Typography>
+                        )}
                       </TableCell>
                       <TableCell>
                         <Typography variant="body2">
@@ -1491,26 +1438,30 @@ const SecretariaMatriculasPage: FC = () => {
                       </TableCell>
                       <TableCell>
                         <Typography variant="body2">
-                          {m.anoLetivo}
+                          {m.anoLetivo ?? '—'}
                         </Typography>
-                        <Typography
-                          variant="caption"
-                          color="text.secondary"
-                          display="block"
-                        >
-                          Início: {m.dataMatricula}
-                        </Typography>
+                        {m.dataMatricula && (
+                          <Typography
+                            variant="caption"
+                            color="text.secondary"
+                            display="block"
+                          >
+                            Início: {m.dataMatricula}
+                          </Typography>
+                        )}
                       </TableCell>
                       <TableCell>
-                        <Chip
-                          label={m.statusNome}
-                          size="small"
-                          sx={{
-                            bgcolor: alpha(statusColor, 0.08),
-                            color: statusColor,
-                            fontWeight: 600,
-                          }}
-                        />
+                        {m.statusNome && (
+                          <Chip
+                            label={m.statusNome}
+                            size="small"
+                            sx={{
+                              bgcolor: alpha(statusColor, 0.08),
+                              color: statusColor,
+                              fontWeight: 600,
+                            }}
+                          />
+                        )}
                       </TableCell>
                       <TableCell align="right">
                         <Stack
@@ -2342,16 +2293,16 @@ const SecretariaMatriculasPage: FC = () => {
                   </Typography>
                   <Typography variant="body2">
                     Nº de inscrição:{' '}
-                    {matriculaSelecionada.numeroInscricao}
+                    {matriculaSelecionada.numeroInscricao ?? '—'}
                   </Typography>
                   <Typography variant="body2">
                     Nível de ensino: {matriculaSelecionada.nivelNome}
                   </Typography>
                   <Typography variant="body2">
-                    Modalidade: {matriculaSelecionada.modalidade}
+                    Modalidade: {matriculaSelecionada.modalidade ?? '—'}
                   </Typography>
                   <Typography variant="body2">
-                    Ano letivo: {matriculaSelecionada.anoLetivo}
+                    Ano letivo: {matriculaSelecionada.anoLetivo ?? '—'}
                   </Typography>
                 </Box>
 
@@ -2370,14 +2321,15 @@ const SecretariaMatriculasPage: FC = () => {
                     Turno: {matriculaSelecionada.turno ?? '—'}
                   </Typography>
                   <Typography variant="body2">
-                    Início: {matriculaSelecionada.dataMatricula}
+                    Início:{' '}
+                    {matriculaSelecionada.dataMatricula ?? '—'}
                   </Typography>
                   <Typography variant="body2">
                     Conclusão:{' '}
                     {matriculaSelecionada.dataConclusao ?? '—'}
                   </Typography>
                   <Typography variant="body2">
-                    Status: {matriculaSelecionada.statusNome}
+                    Status: {matriculaSelecionada.statusNome ?? '—'}
                   </Typography>
                 </Box>
               </Stack>
