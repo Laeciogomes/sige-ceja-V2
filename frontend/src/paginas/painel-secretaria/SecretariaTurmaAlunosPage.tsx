@@ -69,9 +69,16 @@ interface MatriculaRow {
 
 interface AlunoRow {
   id_aluno: number
-  nome_completo: string
+  user_id: string
+}
+
+interface UsuarioRow {
+  id: string
+  name: string
   cpf: string | null
   data_nascimento: string | null
+  email: string
+  foto_url: string | null
 }
 
 interface StatusMatriculaRow {
@@ -110,6 +117,7 @@ const SecretariaTurmaAlunosPage: FC = () => {
   const [nivel, setNivel] = useState<NivelEnsinoRow | null>(null)
   const [matriculas, setMatriculas] = useState<MatriculaRow[]>([])
   const [alunos, setAlunos] = useState<AlunoRow[]>([])
+  const [usuarios, setUsuarios] = useState<UsuarioRow[]>([])
   const [statusMatriculas, setStatusMatriculas] = useState<
     StatusMatriculaRow[]
   >([])
@@ -143,14 +151,14 @@ const SecretariaTurmaAlunosPage: FC = () => {
 
   const calcularElegibilidadePeDeMeia = (
     m: MatriculaRow,
-    a: AlunoRow | undefined,
+    u: UsuarioRow | undefined,
     turmaAtual: TurmaRow | null,
   ): boolean => {
     if (!turmaAtual) return false
-    if (!a) return false
+    if (!u) return false
 
     // CPF preenchido
-    const cpfOk = !!a.cpf && a.cpf.trim() !== ''
+    const cpfOk = !!u.cpf && u.cpf.trim() !== ''
     if (!cpfOk) return false
 
     // Data de matrícula válida
@@ -160,37 +168,33 @@ const SecretariaTurmaAlunosPage: FC = () => {
 
     const anoLetivo = turmaAtual.ano_letivo
 
-    // 1º semestre: enturmado até 2 meses após 07/01/ano (07/03)
-    // 2º semestre: enturmado até 2 meses após 01/07/ano (01/09)
-    const inicioPrimeiro = new Date(anoLetivo, 0, 7) // 07 jan
+    const inicioPrimeiro = new Date(anoLetivo, 0, 7) // 07/01
     const cutoff1 = new Date(inicioPrimeiro)
-    cutoff1.setMonth(cutoff1.getMonth() + 2)
+    cutoff1.setMonth(cutoff1.getMonth() + 2) // até 07/03
 
-    const inicioSegundo = new Date(anoLetivo, 6, 1) // 01 jul
+    const inicioSegundo = new Date(anoLetivo, 6, 1) // 01/07
     const cutoff2 = new Date(inicioSegundo)
-    cutoff2.setMonth(cutoff2.getMonth() + 2)
+    cutoff2.setMonth(cutoff2.getMonth() + 2) // até 01/09
 
     let corteOk = false
     if (dataMat <= inicioSegundo) {
-      // trata como 1º semestre
       corteOk = dataMat <= cutoff1
     } else {
-      // 2º semestre
       corteOk = dataMat <= cutoff2
     }
     if (!corteOk) return false
 
     // Idade entre 19 e 24 em 31/12 do ano letivo
-    if (!a.data_nascimento) return false
+    if (!u.data_nascimento) return false
     const dataRef = new Date(anoLetivo, 11, 31)
-    const idade = calcularIdade(a.data_nascimento, dataRef)
+    const idade = calcularIdade(u.data_nascimento, dataRef)
     const idadeOk = idade >= 19 && idade <= 24
     if (!idadeOk) return false
 
     return true
   }
 
-  // Carrega turma, nível, matrículas, alunos, status
+  // Carrega turma, nível, matrículas, alunos, usuarios, status
   const carregarDados = async () => {
     if (!supabase || Number.isNaN(turmaIdNumber)) {
       erro('Turma inválida.')
@@ -202,7 +206,7 @@ const SecretariaTurmaAlunosPage: FC = () => {
 
       const [
         { data: turmaData, error: turmaError },
-        { data: nivelData, error: nivelError },
+        { data: niveisData, error: nivelError },
         { data: matriculasData, error: matriculasError },
         { data: statusData, error: statusError },
       ] = await Promise.all([
@@ -232,10 +236,10 @@ const SecretariaTurmaAlunosPage: FC = () => {
         setTurma(turmaData)
       }
 
-      if (nivelError || !nivelData) {
+      if (nivelError || !niveisData) {
         console.error(nivelError)
       } else if (turmaData) {
-        const niv = (nivelData as NivelEnsinoRow[]).find(
+        const niv = (niveisData as NivelEnsinoRow[]).find(
           (n) => n.id_nivel_ensino === turmaData.id_nivel_ensino,
         )
         if (niv) setNivel(niv)
@@ -255,24 +259,58 @@ const SecretariaTurmaAlunosPage: FC = () => {
         setStatusMatriculas(statusData as StatusMatriculaRow[])
       }
 
-      const idsAlunos = (matriculasData as MatriculaRow[] | null)
-        ?.map((m) => m.id_aluno)
-        .filter((id) => id != null) as number[] | undefined
+      const matList = (matriculasData || []) as MatriculaRow[]
+      const idsAlunos = Array.from(
+        new Set(matList.map((m) => m.id_aluno).filter((id) => id != null)),
+      ) as number[]
 
-      if (idsAlunos && idsAlunos.length > 0) {
+      if (idsAlunos.length > 0) {
+        // Primeiro busca alunos (id_aluno, user_id)
         const { data: alunosData, error: alunosError } = await supabase
           .from('alunos')
-          .select('id_aluno, nome_completo, cpf, data_nascimento')
+          .select('id_aluno, user_id')
           .in('id_aluno', idsAlunos)
 
         if (alunosError) {
           console.error(alunosError)
           erro('Erro ao carregar alunos.')
-        } else if (alunosData) {
-          setAlunos(alunosData as AlunoRow[])
+          setAlunos([])
+          setUsuarios([])
+        } else {
+          const alunosList = (alunosData || []) as AlunoRow[]
+          setAlunos(alunosList)
+
+          const userIds = Array.from(
+            new Set(
+              alunosList
+                .map((a) => a.user_id)
+                .filter((id): id is string => !!id),
+            ),
+          )
+
+          if (userIds.length > 0) {
+            const { data: usuariosData, error: usuariosError } =
+              await supabase
+                .from('usuarios')
+                .select(
+                  'id, name, cpf, data_nascimento, email, foto_url',
+                )
+                .in('id', userIds)
+
+            if (usuariosError) {
+              console.error(usuariosError)
+              erro('Erro ao carregar dados de usuários (alunos).')
+              setUsuarios([])
+            } else {
+              setUsuarios((usuariosData || []) as UsuarioRow[])
+            }
+          } else {
+            setUsuarios([])
+          }
         }
       } else {
         setAlunos([])
+        setUsuarios([])
       }
     } catch (e) {
       console.error(e)
@@ -284,7 +322,6 @@ const SecretariaTurmaAlunosPage: FC = () => {
 
   useEffect(() => {
     void carregarDados()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [supabase, turmaIdNumber])
 
   // Enriquecer dados de alunos + Pé de Meia
@@ -297,25 +334,33 @@ const SecretariaTurmaAlunosPage: FC = () => {
     const alunoMap = new Map<number, AlunoRow>()
     alunos.forEach((a) => alunoMap.set(a.id_aluno, a))
 
+    const usuarioMap = new Map<string, UsuarioRow>()
+    usuarios.forEach((u) => usuarioMap.set(u.id, u))
+
     return matriculas.map((m) => {
       const aluno = alunoMap.get(m.id_aluno)
+      const usuario = aluno ? usuarioMap.get(aluno.user_id) : undefined
       const statusNome =
         statusMap.get(m.id_status_matricula) ?? 'Status desconhecido'
-      const elegivel = calcularElegibilidadePeDeMeia(m, aluno, turma)
+      const elegivel = calcularElegibilidadePeDeMeia(
+        m,
+        usuario,
+        turma,
+      )
 
       return {
         id_matricula: m.id_matricula,
         id_aluno: m.id_aluno,
-        nome: aluno?.nome_completo ?? 'Aluno não encontrado',
-        cpf: aluno?.cpf ?? null,
+        nome: usuario?.name ?? 'Aluno sem usuário',
+        cpf: usuario?.cpf ?? null,
         statusId: m.id_status_matricula,
         statusNome,
         dataMatricula: m.data_matricula,
-        dataNascimento: aluno?.data_nascimento ?? null,
+        dataNascimento: usuario?.data_nascimento ?? null,
         elegivelPeDeMeia: elegivel,
       }
     })
-  }, [matriculas, alunos, statusMatriculas, turma])
+  }, [matriculas, alunos, usuarios, statusMatriculas, turma])
 
   // Filtros
   const alunosFiltrados = useMemo(() => {
