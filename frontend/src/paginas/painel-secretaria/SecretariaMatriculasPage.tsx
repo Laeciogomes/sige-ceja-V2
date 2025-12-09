@@ -4,6 +4,7 @@ import {
   useEffect,
   useMemo,
   useState,
+  useRef,
   type FC,
   type ChangeEvent,
 } from 'react'
@@ -54,11 +55,12 @@ import ElderlyIcon from '@mui/icons-material/Elderly'
 import AccessibleIcon from '@mui/icons-material/Accessible'
 import RestaurantIcon from '@mui/icons-material/Restaurant'
 import LocalAtmIcon from '@mui/icons-material/LocalAtm'
+import PhotoCameraIcon from '@mui/icons-material/PhotoCamera'
 
 import { useSupabase } from '../../contextos/SupabaseContext'
 import { useNotificacaoContext } from '../../contextos/NotificacaoContext'
 
-// Tipo ALUNO na tabela tipos_usuario
+// Tipo de usuário ALUNO na tabela tipos_usuario
 const TIPO_USUARIO_ALUNO_ID = 5
 
 // Modalidades do enum modalidade_matricula_enum
@@ -277,6 +279,10 @@ const SecretariaMatriculasPage: FC = () => {
   const [formAlunoDescBeneficio, setFormAlunoDescBeneficio] =
     useState('')
   const [formAlunoObservacoes, setFormAlunoObservacoes] = useState('')
+  // Foto do aluno (upload)
+  const [formAlunoFotoUrl, setFormAlunoFotoUrl] = useState('')
+  const [uploadingFotoAluno, setUploadingFotoAluno] = useState(false)
+  const fileInputFotoRef = useRef<HTMLInputElement | null>(null)
 
   // --- Dados da matrícula ---
   const [novoNumeroInscricao, setNovoNumeroInscricao] = useState('')
@@ -320,6 +326,55 @@ const SecretariaMatriculasPage: FC = () => {
     const ultimo = slug.length > 1 ? slug[slug.length - 1] : 'ceja'
 
     return `${primeiro}_${ultimo}@ceja.com`
+  }
+
+  const uploadFotoAluno = async (file: File) => {
+    if (!supabase) return
+
+    try {
+      setUploadingFotoAluno(true)
+
+      if (file.size > 5 * 1024 * 1024) {
+        aviso('Tamanho máximo permitido para a foto é 5MB.')
+        return
+      }
+
+      const bucket = 'avatars'
+      const ext = (file.name.split('.').pop() || 'jpg').toLowerCase()
+      const base = (formAlunoEmail || formAlunoNome || 'aluno')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .replace(/[^a-z0-9]/g, '-')
+      const caminho = `alunos/${base || 'aluno'}-${Date.now()}.${ext}`
+
+      const { error: upErr } = await supabase.storage
+        .from(bucket)
+        .upload(caminho, file, { upsert: true })
+
+      if (upErr) {
+        console.error(upErr)
+        erro('Erro ao enviar a foto do aluno. Verifique o Storage.')
+        return
+      }
+
+      const { data: publicUrlData } = supabase.storage
+        .from(bucket)
+        .getPublicUrl(caminho)
+
+      if (!publicUrlData?.publicUrl) {
+        erro('Não foi possível obter a URL pública da foto.')
+        return
+      }
+
+      setFormAlunoFotoUrl(publicUrlData.publicUrl)
+      sucesso('Foto do aluno atualizada.')
+    } catch (e) {
+      console.error(e)
+      erro('Erro inesperado ao enviar a foto do aluno.')
+    } finally {
+      setUploadingFotoAluno(false)
+    }
   }
 
   const carregarDados = async () => {
@@ -538,8 +593,7 @@ const SecretariaMatriculasPage: FC = () => {
         const status = m.id_status_matricula
           ? statusById.get(m.id_status_matricula)
           : undefined
-        const turma =
-          m.id_turma != null ? turmasById.get(m.id_turma) : undefined
+        const turma = m.id_turma ? turmasById.get(m.id_turma) : undefined
 
         return {
           id: m.id_matricula,
@@ -599,8 +653,7 @@ const SecretariaMatriculasPage: FC = () => {
 
   useEffect(() => {
     void carregarDados()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [supabase])
 
   const handleChangePage = (_: unknown, newPage: number) => {
     setPage(newPage)
@@ -642,13 +695,12 @@ const SecretariaMatriculasPage: FC = () => {
     setFormAlunoTemBeneficio(false)
     setFormAlunoDescBeneficio('')
     setFormAlunoObservacoes('')
+    setFormAlunoFotoUrl('')
 
     // reset matrícula
     setNovoNumeroInscricao('')
     setNovoNivelId('')
-    setNovoStatusId(
-      statusAtivo ? statusAtivo.id_status_matricula : '',
-    )
+    setNovoStatusId(statusAtivo ? statusAtivo.id_status_matricula : '')
     setNovoTurmaId('')
     setNovoAnoLetivo(anoAtual)
     setNovaModalidade('Orientação de Estudos')
@@ -672,7 +724,6 @@ const SecretariaMatriculasPage: FC = () => {
     const nome = formAlunoNome.trim()
     const emailDigitado = formAlunoEmail.trim().toLowerCase() || null
     const cpf = formAlunoCpf.trim() || null
-    const nomeMae = formAlunoNomeMae.trim() || null
 
     if (!nome) {
       erro('Informe pelo menos o nome completo do aluno.')
@@ -688,20 +739,15 @@ const SecretariaMatriculasPage: FC = () => {
         ? cpf
         : `Ceja@${new Date().getFullYear()}`
 
-    const nivelId =
-      novoNivelId === '' ? null : Number(novoNivelId)
-    const statusId =
-      novoStatusId === '' ? null : Number(novoStatusId)
-    const turmaId =
-      novoTurmaId === '' ? null : Number(novoTurmaId)
+    const nivelId = novoNivelId === '' ? null : Number(novoNivelId)
+    const statusId = novoStatusId === '' ? null : Number(novoStatusId)
+    const turmaId = novoTurmaId === '' ? null : Number(novoTurmaId)
     const ano =
-      novoAnoLetivo.trim() === ''
-        ? null
-        : Number(novoAnoLetivo)
+      novoAnoLetivo.trim() === '' ? null : Number(novoAnoLetivo)
 
     if (!nivelId || !statusId || !ano || !novaDataMatricula) {
       aviso(
-        'Nível de ensino, status, ano letivo e data de matrícula são recomendados para registrar adequadamente a matrícula.',
+        'Nível de ensino, status, ano letivo e data de matrícula são recomendados para registrar a matrícula corretamente.',
       )
     }
 
@@ -715,7 +761,7 @@ const SecretariaMatriculasPage: FC = () => {
           password: senhaFinal,
         })
 
-      if (signUpError || !signUpData.user) {
+      if (signUpError || !signUpData?.user) {
         console.error(signUpError)
         erro('Erro ao criar usuário de autenticação do aluno.')
         setSalvandoNova(false)
@@ -725,27 +771,30 @@ const SecretariaMatriculasPage: FC = () => {
       const authUserId = signUpData.user.id
 
       // 2) Cria registro em public.usuarios
-      const usuarioPayload = {
+      const usuarioPayload: Partial<UsuarioRow> & {
+        id: string
+        id_tipo_usuario: number
+        status: string
+      } = {
         id: authUserId,
         id_tipo_usuario: TIPO_USUARIO_ALUNO_ID,
         name: nome,
-        username: null as string | null,
+        username: null,
         email: emailFinal,
         data_nascimento: formAlunoDataNasc || null,
-        cpf,
-        rg: null as string | null,
+        cpf: formAlunoCpf.trim() || null,
+        rg: null,
         celular: formAlunoCelular.trim() || null,
         logradouro: formAlunoLogradouro.trim() || null,
         numero_endereco: formAlunoNumeroEnd.trim() || null,
-        bairro: formAlunoBairro.trim() || null,
-        municipio: formAlunoMunicipio.trim() || null,
-        ponto_referencia: formAlunoPontoRef.trim() || null,
-        raca: null as string | null,
-        foto_url: null as string | null,
-        facebook_url: null as string | null,
-        instagram_url: null as string | null,
+        bairro: formAlunoBairro ?? null,
+        municipio: formAlunoMunicipio ?? null,
+        ponto_referencia: formAlunoPontoRef ?? null,
+        raca: null,
+        foto_url: formAlunoFotoUrl || null,
         status: 'Ativo',
       }
+
 
       const { error: usuarioError } = await supabase
         .from('usuarios')
@@ -753,18 +802,16 @@ const SecretariaMatriculasPage: FC = () => {
 
       if (usuarioError) {
         console.error(usuarioError)
-        erro(
-          'Erro ao salvar dados básicos do aluno (tabela de usuários).',
-        )
+        erro('Erro ao salvar dados básicos do aluno (usuário).')
         setSalvandoNova(false)
         return
       }
 
       // 3) Cria registro em public.alunos
-      const alunoPayload = {
+      const alunoPayload: Partial<AlunoRow> = {
         user_id: authUserId,
         nis: formAlunoNis.trim() || null,
-        nome_mae: nomeMae ?? '',
+        nome_mae: formAlunoNomeMae.trim() || 'Não informado',
         nome_pai: formAlunoNomePai.trim() || null,
         usa_transporte_escolar: formAlunoUsaTransporte,
         possui_necessidade_especial: formAlunoTemNecessidade,
@@ -798,7 +845,7 @@ const SecretariaMatriculasPage: FC = () => {
       const novoAlunoId = alunoData.id_aluno
 
       // 4) Cria matrícula
-      const payloadMatricula: any = {
+      const payloadMatricula: Partial<MatriculaRow> = {
         id_aluno: novoAlunoId,
         numero_inscricao: novoNumeroInscricao.trim() || null,
         id_nivel_ensino: nivelId,
@@ -867,6 +914,7 @@ const SecretariaMatriculasPage: FC = () => {
             (a) => !concluidasSet.has(a.id_ano_escolar),
           )
 
+          // Séries concluídas → disciplinas concluídas
           seriesConcluidas.forEach((serie) => {
             const configs = configDisciplinaAnoDisponiveis.filter(
               (c) => c.id_ano_escolar === serie.id_ano_escolar,
@@ -886,6 +934,7 @@ const SecretariaMatriculasPage: FC = () => {
             })
           })
 
+          // Séries restantes → disciplinas A Cursar
           seriesRestantes.forEach((serie) => {
             const configs = configDisciplinaAnoDisponiveis.filter(
               (c) => c.id_ano_escolar === serie.id_ano_escolar,
@@ -923,8 +972,7 @@ const SecretariaMatriculasPage: FC = () => {
               id_matricula: novaMatriculaId,
               id_disciplina: c.id_disciplina,
               id_ano_escolar: serieIdNum,
-              id_status_disciplina:
-                statusACursar.id_status_disciplina,
+              id_status_disciplina: statusACursar.id_status_disciplina,
               nota_final: null,
               data_conclusao: null,
               observacoes:
@@ -949,7 +997,9 @@ const SecretariaMatriculasPage: FC = () => {
 
       await carregarDados()
       sucesso(
-        `Matrícula criada com sucesso. Usuário: ${emailFinal} | Senha: ${senhaFinal}`,
+        `Matrícula criada com sucesso. Usuário: ${emailFinal} | Senha inicial: ${
+          cpf || senhaFinal
+        }`,
       )
       setNovaAberta(false)
     } catch (e) {
@@ -1080,6 +1130,8 @@ const SecretariaMatriculasPage: FC = () => {
   const isProgressao =
     novaModalidade === 'Progressão de Estudos'
 
+  // === RENDER ===
+
   return (
     <Box
       sx={{
@@ -1101,12 +1153,13 @@ const SecretariaMatriculasPage: FC = () => {
         justifyContent="space-between"
       >
         <Box>
-          <Typography variant="h5" fontWeight={700}>
+          <Typography variant="h4" component="h1" fontWeight={700}>
             Matrículas
           </Typography>
+
           <Typography variant="body2" color="text.secondary">
-            Cadastre novos alunos, gere matrículas por modalidade e acompanhe o
-            histórico escolar.
+            Cadastre novos alunos, defina a modalidade (orientação, aproveitamento
+            ou progressão) e acompanhe as matrículas do CEJA.
           </Typography>
         </Box>
 
@@ -1617,6 +1670,58 @@ const SecretariaMatriculasPage: FC = () => {
               <Typography variant="subtitle2" fontWeight={700} gutterBottom>
                 Dados do aluno
               </Typography>
+
+              {/* Avatar + upload */}
+              <Stack
+                direction="row"
+                spacing={2}
+                alignItems="center"
+                sx={{ mb: 2 }}
+              >
+                <Avatar
+                  src={formAlunoFotoUrl || undefined}
+                  sx={{
+                    width: 64,
+                    height: 64,
+                    bgcolor: formAlunoFotoUrl
+                      ? undefined
+                      : alpha(theme.palette.primary.main, 0.12),
+                    color: theme.palette.primary.main,
+                    fontSize: 28,
+                  }}
+                >
+                  {!formAlunoFotoUrl &&
+                    (formAlunoNome ? formAlunoNome[0].toUpperCase() : '?')}
+                </Avatar>
+                <Box>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    startIcon={<PhotoCameraIcon />}
+                    disabled={uploadingFotoAluno || salvandoNova}
+                    onClick={() => fileInputFotoRef.current?.click()}
+                    sx={{ mr: 1, mb: { xs: 1, sm: 0 } }}
+                  >
+                    {uploadingFotoAluno ? 'Enviando...' : 'Enviar foto'}
+                  </Button>
+                  <Typography variant="caption" color="text.secondary" display="block">
+                    A foto será salva no perfil do aluno (tabela usuários).
+                  </Typography>
+                  <input
+                    ref={fileInputFotoRef}
+                    type="file"
+                    accept="image/*"
+                    hidden
+                    onChange={(e) => {
+                      const file = e.target.files?.[0]
+                      if (file) {
+                        void uploadFotoAluno(file)
+                      }
+                    }}
+                  />
+                </Box>
+              </Stack>
+
               <Stack
                 direction={{ xs: 'column', md: 'row' }}
                 spacing={2}
@@ -1629,6 +1734,7 @@ const SecretariaMatriculasPage: FC = () => {
                   value={formAlunoNome}
                   onChange={(e) => setFormAlunoNome(e.target.value)}
                   disabled={salvandoNova}
+                  helperText="Obrigatório para criar o usuário do aluno."
                 />
                 <TextField
                   fullWidth
@@ -1638,7 +1744,7 @@ const SecretariaMatriculasPage: FC = () => {
                   value={formAlunoEmail}
                   onChange={(e) => setFormAlunoEmail(e.target.value)}
                   disabled={salvandoNova}
-                  helperText="Se não preencher, será criado automaticamente (ex.: joao_silva@ceja.com)"
+                  helperText="Se vazio, será gerado automaticamente (ex.: joao_silva@ceja.com)."
                 />
                 <TextField
                   fullWidth
@@ -2068,10 +2174,10 @@ const SecretariaMatriculasPage: FC = () => {
                   Aproveitamento de Estudos – Séries concluídas
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
-                  Selecione as séries (anos escolares) que o aluno já
-                  concluiu em outra escola. As disciplinas dessas séries
-                  serão marcadas como concluídas; as séries restantes serão
-                  registradas como &quot;A Cursar&quot;.
+                  Selecione as séries (anos escolares) que o aluno já concluiu em
+                  outra escola. As disciplinas dessas séries serão marcadas como
+                  concluídas; as séries restantes serão registradas como &quot;A
+                  Cursar&quot;.
                 </Typography>
 
                 <FormControl fullWidth size="small">
@@ -2086,17 +2192,15 @@ const SecretariaMatriculasPage: FC = () => {
                     onChange={(e) => {
                       const raw = e.target.value as unknown
                       let ids: number[] = []
-
                       if (typeof raw === 'string') {
                         ids = raw
                           .split(',')
                           .map((v: string) => Number(v))
                       } else if (Array.isArray(raw)) {
-                        ids = (raw as Array<string | number>).map(
-                          (v) => Number(v),
+                        ids = (raw as Array<string | number>).map((v) =>
+                          Number(v),
                         )
                       }
-
                       setSeriesConcluidasIds(ids)
                     }}
                     renderValue={(selected) => {
@@ -2134,11 +2238,11 @@ const SecretariaMatriculasPage: FC = () => {
                   Progressão de Estudos – Série e disciplinas
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
-                  Selecione a série (ano escolar) e as disciplinas que o
-                  aluno irá cursar no CEJA. As disciplinas serão registradas
-                  com status &quot;A Cursar&quot;. O controle de até 3
-                  disciplinas &quot;Cursando&quot; por vez será feito na
-                  tela pedagógica (professor/coordenação/direção).
+                  Selecione a série (ano escolar) e as disciplinas que o aluno
+                  irá cursar no CEJA. As disciplinas serão registradas com status
+                  &quot;A Cursar&quot;. O controle de até 3 disciplinas
+                  &quot;Cursando&quot; por vez será feito na tela pedagógica
+                  (professor/coordenação/direção).
                 </Typography>
 
                 <FormControl fullWidth size="small">
@@ -2185,17 +2289,15 @@ const SecretariaMatriculasPage: FC = () => {
                     onChange={(e) => {
                       const raw = e.target.value as unknown
                       let ids: number[] = []
-
                       if (typeof raw === 'string') {
                         ids = raw
                           .split(',')
                           .map((v: string) => Number(v))
                       } else if (Array.isArray(raw)) {
-                        ids = (raw as Array<string | number>).map(
-                          (v) => Number(v),
+                        ids = (raw as Array<string | number>).map((v) =>
+                          Number(v),
                         )
                       }
-
                       setDisciplinasProgressaoIds(ids)
                     }}
                     renderValue={(selected) => {
@@ -2423,8 +2525,7 @@ const SecretariaMatriculasPage: FC = () => {
                     Turno: {matriculaSelecionada.turno ?? '—'}
                   </Typography>
                   <Typography variant="body2">
-                    Início:{' '}
-                    {matriculaSelecionada.dataMatricula ?? '—'}
+                    Início: {matriculaSelecionada.dataMatricula ?? '—'}
                   </Typography>
                   <Typography variant="body2">
                     Conclusão:{' '}
