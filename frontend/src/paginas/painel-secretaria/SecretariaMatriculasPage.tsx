@@ -1,3 +1,5 @@
+// src/paginas/painel-secretaria/SecretariaMatriculasPage.tsx
+
 import {
   useEffect,
   useMemo,
@@ -56,7 +58,10 @@ import LocalAtmIcon from '@mui/icons-material/LocalAtm'
 import { useSupabase } from '../../contextos/SupabaseContext'
 import { useNotificacaoContext } from '../../contextos/NotificacaoContext'
 
-// === MODALIDADES (enum modalidade_matricula_enum em Supabase) ===
+// Tipo ALUNO na tabela tipos_usuario
+const TIPO_USUARIO_ALUNO_ID = 5
+
+// Modalidades do enum modalidade_matricula_enum
 const MODALIDADES_MATRICULA = [
   {
     value: 'Orientação de Estudos',
@@ -77,19 +82,19 @@ const MODALIDADES_MATRICULA = [
 interface MatriculaRow {
   id_matricula: number
   id_aluno: number
-  numero_inscricao: string
-  id_nivel_ensino: number
-  id_status_matricula: number
-  modalidade: string
-  ano_letivo: number
-  data_matricula: string
+  numero_inscricao: string | null
+  id_nivel_ensino: number | null
+  id_status_matricula: number | null
+  modalidade: string | null
+  ano_letivo: number | null
+  data_matricula: string | null
   data_conclusao: string | null
   id_turma: number | null
 }
 
 interface AlunoRow {
   id_aluno: number
-  user_id: string | null
+  user_id: string
   nis: string | null
   nome_mae: string
   nome_pai: string | null
@@ -166,7 +171,6 @@ interface ConfigDisciplinaAnoRow {
 interface MatriculaLista {
   id: number
 
-  // Aluno
   alunoId: number
   alunoNome: string
   alunoEmail?: string | null
@@ -183,7 +187,6 @@ interface MatriculaLista {
   qualBeneficioGoverno?: string | null
   observacoesGerais?: string | null
 
-  // Dados pessoais
   dataNascimento?: string | null
   cpf?: string | null
   rg?: string | null
@@ -195,7 +198,6 @@ interface MatriculaLista {
   pontoReferencia?: string | null
   raca?: string | null
 
-  // Matrícula
   numeroInscricao: string | null
   anoLetivo: number | null
   nivelNome: string
@@ -251,7 +253,6 @@ const SecretariaMatriculasPage: FC = () => {
   const [formAlunoEmail, setFormAlunoEmail] = useState('')
   const [formAlunoDataNasc, setFormAlunoDataNasc] = useState('')
   const [formAlunoCpf, setFormAlunoCpf] = useState('')
-  
   const [formAlunoCelular, setFormAlunoCelular] = useState('')
   const [formAlunoNis, setFormAlunoNis] = useState('')
   const [formAlunoNomeMae, setFormAlunoNomeMae] = useState('')
@@ -300,9 +301,26 @@ const SecretariaMatriculasPage: FC = () => {
   const [disciplinasProgressaoIds, setDisciplinasProgressaoIds] =
     useState<number[]>([])
 
-  // Detalhe da matrícula (ficha completa do aluno)
+  // Ficha de matrícula selecionada
   const [matriculaSelecionada, setMatriculaSelecionada] =
     useState<MatriculaLista | null>(null)
+
+  // === Helpers ===
+
+  const gerarEmailAutomatico = (nome: string): string => {
+    const slug = nome
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .replace(/[^a-zA-Z\s]/g, '')
+      .trim()
+      .split(/\s+/)
+
+    const primeiro = slug[0] ?? 'aluno'
+    const ultimo = slug.length > 1 ? slug[slug.length - 1] : 'ceja'
+
+    return `${primeiro}_${ultimo}@ceja.com`
+  }
 
   const carregarDados = async () => {
     if (!supabase) return
@@ -442,11 +460,13 @@ const SecretariaMatriculasPage: FC = () => {
       setConfigDisciplinaAnoDisponiveis(configDiscAnoList)
 
       const anos = Array.from(
-        new Set(matriculasList.map((m) => m.ano_letivo)),
-      )
-        .filter((a) => a != null)
-        .sort((a, b) => (b ?? 0) - (a ?? 0))
-      setAnosDisponiveis(anos as number[])
+        new Set(
+          matriculasList
+            .map((m) => m.ano_letivo)
+            .filter((a): a is number => a != null),
+        ),
+      ).sort((a, b) => b - a)
+      setAnosDisponiveis(anos)
 
       const alunosById = new Map<number, AlunoRow>()
       alunosList.forEach((a) => alunosById.set(a.id_aluno, a))
@@ -512,9 +532,14 @@ const SecretariaMatriculasPage: FC = () => {
           aluno && aluno.user_id
             ? usuariosById.get(aluno.user_id)
             : undefined
-        const nivel = niveisById.get(m.id_nivel_ensino)
-        const status = statusById.get(m.id_status_matricula)
-        const turma = m.id_turma ? turmasById.get(m.id_turma) : undefined
+        const nivel = m.id_nivel_ensino
+          ? niveisById.get(m.id_nivel_ensino)
+          : undefined
+        const status = m.id_status_matricula
+          ? statusById.get(m.id_status_matricula)
+          : undefined
+        const turma =
+          m.id_turma != null ? turmasById.get(m.id_turma) : undefined
 
         return {
           id: m.id_matricula,
@@ -600,7 +625,6 @@ const SecretariaMatriculasPage: FC = () => {
     setFormAlunoEmail('')
     setFormAlunoDataNasc('')
     setFormAlunoCpf('')
-    
     setFormAlunoCelular('')
     setFormAlunoNis('')
     setFormAlunoNomeMae('')
@@ -645,16 +669,102 @@ const SecretariaMatriculasPage: FC = () => {
   const handleSalvarNovaMatricula = async () => {
     if (!supabase) return
 
+    const nome = formAlunoNome.trim()
+    const emailDigitado = formAlunoEmail.trim().toLowerCase() || null
+    const cpf = formAlunoCpf.trim() || null
+    const nomeMae = formAlunoNomeMae.trim() || null
+
+    if (!nome) {
+      erro('Informe pelo menos o nome completo do aluno.')
+      return
+    }
+
+    // E-mail automático se não informado
+    const emailFinal = emailDigitado ?? gerarEmailAutomatico(nome)
+
+    // Senha padrão = CPF ou fallback
+    const senhaFinal =
+      cpf && cpf.length >= 3
+        ? cpf
+        : `Ceja@${new Date().getFullYear()}`
+
+    const nivelId =
+      novoNivelId === '' ? null : Number(novoNivelId)
+    const statusId =
+      novoStatusId === '' ? null : Number(novoStatusId)
+    const turmaId =
+      novoTurmaId === '' ? null : Number(novoTurmaId)
+    const ano =
+      novoAnoLetivo.trim() === ''
+        ? null
+        : Number(novoAnoLetivo)
+
+    if (!nivelId || !statusId || !ano || !novaDataMatricula) {
+      aviso(
+        'Nível de ensino, status, ano letivo e data de matrícula são recomendados para registrar adequadamente a matrícula.',
+      )
+    }
+
     try {
       setSalvandoNova(true)
 
-      const nomeMae = formAlunoNomeMae.trim() || null
+      // 1) Cria usuário de autenticação
+      const { data: signUpData, error: signUpError } =
+        await supabase.auth.signUp({
+          email: emailFinal,
+          password: senhaFinal,
+        })
 
-      // 1) Cria registro em public.alunos (sem usuário vinculado por enquanto)
+      if (signUpError || !signUpData.user) {
+        console.error(signUpError)
+        erro('Erro ao criar usuário de autenticação do aluno.')
+        setSalvandoNova(false)
+        return
+      }
+
+      const authUserId = signUpData.user.id
+
+      // 2) Cria registro em public.usuarios
+      const usuarioPayload = {
+        id: authUserId,
+        id_tipo_usuario: TIPO_USUARIO_ALUNO_ID,
+        name: nome,
+        username: null as string | null,
+        email: emailFinal,
+        data_nascimento: formAlunoDataNasc || null,
+        cpf,
+        rg: null as string | null,
+        celular: formAlunoCelular.trim() || null,
+        logradouro: formAlunoLogradouro.trim() || null,
+        numero_endereco: formAlunoNumeroEnd.trim() || null,
+        bairro: formAlunoBairro.trim() || null,
+        municipio: formAlunoMunicipio.trim() || null,
+        ponto_referencia: formAlunoPontoRef.trim() || null,
+        raca: null as string | null,
+        foto_url: null as string | null,
+        facebook_url: null as string | null,
+        instagram_url: null as string | null,
+        status: 'Ativo',
+      }
+
+      const { error: usuarioError } = await supabase
+        .from('usuarios')
+        .insert(usuarioPayload)
+
+      if (usuarioError) {
+        console.error(usuarioError)
+        erro(
+          'Erro ao salvar dados básicos do aluno (tabela de usuários).',
+        )
+        setSalvandoNova(false)
+        return
+      }
+
+      // 3) Cria registro em public.alunos
       const alunoPayload = {
-        user_id: null as string | null,
+        user_id: authUserId,
         nis: formAlunoNis.trim() || null,
-        nome_mae: nomeMae,
+        nome_mae: nomeMae ?? '',
         nome_pai: formAlunoNomePai.trim() || null,
         usa_transporte_escolar: formAlunoUsaTransporte,
         possui_necessidade_especial: formAlunoTemNecessidade,
@@ -680,24 +790,14 @@ const SecretariaMatriculasPage: FC = () => {
 
       if (alunoError || !alunoData) {
         console.error(alunoError)
-        erro('Erro ao salvar dados do aluno.')
+        erro('Erro ao salvar dados específicos do aluno.')
+        setSalvandoNova(false)
         return
       }
 
       const novoAlunoId = alunoData.id_aluno
 
-      // 2) Cria matrícula (campos podem vir nulos; banco valida o que for obrigatório)
-      const nivelId =
-        novoNivelId === '' ? null : Number(novoNivelId)
-      const statusId =
-        novoStatusId === '' ? null : Number(novoStatusId)
-      const turmaId =
-        novoTurmaId === '' ? null : Number(novoTurmaId)
-      const ano =
-        novoAnoLetivo.trim() === ''
-          ? null
-          : Number(novoAnoLetivo)
-
+      // 4) Cria matrícula
       const payloadMatricula: any = {
         id_aluno: novoAlunoId,
         numero_inscricao: novoNumeroInscricao.trim() || null,
@@ -720,13 +820,14 @@ const SecretariaMatriculasPage: FC = () => {
       if (insertError || !novaMatriculaData) {
         console.error(insertError)
         erro('Erro ao salvar a matrícula do aluno.')
+        setSalvandoNova(false)
         return
       }
 
       const novaMatriculaId = novaMatriculaData.id_matricula
 
-      // 3) Aproveitamento / Progressão → registros em progresso_aluno (apenas se houver dados suficientes)
-      const temNivel = novoNivelId !== ''
+      // 5) Aproveitamento / Progressão → registros em progresso_aluno
+      const temNivel = nivelId != null
 
       const isAproveitamento =
         novaModalidade === 'Aproveitamento de Estudos'
@@ -753,9 +854,8 @@ const SecretariaMatriculasPage: FC = () => {
             s.nome.toLowerCase().includes('cursar'),
           ) ?? statusDisciplinaDisponiveis[0]
 
-        const nivelIdNum = Number(novoNivelId)
         const anosNivel = anosEscolaresDisponiveis.filter(
-          (a) => a.id_nivel_ensino === nivelIdNum,
+          (a) => a.id_nivel_ensino === nivelId,
         )
 
         if (isAproveitamento) {
@@ -767,7 +867,6 @@ const SecretariaMatriculasPage: FC = () => {
             (a) => !concluidasSet.has(a.id_ano_escolar),
           )
 
-          // Séries concluídas → disciplinas concluídas
           seriesConcluidas.forEach((serie) => {
             const configs = configDisciplinaAnoDisponiveis.filter(
               (c) => c.id_ano_escolar === serie.id_ano_escolar,
@@ -787,7 +886,6 @@ const SecretariaMatriculasPage: FC = () => {
             })
           })
 
-          // Séries restantes → disciplinas A Cursar
           seriesRestantes.forEach((serie) => {
             const configs = configDisciplinaAnoDisponiveis.filter(
               (c) => c.id_ano_escolar === serie.id_ano_escolar,
@@ -850,7 +948,9 @@ const SecretariaMatriculasPage: FC = () => {
       }
 
       await carregarDados()
-      sucesso('Matrícula criada com sucesso.')
+      sucesso(
+        `Matrícula criada com sucesso. Usuário: ${emailFinal} | Senha: ${senhaFinal}`,
+      )
       setNovaAberta(false)
     } catch (e) {
       console.error(e)
@@ -1533,19 +1633,21 @@ const SecretariaMatriculasPage: FC = () => {
                 <TextField
                   fullWidth
                   size="small"
-                  label="E-mail do aluno"
+                  label="E-mail do aluno (opcional)"
                   type="email"
                   value={formAlunoEmail}
                   onChange={(e) => setFormAlunoEmail(e.target.value)}
                   disabled={salvandoNova}
+                  helperText="Se não preencher, será criado automaticamente (ex.: joao_silva@ceja.com)"
                 />
                 <TextField
                   fullWidth
                   size="small"
-                  label="CPF"
+                  label="CPF (opcional)"
                   value={formAlunoCpf}
                   onChange={(e) => setFormAlunoCpf(e.target.value)}
                   disabled={salvandoNova}
+                  helperText="Se informado, será usado como senha inicial."
                 />
               </Stack>
 
@@ -1590,7 +1692,7 @@ const SecretariaMatriculasPage: FC = () => {
                 <TextField
                   fullWidth
                   size="small"
-                  label="Nome da mãe"
+                  label="Nome da mãe (opcional)"
                   value={formAlunoNomeMae}
                   onChange={(e) => setFormAlunoNomeMae(e.target.value)}
                   disabled={salvandoNova}
