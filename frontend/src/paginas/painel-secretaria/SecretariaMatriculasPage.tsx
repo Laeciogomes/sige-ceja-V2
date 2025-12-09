@@ -9,7 +9,6 @@ import {
   useRef,
 } from 'react'
 
-
 import {
   Avatar,
   Box,
@@ -64,7 +63,6 @@ import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
 
 import { useSupabase } from '../../contextos/SupabaseContext'
 import { useNotificacaoContext } from '../../contextos/NotificacaoContext'
-
 
 // Tipo de usuário ALUNO na tabela tipos_usuario
 const TIPO_USUARIO_ALUNO_ID = 5
@@ -270,18 +268,15 @@ const SecretariaMatriculasPage: FC = () => {
   const [formAlunoBairro, setFormAlunoBairro] = useState('')
   const [formAlunoMunicipio, setFormAlunoMunicipio] = useState('')
   const [formAlunoPontoRef, setFormAlunoPontoRef] = useState('')
-  const [formAlunoUsaTransporte, setFormAlunoUsaTransporte] =
-    useState(false)
+  const [formAlunoUsaTransporte, setFormAlunoUsaTransporte] = useState(false)
   const [formAlunoTemNecessidade, setFormAlunoTemNecessidade] =
     useState(false)
   const [formAlunoDescNecessidade, setFormAlunoDescNecessidade] =
     useState('')
-  const [formAlunoTemRestricao, setFormAlunoTemRestricao] =
-    useState(false)
+  const [formAlunoTemRestricao, setFormAlunoTemRestricao] = useState(false)
   const [formAlunoDescRestricao, setFormAlunoDescRestricao] =
     useState('')
-  const [formAlunoTemBeneficio, setFormAlunoTemBeneficio] =
-    useState(false)
+  const [formAlunoTemBeneficio, setFormAlunoTemBeneficio] = useState(false)
   const [formAlunoDescBeneficio, setFormAlunoDescBeneficio] =
     useState('')
   const [formAlunoObservacoes, setFormAlunoObservacoes] = useState('')
@@ -290,7 +285,7 @@ const SecretariaMatriculasPage: FC = () => {
   const [uploadingFotoAluno, setUploadingFotoAluno] = useState(false)
   const fileInputFotoRef = useRef<HTMLInputElement | null>(null)
 
-  // --- Dados da matrícula ---
+  // --- Dados da matrícula (novo) ---
   const [novoNumeroInscricao, setNovoNumeroInscricao] = useState('')
   const [novoNivelId, setNovoNivelId] = useState<number | ''>('')
   const [novoStatusId, setNovoStatusId] = useState<number | ''>('')
@@ -306,14 +301,14 @@ const SecretariaMatriculasPage: FC = () => {
   )
   const [novaDataConclusao, setNovaDataConclusao] = useState<string>('')
 
-  // Aproveitamento – séries concluídas
+  // Aproveitamento – séries concluídas (novo)
   const [seriesConcluidasIds, setSeriesConcluidasIds] = useState<number[]>([])
-  // Progressão – série + disciplinas a cursar
+  // Progressão – série + disciplinas a cursar (novo)
   const [serieProgressaoId, setSerieProgressaoId] = useState<number | ''>('')
   const [disciplinasProgressaoIds, setDisciplinasProgressaoIds] =
     useState<number[]>([])
 
-    // Ficha de matrícula selecionada
+  // Ficha de matrícula selecionada
   const [matriculaSelecionada, setMatriculaSelecionada] =
     useState<MatriculaLista | null>(null)
 
@@ -331,6 +326,15 @@ const SecretariaMatriculasPage: FC = () => {
   const [editDataMatricula, setEditDataMatricula] = useState<string>('')
   const [editDataConclusao, setEditDataConclusao] = useState<string>('')
   const [editTurmaId, setEditTurmaId] = useState<string>('')
+
+  // Aproveitamento / Progressão (edição)
+  const [editSeriesConcluidasIds, setEditSeriesConcluidasIds] =
+    useState<number[]>([])
+  const [editSerieProgressaoId, setEditSerieProgressaoId] = useState<
+    number | ''
+  >('')
+  const [editDisciplinasProgressaoIds, setEditDisciplinasProgressaoIds] =
+    useState<number[]>([])
 
   // Exclusão de matrícula
   const [dialogExcluirAberto, setDialogExcluirAberto] = useState(false)
@@ -521,8 +525,7 @@ const SecretariaMatriculasPage: FC = () => {
       const alunosList: AlunoRow[] =
         ((alunosData ?? []) as unknown as AlunoRow[])
       const niveisList = (niveisData || []) as NivelEnsinoRow[]
-      const statusList =
-        (statusData || []) as StatusMatriculaRow[]
+      const statusList = (statusData || []) as StatusMatriculaRow[]
       const turmasList = (turmasData || []) as TurmaRow[]
       const disciplinasList =
         (disciplinasData || []) as DisciplinaRow[]
@@ -678,8 +681,13 @@ const SecretariaMatriculasPage: FC = () => {
     }
   }
 
-    const abrirDialogEditarMatricula = (matricula: MatriculaLista) => {
+  const abrirDialogEditarMatricula = (matricula: MatriculaLista) => {
     setEditandoMatricula(matricula)
+
+    // limpa configurações de aproveitamento/progressão (edição)
+    setEditSeriesConcluidasIds([])
+    setEditSerieProgressaoId('')
+    setEditDisciplinasProgressaoIds([])
 
     setEditNumeroInscricao(matricula.numeroInscricao ?? '')
     setEditAnoLetivo(
@@ -691,16 +699,12 @@ const SecretariaMatriculasPage: FC = () => {
     const nivelRow = niveisDisponiveis.find(
       (n) => n.nome === matricula.nivelNome,
     )
-    setEditNivelId(
-      nivelRow ? String(nivelRow.id_nivel_ensino) : '',
-    )
+    setEditNivelId(nivelRow ? String(nivelRow.id_nivel_ensino) : '')
 
     const statusRow = statusDisponiveis.find(
       (s) => s.nome === matricula.statusNome,
     )
-    setEditStatusId(
-      statusRow ? String(statusRow.id_status_matricula) : '',
-    )
+    setEditStatusId(statusRow ? String(statusRow.id_status_matricula) : '')
 
     let turmaId = ''
     if (matricula.turmaNome) {
@@ -723,8 +727,7 @@ const SecretariaMatriculasPage: FC = () => {
 
     setEditModalidade(matricula.modalidade ?? '')
     setEditDataMatricula(
-      matricula.dataMatricula ??
-        new Date().toISOString().slice(0, 10),
+      matricula.dataMatricula ?? new Date().toISOString().slice(0, 10),
     )
     setEditDataConclusao(matricula.dataConclusao ?? '')
 
@@ -750,13 +753,9 @@ const SecretariaMatriculasPage: FC = () => {
     const ano =
       editAnoLetivo.trim() === '' ? null : Number(editAnoLetivo)
     const dataMatricula =
-      editDataMatricula.trim() === ''
-        ? null
-        : editDataMatricula
+      editDataMatricula.trim() === '' ? null : editDataMatricula
     const dataConclusao =
-      editDataConclusao.trim() === ''
-        ? null
-        : editDataConclusao
+      editDataConclusao.trim() === '' ? null : editDataConclusao
     const modalidade = editModalidade.trim() || null
 
     try {
@@ -878,7 +877,7 @@ const SecretariaMatriculasPage: FC = () => {
 
       if (error) {
         console.error(error)
-        if (error.code === '23503') {
+        if ((error as any).code === '23503') {
           erro(
             'Não é possível excluir esta matrícula porque existem registros vinculados (progresso, atendimentos ou protocolos).',
           )
@@ -907,7 +906,6 @@ const SecretariaMatriculasPage: FC = () => {
     }
   }
 
-
   useEffect(() => {
     void carregarDados()
   }, [supabase])
@@ -916,7 +914,9 @@ const SecretariaMatriculasPage: FC = () => {
     setPage(newPage)
   }
 
-  const handleChangeRowsPerPage = (event: ChangeEvent<HTMLInputElement>) => {
+  const handleChangeRowsPerPage = (
+    event: ChangeEvent<HTMLInputElement>,
+  ) => {
     setRowsPerPage(parseInt(event.target.value, 10))
     setPage(0)
   }
@@ -1051,7 +1051,6 @@ const SecretariaMatriculasPage: FC = () => {
         foto_url: formAlunoFotoUrl || null,
         status: 'Ativo',
       }
-
 
       const { error: usuarioError } = await supabase
         .from('usuarios')
@@ -1275,9 +1274,7 @@ const SecretariaMatriculasPage: FC = () => {
       lista = lista.filter((m) => {
         return (
           m.alunoNome.toLowerCase().includes(termo) ||
-          (m.numeroInscricao ?? '')
-            .toLowerCase()
-            .includes(termo) ||
+          (m.numeroInscricao ?? '').toLowerCase().includes(termo) ||
           m.nivelNome.toLowerCase().includes(termo) ||
           (m.turmaNome ?? '').toLowerCase().includes(termo) ||
           (m.statusNome ?? '').toLowerCase().includes(termo) ||
@@ -1305,7 +1302,14 @@ const SecretariaMatriculasPage: FC = () => {
     }
 
     return lista
-  }, [matriculas, busca, filtroAno, filtroNivel, filtroStatus, niveisDisponiveis])
+  }, [
+    matriculas,
+    busca,
+    filtroAno,
+    filtroNivel,
+    filtroStatus,
+    niveisDisponiveis,
+  ])
 
   useEffect(() => {
     setPage(0)
@@ -1353,8 +1357,39 @@ const SecretariaMatriculasPage: FC = () => {
       (c) => c.id_ano_escolar === serieIdNum,
     )
     const ids = configs.map((c) => c.id_disciplina)
-    return disciplinasDisponiveis.filter((d) => ids.includes(d.id_disciplina))
-  }, [serieProgressaoId, configDisciplinaAnoDisponiveis, disciplinasDisponiveis])
+    return disciplinasDisponiveis.filter((d) =>
+      ids.includes(d.id_disciplina),
+    )
+  }, [
+    serieProgressaoId,
+    configDisciplinaAnoDisponiveis,
+    disciplinasDisponiveis,
+  ])
+
+  // Versões para EDIÇÃO (mesma lógica, mas usando editNivelId / editSerieProgressaoId)
+  const editSeriesDoNivel = useMemo(() => {
+    if (editNivelId === '') return []
+    const nivelIdNum = Number(editNivelId)
+    return anosEscolaresDisponiveis
+      .filter((a) => a.id_nivel_ensino === nivelIdNum)
+      .sort((a, b) => a.nome_ano.localeCompare(b.nome_ano))
+  }, [anosEscolaresDisponiveis, editNivelId])
+
+  const editDisciplinasDaSerieProgressao = useMemo(() => {
+    if (editSerieProgressaoId === '') return []
+    const serieIdNum = Number(editSerieProgressaoId)
+    const configs = configDisciplinaAnoDisponiveis.filter(
+      (c) => c.id_ano_escolar === serieIdNum,
+    )
+    const ids = configs.map((c) => c.id_disciplina)
+    return disciplinasDisponiveis.filter((d) =>
+      ids.includes(d.id_disciplina),
+    )
+  }, [
+    editSerieProgressaoId,
+    configDisciplinaAnoDisponiveis,
+    disciplinasDisponiveis,
+  ])
 
   const headerBgColor =
     theme.palette.mode === 'light'
@@ -1382,10 +1417,15 @@ const SecretariaMatriculasPage: FC = () => {
     return theme.palette.text.secondary
   }
 
-  const isAproveitamento =
+  const isAproveitamentoNova =
     novaModalidade === 'Aproveitamento de Estudos'
-  const isProgressao =
+  const isProgressaoNova =
     novaModalidade === 'Progressão de Estudos'
+
+  const isAproveitamentoEdicao =
+    editModalidade === 'Aproveitamento de Estudos'
+  const isProgressaoEdicao =
+    editModalidade === 'Progressão de Estudos'
 
   // === RENDER ===
 
@@ -1592,8 +1632,7 @@ const SecretariaMatriculasPage: FC = () => {
                             color="text.secondary"
                             display="block"
                           >
-                            Matrícula:{' '}
-                            {m.numeroInscricao ?? '—'}
+                            Matrícula: {m.numeroInscricao ?? '—'}
                           </Typography>
                           {m.alunoNis && (
                             <Typography
@@ -1719,7 +1758,6 @@ const SecretariaMatriculasPage: FC = () => {
                           </Button>
                         </Stack>
                       </Box>
-
                     </Stack>
                   </Paper>
                 )
@@ -1899,49 +1937,58 @@ const SecretariaMatriculasPage: FC = () => {
                         )}
                       </TableCell>
                       <TableCell align="right">
-  <Stack
-    direction="row"
-    spacing={1}
-    justifyContent="flex-end"
-  >
-    <Tooltip title="Ver ficha completa do aluno e da matrícula">
-      <span>
-        <Button
-          size="small"
-          variant="text"
-          onClick={() => setMatriculaSelecionada(m)}
-          disabled={salvandoEdicao || excluindoMatricula}
-        >
-          Detalhes
-        </Button>
-      </span>
-    </Tooltip>
-    <Tooltip title="Editar matrícula">
-      <span>
-        <IconButton
-          size="small"
-          onClick={() => abrirDialogEditarMatricula(m)}
-          disabled={salvandoEdicao || excluindoMatricula}
-        >
-          <EditIcon fontSize="small" />
-        </IconButton>
-      </span>
-    </Tooltip>
-    <Tooltip title="Excluir matrícula">
-      <span>
-        <IconButton
-          size="small"
-          color="error"
-          onClick={() => abrirDialogExcluirMatricula(m)}
-          disabled={excluindoMatricula}
-        >
-          <DeleteOutlineIcon fontSize="small" />
-        </IconButton>
-      </span>
-    </Tooltip>
-  </Stack>
-</TableCell>
-
+                        <Stack
+                          direction="row"
+                          spacing={1}
+                          justifyContent="flex-end"
+                        >
+                          <Tooltip title="Ver ficha completa do aluno e da matrícula">
+                            <span>
+                              <Button
+                                size="small"
+                                variant="text"
+                                onClick={() =>
+                                  setMatriculaSelecionada(m)
+                                }
+                                disabled={
+                                  salvandoEdicao || excluindoMatricula
+                                }
+                              >
+                                Detalhes
+                              </Button>
+                            </span>
+                          </Tooltip>
+                          <Tooltip title="Editar matrícula">
+                            <span>
+                              <IconButton
+                                size="small"
+                                onClick={() =>
+                                  abrirDialogEditarMatricula(m)
+                                }
+                                disabled={
+                                  salvandoEdicao || excluindoMatricula
+                                }
+                              >
+                                <EditIcon fontSize="small" />
+                              </IconButton>
+                            </span>
+                          </Tooltip>
+                          <Tooltip title="Excluir matrícula">
+                            <span>
+                              <IconButton
+                                size="small"
+                                color="error"
+                                onClick={() =>
+                                  abrirDialogExcluirMatricula(m)
+                                }
+                                disabled={excluindoMatricula}
+                              >
+                                <DeleteOutlineIcon fontSize="small" />
+                              </IconButton>
+                            </span>
+                          </Tooltip>
+                        </Stack>
+                      </TableCell>
                     </TableRow>
                   )
                 })}
@@ -1998,7 +2045,9 @@ const SecretariaMatriculasPage: FC = () => {
                   }}
                 >
                   {!formAlunoFotoUrl &&
-                    (formAlunoNome ? formAlunoNome[0].toUpperCase() : '?')}
+                    (formAlunoNome
+                      ? formAlunoNome[0].toUpperCase()
+                      : '?')}
                 </Avatar>
                 <Box>
                   <Button
@@ -2011,7 +2060,11 @@ const SecretariaMatriculasPage: FC = () => {
                   >
                     {uploadingFotoAluno ? 'Enviando...' : 'Enviar foto'}
                   </Button>
-                  <Typography variant="caption" color="text.secondary" display="block">
+                  <Typography
+                    variant="caption"
+                    color="text.secondary"
+                    display="block"
+                  >
                     A foto será salva no perfil do aluno (tabela usuários).
                   </Typography>
                   <input
@@ -2474,8 +2527,8 @@ const SecretariaMatriculasPage: FC = () => {
               </Stack>
             </Box>
 
-            {/* BLOCO: APROVEITAMENTO – séries concluídas */}
-            {isAproveitamento && novoNivelId !== '' && (
+            {/* BLOCO: APROVEITAMENTO – séries concluídas (NOVO) */}
+            {isAproveitamentoNova && novoNivelId !== '' && (
               <Stack spacing={1.5}>
                 <Typography variant="subtitle2" fontWeight={700}>
                   Aproveitamento de Estudos – Séries concluídas
@@ -2538,8 +2591,8 @@ const SecretariaMatriculasPage: FC = () => {
               </Stack>
             )}
 
-            {/* BLOCO: PROGRESSÃO – série e disciplinas a cursar */}
-            {isProgressao && novoNivelId !== '' && (
+            {/* BLOCO: PROGRESSÃO – série e disciplinas a cursar (NOVO) */}
+            {isProgressaoNova && novoNivelId !== '' && (
               <Stack spacing={1.5}>
                 <Typography variant="subtitle2" fontWeight={700}>
                   Progressão de Estudos – Série e disciplinas
@@ -2656,7 +2709,7 @@ const SecretariaMatriculasPage: FC = () => {
         </DialogActions>
       </Dialog>
 
-            {/* Dialog Editar matrícula */}
+      {/* Dialog Editar matrícula */}
       <Dialog
         open={editarAberto}
         onClose={handleFecharEditarMatricula}
@@ -2896,6 +2949,198 @@ const SecretariaMatriculasPage: FC = () => {
                     />
                   </Stack>
                 </Box>
+
+                {/* BLOCO: APROVEITAMENTO – séries concluídas (EDIÇÃO) */}
+                {isAproveitamentoEdicao && editNivelId !== '' && (
+                  <Stack spacing={1.5}>
+                    <Typography
+                      variant="subtitle2"
+                      fontWeight={700}
+                    >
+                      Aproveitamento de Estudos – Séries concluídas
+                    </Typography>
+                    <Typography
+                      variant="body2"
+                      color="text.secondary"
+                    >
+                      Selecione as séries (anos escolares) que o aluno já
+                      concluiu em outra escola. As disciplinas dessas séries
+                      serão marcadas como concluídas; as séries restantes
+                      serão registradas como &quot;A Cursar&quot;.
+                    </Typography>
+
+                    <FormControl fullWidth size="small">
+                      <InputLabel id="edit-series-concluidas-label">
+                        Séries concluídas
+                      </InputLabel>
+                      <Select
+                        labelId="edit-series-concluidas-label"
+                        multiple
+                        label="Séries concluídas"
+                        value={editSeriesConcluidasIds}
+                        onChange={(e) => {
+                          const raw = e.target.value as unknown
+                          let ids: number[] = []
+                          if (typeof raw === 'string') {
+                            ids = raw
+                              .split(',')
+                              .map((v: string) => Number(v))
+                          } else if (Array.isArray(raw)) {
+                            ids = (
+                              raw as Array<string | number>
+                            ).map((v) => Number(v))
+                          }
+                          setEditSeriesConcluidasIds(ids)
+                        }}
+                        renderValue={(selected) => {
+                          const ids = selected as number[]
+                          const nomes = editSeriesDoNivel
+                            .filter((s) =>
+                              ids.includes(s.id_ano_escolar),
+                            )
+                            .map((s) => s.nome_ano)
+                          return nomes.join(', ')
+                        }}
+                        disabled={
+                          salvandoEdicao ||
+                          excluindoMatricula ||
+                          editSeriesDoNivel.length === 0
+                        }
+                      >
+                        {editSeriesDoNivel.map((serie) => (
+                          <MenuItem
+                            key={serie.id_ano_escolar}
+                            value={serie.id_ano_escolar}
+                          >
+                            <Checkbox
+                              size="small"
+                              checked={editSeriesConcluidasIds.includes(
+                                serie.id_ano_escolar,
+                              )}
+                            />
+                            <ListItemText primary={serie.nome_ano} />
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  </Stack>
+                )}
+
+                {/* BLOCO: PROGRESSÃO – série e disciplinas a cursar (EDIÇÃO) */}
+                {isProgressaoEdicao && editNivelId !== '' && (
+                  <Stack spacing={1.5}>
+                    <Typography
+                      variant="subtitle2"
+                      fontWeight={700}
+                    >
+                      Progressão de Estudos – Série e disciplinas
+                    </Typography>
+                    <Typography
+                      variant="body2"
+                      color="text.secondary"
+                    >
+                      Selecione a série (ano escolar) e as disciplinas que o
+                      aluno irá cursar no CEJA. As disciplinas serão
+                      registradas com status &quot;A Cursar&quot;. O
+                      controle de até 3 disciplinas &quot;Cursando&quot; por
+                      vez será feito na tela pedagógica.
+                    </Typography>
+
+                    <FormControl fullWidth size="small">
+                      <InputLabel id="edit-serie-progressao-label">
+                        Série (ano escolar)
+                      </InputLabel>
+                      <Select
+                        labelId="edit-serie-progressao-label"
+                        label="Série (ano escolar)"
+                        value={
+                          editSerieProgressaoId === ''
+                            ? ''
+                            : String(editSerieProgressaoId)
+                        }
+                        onChange={(e) =>
+                          setEditSerieProgressaoId(
+                            e.target.value === ''
+                              ? ''
+                              : Number(e.target.value),
+                          )
+                        }
+                        disabled={
+                          salvandoEdicao ||
+                          excluindoMatricula ||
+                          editSeriesDoNivel.length === 0
+                        }
+                      >
+                        {editSeriesDoNivel.map((serie) => (
+                          <MenuItem
+                            key={serie.id_ano_escolar}
+                            value={serie.id_ano_escolar}
+                          >
+                            {serie.nome_ano}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+
+                    <FormControl fullWidth size="small">
+                      <InputLabel id="edit-disciplinas-progressao-label">
+                        Disciplinas a cursar
+                      </InputLabel>
+                      <Select
+                        labelId="edit-disciplinas-progressao-label"
+                        multiple
+                        label="Disciplinas a cursar"
+                        value={editDisciplinasProgressaoIds}
+                        onChange={(e) => {
+                          const raw = e.target.value as unknown
+                          let ids: number[] = []
+                          if (typeof raw === 'string') {
+                            ids = raw
+                              .split(',')
+                              .map((v: string) => Number(v))
+                          } else if (Array.isArray(raw)) {
+                            ids = (
+                              raw as Array<string | number>
+                            ).map((v) => Number(v))
+                          }
+                          setEditDisciplinasProgressaoIds(ids)
+                        }}
+                        renderValue={(selected) => {
+                          const ids = selected as number[]
+                          const nomes =
+                            editDisciplinasDaSerieProgressao
+                              .filter((d) =>
+                                ids.includes(d.id_disciplina),
+                              )
+                              .map((d) => d.nome_disciplina)
+                          return nomes.join(', ')
+                        }}
+                        disabled={
+                          salvandoEdicao ||
+                          excluindoMatricula ||
+                          editDisciplinasDaSerieProgressao.length === 0
+                        }
+                      >
+                        {editDisciplinasDaSerieProgressao.map((disc) => (
+                          <MenuItem
+                            key={disc.id_disciplina}
+                            value={disc.id_disciplina}
+                          >
+                            <Checkbox
+                              size="small"
+                              checked={editDisciplinasProgressaoIds.includes(
+                                disc.id_disciplina,
+                              )}
+                            />
+                            <ListItemText
+                              primary={disc.nome_disciplina}
+                            />
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  </Stack>
+                )}
               </>
             )}
           </Stack>
@@ -2956,7 +3201,6 @@ const SecretariaMatriculasPage: FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
-
 
       {/* Dialog de ficha completa (aluno + matrícula) */}
       {matriculaSelecionada && (
@@ -3238,9 +3482,7 @@ const SecretariaMatriculasPage: FC = () => {
             </Stack>
           </DialogContent>
           <DialogActions sx={{ p: 2 }}>
-            <Button
-              onClick={() => setMatriculaSelecionada(null)}
-            >
+            <Button onClick={() => setMatriculaSelecionada(null)}>
               Fechar
             </Button>
           </DialogActions>
