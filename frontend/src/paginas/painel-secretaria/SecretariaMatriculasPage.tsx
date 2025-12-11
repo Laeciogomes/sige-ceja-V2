@@ -305,6 +305,7 @@ const SecretariaMatriculasPage: FC = () => {
   const [seriesConcluidasIds, setSeriesConcluidasIds] = useState<number[]>([])
   // Progressão – série + disciplinas a cursar (novo)
   const [serieProgressaoId, setSerieProgressaoId] = useState<number | ''>('')
+
   const [disciplinasProgressaoIds, setDisciplinasProgressaoIds] =
     useState<number[]>([])
 
@@ -1144,6 +1145,7 @@ const SecretariaMatriculasPage: FC = () => {
         anosEscolaresDisponiveis.length > 0 &&
         configDisciplinaAnoDisponiveis.length > 0
       ) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const inserts: any[] = []
 
         const statusConcluida =
@@ -1455,8 +1457,8 @@ const SecretariaMatriculasPage: FC = () => {
           </Typography>
 
           <Typography variant="body2" color="text.secondary">
-            Cadastre novos alunos, defina a modalidade (orientação, aproveitamento
-            ou progressão) e acompanhe as matrículas do CEJA.
+            Cadastre novos alunos, defina a modalidade (orientação,
+            aproveitamento ou progressão) e acompanhe as matrículas do CEJA.
           </Typography>
         </Box>
 
@@ -2534,10 +2536,10 @@ const SecretariaMatriculasPage: FC = () => {
                   Aproveitamento de Estudos – Séries concluídas
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
-                  Selecione as séries (anos escolares) que o aluno já concluiu em
-                  outra escola. As disciplinas dessas séries serão marcadas como
-                  concluídas; as séries restantes serão registradas como &quot;A
-                  Cursar&quot;.
+                  Selecione as séries (anos escolares) que o aluno já
+                  concluiu em outra escola. As disciplinas dessas séries
+                  serão marcadas como concluídas; as séries restantes serão
+                  registradas como &quot;A Cursar&quot;.
                 </Typography>
 
                 <FormControl fullWidth size="small">
@@ -2598,11 +2600,11 @@ const SecretariaMatriculasPage: FC = () => {
                   Progressão de Estudos – Série e disciplinas
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
-                  Selecione a série (ano escolar) e as disciplinas que o aluno
-                  irá cursar no CEJA. As disciplinas serão registradas com status
-                  &quot;A Cursar&quot;. O controle de até 3 disciplinas
-                  &quot;Cursando&quot; por vez será feito na tela pedagógica
-                  (professor/coordenação/direção).
+                  Selecione a série (ano escolar) e as disciplinas que o
+                  aluno irá cursar no CEJA. As disciplinas serão
+                  registradas com status &quot;A Cursar&quot;. O controle
+                  de até 3 disciplinas &quot;Cursando&quot; por vez será
+                  feito na tela pedagógica (professor/coordenação/direção).
                 </Typography>
 
                 <FormControl fullWidth size="small">
