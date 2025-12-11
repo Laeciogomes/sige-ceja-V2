@@ -30,7 +30,6 @@ const HABILITAR_CRIACAO_USUARIOS_AUTH = false;
 
 // Tipo com TODAS as colunas relevantes do CSV (aluno.csv + PDF + campos gerados)
 type MatriculaCsvRow = {
-  // chaves "core"
   id_aluno: string;
   id?: string;
   data_matricula?: string;
@@ -90,7 +89,7 @@ type MatriculaCsvRow = {
   sige_id: string;
   ano_letivo: string;
   id_status_matricula: string;
-  data_matricula_import?: string; // se existir
+  data_matricula_import?: string;
   tem_id_aluno?: string;
 
   // login / foto refinado
@@ -205,6 +204,35 @@ const normalizarData = (v?: string): string | null => {
   return null;
 };
 
+// Parser de CSV que respeita campos entre aspas e vírgulas dentro do texto
+const parseCsvLine = (line: string): string[] => {
+  const result: string[] = [];
+  let current = '';
+  let inQuotes = false;
+
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+
+    if (ch === '"') {
+      // Duas aspas seguidas dentro de campo: "" -> "
+      if (inQuotes && line[i + 1] === '"') {
+        current += '"';
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if (ch === ',' && !inQuotes) {
+      result.push(current);
+      current = '';
+    } else {
+      current += ch;
+    }
+  }
+  result.push(current);
+
+  return result;
+};
+
 const SecretariaImportarMatriculasPage: React.FC = () => {
   const { supabase } = useSupabase();
   const { notificar } = useNotificacaoContext();
@@ -238,18 +266,17 @@ const SecretariaImportarMatriculasPage: React.FC = () => {
 
     try {
       const text = await file.text();
-      const linhas = text
-        .split(/\r?\n/)
-        .map((l) => l.trim())
-        .filter((l) => l.length > 0);
+      const rawLines = text.split(/\r?\n/);
+      const linhas = rawLines.filter((l) => l.trim().length > 0);
 
       if (linhas.length < 2) {
         setErros(['Arquivo CSV vazio ou sem dados.']);
         return;
       }
 
-      const [headerLine, ...dataLines] = linhas;
-      const headers = headerLine.split(',').map((h) => h.trim());
+      const headerCells = parseCsvLine(linhas[0]);
+      const headers = headerCells.map((h) => h.trim());
+      const dataLines = linhas.slice(1);
 
       const erroCols: string[] = [];
       const getIndex = (col: string, obrigatoria = true) => {
@@ -292,10 +319,8 @@ const SecretariaImportarMatriculasPage: React.FC = () => {
       const alunosRawMap = new Map<number, MatriculaCsvRow>();
 
       dataLines.forEach((linha, i) => {
-        const partes = linha.split(',');
-        if (partes.length < headers.length) {
-          return;
-        }
+        const partes = parseCsvLine(linha);
+        if (partes.length === 0) return;
 
         const raw: any = {};
         headers.forEach((h, idx) => {
@@ -888,10 +913,10 @@ const SecretariaImportarMatriculasPage: React.FC = () => {
         <br />
         • Matrículas 2025 em <code>matriculas</code> com a turma vinda dos PDFs.
         <br />
-        • Opcionalmente, criação de usuários de login (Auth + <code>usuarios</code>) usando
-        <code>email_final</code> e <code>senha_inicial</code> ou{' '}
-        <code>{'<numero_inscricao>@ceja'}</code> quando o CPF não estiver disponível (essa
-        parte exige service_role e está desabilitada no frontend por segurança).
+        • Opcionalmente, criação de usuários de login (Auth + <code>usuarios</code>)
+        usando <code>email_final</code> e <code>senha_inicial</code> ou{' '}
+        <code>{'<numero_inscricao>@ceja'}</code> quando o CPF não estiver disponível
+        (essa parte exige service_role e está desabilitada no frontend por segurança).
       </Typography>
 
       <Paper sx={{ p: 2, mb: 3 }}>
@@ -919,9 +944,9 @@ const SecretariaImportarMatriculasPage: React.FC = () => {
           </Stack>
 
           <Typography variant="body2" color="text.secondary">
-            Use o arquivo{' '}
-            <strong>matriculas_import_2025_full_import.csv</strong> (aluno.csv +
-            PDFs + colunas de usuário/senha/foto) que geramos para essa etapa.
+            Use o arquivo <strong>matriculas_import_2025_full_import.csv</strong>{' '}
+            (aluno.csv + PDFs + colunas de usuário/senha/foto) que geramos para
+            essa etapa.
           </Typography>
         </Stack>
       </Paper>
