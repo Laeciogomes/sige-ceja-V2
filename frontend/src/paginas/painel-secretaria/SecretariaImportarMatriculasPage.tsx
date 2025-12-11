@@ -24,6 +24,10 @@ import { useNavigate } from 'react-router-dom';
 import { useSupabase } from '../../contextos/SupabaseContext';
 import { useNotificacaoContext } from '../../contextos/NotificacaoContext';
 
+// IMPORTANTE: manter false no frontend (anon key não pode usar auth.admin).
+// Quando for rodar um script de backend com service_role, pode reaproveitar a lógica.
+const HABILITAR_CRIACAO_USUARIOS_AUTH = false;
+
 // Tipo com TODAS as colunas relevantes do CSV (aluno.csv + PDF + campos gerados)
 type MatriculaCsvRow = {
   // chaves "core"
@@ -190,10 +194,8 @@ const normalizarData = (v?: string): string | null => {
   const s = v.trim();
   if (!s) return null;
 
-  // Se já estiver no formato ISO (aaaa-mm-dd)
   if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
 
-  // Se estiver no formato brasileiro (dd/mm/aaaa)
   const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(s);
   if (m) {
     const [, dd, mm, yyyy] = m;
@@ -443,10 +445,12 @@ const SecretariaImportarMatriculasPage: React.FC = () => {
         }
       });
 
-      // Montar payload de SASP (um por aluno)
       const saspMap = new Map<number, FormularioSaspRow>();
       alunosRawMap.forEach((row, idAluno) => {
-        const dataEnt = normalizarData(row.data_matricula) || `${row.ano_letivo || '2025'}-01-01`;
+        const dataEnt =
+          normalizarData(row.data_matricula) ||
+          normalizarData(row.data_matricula_import) ||
+          `${row.ano_letivo || '2025'}-01-01`;
 
         const trabalha = !!row.local_funcaoTrab && row.local_funcaoTrab.trim() !== '';
         const repetiu = toBool(row.repetiu_ano);
@@ -517,7 +521,7 @@ const SecretariaImportarMatriculasPage: React.FC = () => {
         tipo: 'info',
         mensagem: `Arquivo lido com sucesso: ${insertsMatriculas.length} matrículas prontas para importação. Alunos únicos: ${
           alunosMap.size
-        }. Usuários a criar/atualizar (pela lógica): ${usuariosMap.size}.`,
+        }. Usuários com dados de login: ${usuariosMap.size}.`,
       });
     } catch (error: any) {
       console.error(error);
@@ -608,7 +612,7 @@ const SecretariaImportarMatriculasPage: React.FC = () => {
     if (somenteSimulacao) {
       notificar({
         tipo: 'info',
-        mensagem: `Simulação: seriam inseridas ${linhasValidas.length} matrículas, upsert de ${totalAlunosParaUpsert} alunos em 'alunos', criação de até ${totalUsuariosParaCriar} usuários de login, e inserção de até ${totalSaspParaInserir} formulários SASP.`,
+        mensagem: `Simulação: seriam inseridas ${linhasValidas.length} matrículas, atualização de ${totalAlunosParaUpsert} alunos na tabela 'alunos', inserção de até ${totalSaspParaInserir} registros em 'formulario_sasp' e criação de até ${totalUsuariosParaCriar} usuários de login (se habilitado no backend).`,
       });
       return;
     }
@@ -620,26 +624,31 @@ const SecretariaImportarMatriculasPage: React.FC = () => {
     let usuariosCriados = 0;
 
     try {
-      // 0. Upsert em ALUNOS (todos os campos do CSV para a tabela alunos)
+      // 0. Atualizar ALUNOS (sem mexer em id_aluno, que é identity)
       if (alunosUpsert.length > 0) {
-        const { error: erroUpsertAlunos } = await supabase
-          .from('alunos')
-          .upsert(alunosUpsert, { onConflict: 'id_aluno' });
+        for (const a of alunosUpsert) {
+          const { id_aluno, ...resto } = a;
 
-        if (erroUpsertAlunos) {
-          errosAcumulados.push(
-            `Falha ao fazer upsert na tabela 'alunos': ${erroUpsertAlunos.message}`,
-          );
+          const { error: erroUpdateAluno } = await supabase
+            .from('alunos')
+            .update(resto)
+            .eq('id_aluno', id_aluno);
+
+          if (erroUpdateAluno) {
+            errosAcumulados.push(
+              `Falha ao atualizar dados do aluno id_aluno=${id_aluno} na tabela 'alunos': ${erroUpdateAluno.message}`,
+            );
+          }
         }
       }
 
-      // 1. Criação de usuários de login (Auth + usuarios + vínculo em alunos.user_id)
-      if (usuariosCsv.length > 0) {
+      // 1. Criação de usuários de login (DISPARO OPCIONAL)
+      if (usuariosCsv.length > 0 && HABILITAR_CRIACAO_USUARIOS_AUTH) {
         const adminAuth = (supabase as any).auth?.admin;
 
         if (!adminAuth || typeof adminAuth.createUser !== 'function') {
           errosAcumulados.push(
-            'Este cliente Supabase não possui acesso a supabase.auth.admin. As matrículas e dados de alunos/SASP serão importados, mas a criação automática de usuários de login NÃO será executada. Para criar usuários, rode este processo a partir de um backend com chave service_role ou função Edge.',
+            'O cliente Supabase atual não possui acesso a supabase.auth.admin.createUser. Verifique se está usando a service_role key em ambiente seguro.',
           );
         } else {
           const idsAlunos = Array.from(
@@ -769,6 +778,12 @@ const SecretariaImportarMatriculasPage: React.FC = () => {
             }
           }
         }
+      } else if (usuariosCsv.length > 0 && !HABILITAR_CRIACAO_USUARIOS_AUTH) {
+        errosAcumulados.push(
+          `Foram detectados ${usuariosCsv.length} alunos com dados de login (email_final/senha), ` +
+            `mas a criação de usuários Auth está desabilitada no frontend (requer service_role). ` +
+            `Execute um script de backend com a mesma planilha para criar esses logins em segurança.`,
+        );
       }
 
       // 2. Inserir FORMULARIO_SASP (um por aluno, se ainda não existir)
@@ -818,12 +833,14 @@ const SecretariaImportarMatriculasPage: React.FC = () => {
 
       const partesMensagem: string[] = [
         `Importação concluída: ${linhasValidas.length} matrículas criadas.`,
-        `Alunos upsertados na tabela 'alunos': ${totalAlunosParaUpsert}.`,
+        `Alunos atualizados na tabela 'alunos': ${totalAlunosParaUpsert}.`,
         `Formulários SASP inseridos (novos): até ${totalSaspParaInserir}.`,
       ];
       if (usuariosCsv.length > 0) {
         partesMensagem.push(
-          `Usuários de aluno criados: ${usuariosCriados} (veja avisos abaixo para senhas geradas ou erros).`,
+          HABILITAR_CRIACAO_USUARIOS_AUTH
+            ? `Usuários de aluno criados: ${usuariosCriados} (veja avisos abaixo para senhas geradas ou erros).`
+            : `Usuários de aluno NÃO foram criados pelo frontend (veja aviso abaixo sobre service_role/script backend).`,
         );
       }
 
@@ -841,7 +858,7 @@ const SecretariaImportarMatriculasPage: React.FC = () => {
       console.error(error);
       setErros((prev) => [
         ...prev,
-        `Erro ao importar tudo (alunos, usuários, SASP e matrículas): ${
+        `Erro ao importar tudo (alunos, SASP e matrículas): ${
           error?.message || String(error)
         }`,
       ]);
@@ -864,16 +881,17 @@ const SecretariaImportarMatriculasPage: React.FC = () => {
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
         Esta página importa em lote:
         <br />
-        • Usuários de login (Auth + tabela <code>usuarios</code>), usando
-        <code>email_final</code> e <code>senha_inicial</code> (ou
-        &lt;numero_inscricao&gt;@ceja);
-        <br />
-        • Dados de aluno em <code>alunos</code> (NIS, mãe/pai, transporte,
-        necessidades, benefícios, observações);
+        • Atualização dos dados de aluno na tabela <code>alunos</code> (NIS, mãe/pai,
+        transporte, necessidades, benefícios, observações);
         <br />
         • Questionário completo em <code>formulario_sasp</code>;
         <br />
         • Matrículas 2025 em <code>matriculas</code> com a turma vinda dos PDFs.
+        <br />
+        • Opcionalmente, criação de usuários de login (Auth + <code>usuarios</code>) usando
+        <code>email_final</code> e <code>senha_inicial</code> ou{' '}
+        <code>{'<numero_inscricao>@ceja'}</code> quando o CPF não estiver disponível (essa
+        parte exige service_role e está desabilitada no frontend por segurança).
       </Typography>
 
       <Paper sx={{ p: 2, mb: 3 }}>
@@ -902,8 +920,8 @@ const SecretariaImportarMatriculasPage: React.FC = () => {
 
           <Typography variant="body2" color="text.secondary">
             Use o arquivo{' '}
-            <strong>matriculas_import_2025_completo_fotos_usuarios.csv</strong>{' '}
-            (aluno.csv + PDFs + colunas de usuário/senha/foto).
+            <strong>matriculas_import_2025_full_import.csv</strong> (aluno.csv +
+            PDFs + colunas de usuário/senha/foto) que geramos para essa etapa.
           </Typography>
         </Stack>
       </Paper>
@@ -920,11 +938,12 @@ const SecretariaImportarMatriculasPage: React.FC = () => {
               <strong>{linhasValidas.length}</strong>
             </Typography>
             <Typography variant="body2">
-              Fundamental: <strong>{resumoPorNivel.fundamental}</strong> | Médio:{' '}
+              Fundamental:{' '}
+              <strong>{resumoPorNivel.fundamental}</strong> | Médio:{' '}
               <strong>{resumoPorNivel.medio}</strong>
             </Typography>
             <Typography variant="body2">
-              Alunos únicos (para upsert em <code>alunos</code>):{' '}
+              Alunos únicos (para atualizar em <code>alunos</code>):{' '}
               <strong>{totalAlunosParaUpsert}</strong>
             </Typography>
             <Typography variant="body2">
@@ -1000,7 +1019,7 @@ const SecretariaImportarMatriculasPage: React.FC = () => {
             <Box sx={{ mt: 2 }}>
               <LinearProgress />
               <Typography variant="body2" color="text.secondary">
-                Importando alunos, usuários, SASP e matrículas no Supabase...
+                Importando alunos, SASP e matrículas no Supabase...
               </Typography>
             </Box>
           )}
