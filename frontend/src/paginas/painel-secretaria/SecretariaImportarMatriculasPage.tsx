@@ -1,3 +1,5 @@
+// src/paginas/painel-secretaria/SecretariaImportarMatriculasPage.tsx
+
 import React, { useMemo, useState } from 'react';
 import {
   Box,
@@ -22,24 +24,75 @@ import { useNavigate } from 'react-router-dom';
 import { useSupabase } from '../../contextos/SupabaseContext';
 import { useNotificacaoContext } from '../../contextos/NotificacaoContext';
 
-
+// Tipo com TODAS as colunas relevantes do CSV (aluno.csv + PDF + campos gerados)
 type MatriculaCsvRow = {
+  // chaves "core"
   id_aluno: string;
-  nome_aluno_pdf: string;
-  data_nasc_pdf: string;
-  nome_aluno_sistema: string;
-  data_nasc_sistema: string;
-  id_nivel_ensino: string;
-  turma_letra: string;
+  id?: string;
+  data_matricula?: string;
+  num_inscricao_aluno?: string;
+  num_am_aluno?: string;
+  nome_aluno: string;
+  nomeSocial_aluno?: string;
+  num_cpf_aluno?: string;
+  num_rg_aluno?: string;
+  num_nis_aluno?: string;
+  data_nasc_aluno?: string;
+  nome_pai_aluno?: string;
+  nome_mae_aluno?: string;
+  logradouro_endereco_aluno?: string;
+  numero_endereco_aluno?: string;
+  bairro_endereco_aluno?: string;
+  municipio_endereco_aluno?: string;
+  nivel_escolar_aluno?: string;
+  sexo_aluno?: string;
+  raca_aluno?: string;
+  foto_aluno?: string;
+  facebook_aluno?: string;
+  instagram_aluno?: string;
+  email_aluno?: string;
+  num_celular_aluno?: string;
+  uso_transporte?: string;
+  possui_necessidadeEspecial?: string;
+  necessidadeEspecial_qual?: string;
+  possui_restriAlimentar?: string;
+  restriAlimentar_qual?: string;
+  possui_programaSocial?: string;
+  programaSocial_qual?: string;
+  escola_origem?: string;
+  situacao_aluno?: string;
+  disciplinas_indicadas?: string;
+  porque_voltouEstudos?: string;
+  local_funcaoTrab?: string;
+  repetiu_ano?: string;
+  outras_escolasDesistiu?: string;
+  porque_desistiu?: string;
+  materias_dificeis?: string;
+  quantidade_emCasa?: string;
+  quem_saoParentes?: string;
+  responsavel_estudos?: string;
+  possui_filhos?: string;
+  quantidade_filhos?: string;
+  tomou_conhecimentoCeja?: string;
+  observacao?: string;
+  observacao_sasp?: string;
+  marcar_aluno?: string;
+
+  // campos derivados / novos
+  id_nivel_ensino: string; // 1 = Fundamental, 2 = Médio
+  turma_letra: string; // A–E
   id_turma: string;
   numero_inscricao: string;
   sige_id: string;
   ano_letivo: string;
   id_status_matricula: string;
-  data_matricula: string;
+  data_matricula_import?: string; // se existir
   tem_id_aluno?: string;
-  foto_aluno?: string;
+
+  // login / foto refinado
   cpf_raw?: string;
+  cpf_numerico?: string;
+  email_original?: string;
   email_final?: string;
   senha_inicial?: string;
 };
@@ -61,10 +114,94 @@ type UsuarioCsvRow = {
   senha: string;
   cpf?: string;
   foto_aluno?: string;
+  data_nasc?: string;
+  sexo?: string;
+  raca?: string;
+  celular?: string;
+  logradouro?: string;
+  numero_endereco?: string;
+  bairro?: string;
+  municipio?: string;
+  facebook?: string;
+  instagram?: string;
 };
 
-const CHUNK_SIZE_MATRICULAS = 200; // blocos de inserção na tabela matriculas
-const CHUNK_SIZE_USUARIOS = 50; // blocos para criação de usuários Auth
+type AlunoUpsertRow = {
+  id_aluno: number;
+  nis?: string;
+  nome_mae: string;
+  nome_pai?: string;
+  usa_transporte_escolar: boolean;
+  possui_necessidade_especial: boolean;
+  qual_necessidade_especial?: string;
+  possui_restricao_alimentar: boolean;
+  qual_restricao_alimentar?: string;
+  possui_beneficio_governo: boolean;
+  qual_beneficio_governo?: string;
+  observacoes_gerais?: string;
+};
+
+type FormularioSaspRow = {
+  id_aluno: number;
+  data_entrevista: string;
+  escola_origem?: string;
+  cidade_escola_origem?: string | null;
+  disciplinas_indicadas_aproveitamento?: string | null;
+  motivo_retorno_estudos?: string | null;
+  trabalha: boolean;
+  local_trabalho?: string | null;
+  funcao_trabalho?: string | null;
+  repetiu_ano: boolean;
+  desistiu_estudar: boolean;
+  motivos_desistencia?: string | null;
+  escolas_desistiu?: string | null;
+  materias_dificuldade?: string | null;
+  relacao_tecnologia?: string | null;
+  curso_superior_desejado?: string | null;
+  atividade_cultural_interesse?: string | null;
+  esporte_interesse?: string | null;
+  pessoas_residencia?: number | null;
+  parentes_moradia?: string | null;
+  responsavel_pelos_estudos?: string | null;
+  tem_filhos: boolean;
+  quantos_filhos?: number | null;
+  como_conheceu_ceja?: string | null;
+  observacoes_sasp?: string | null;
+};
+
+const CHUNK_SIZE_MATRICULAS = 200;
+const CHUNK_SIZE_USUARIOS = 50;
+const CHUNK_SIZE_SASP = 200;
+
+const toBool = (v?: string): boolean => {
+  if (!v) return false;
+  const s = v.toString().trim().toLowerCase();
+  return ['1', 'true', 'sim', 'yes', 's', 'y'].includes(s);
+};
+
+const toIntOrNull = (v?: string): number | null => {
+  if (!v) return null;
+  const n = Number(v);
+  return Number.isNaN(n) ? null : n;
+};
+
+const normalizarData = (v?: string): string | null => {
+  if (!v) return null;
+  const s = v.trim();
+  if (!s) return null;
+
+  // Se já estiver no formato ISO (aaaa-mm-dd)
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+
+  // Se estiver no formato brasileiro (dd/mm/aaaa)
+  const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(s);
+  if (m) {
+    const [, dd, mm, yyyy] = m;
+    return `${yyyy}-${mm}-${dd}`;
+  }
+
+  return null;
+};
 
 const SecretariaImportarMatriculasPage: React.FC = () => {
   const { supabase } = useSupabase();
@@ -74,6 +211,8 @@ const SecretariaImportarMatriculasPage: React.FC = () => {
   const [csvRows, setCsvRows] = useState<MatriculaCsvRow[]>([]);
   const [linhasValidas, setLinhasValidas] = useState<MatriculaInsert[]>([]);
   const [usuariosCsv, setUsuariosCsv] = useState<UsuarioCsvRow[]>([]);
+  const [alunosUpsert, setAlunosUpsert] = useState<AlunoUpsertRow[]>([]);
+  const [saspRows, setSaspRows] = useState<FormularioSaspRow[]>([]);
   const [carregandoCsv, setCarregandoCsv] = useState(false);
   const [importando, setImportando] = useState(false);
   const [somenteSimulacao, setSomenteSimulacao] = useState(true);
@@ -92,6 +231,8 @@ const SecretariaImportarMatriculasPage: React.FC = () => {
     setCsvRows([]);
     setLinhasValidas([]);
     setUsuariosCsv([]);
+    setAlunosUpsert([]);
+    setSaspRows([]);
 
     try {
       const text = await file.text();
@@ -127,14 +268,14 @@ const SecretariaImportarMatriculasPage: React.FC = () => {
       getIndex('data_matricula');
 
       // colunas de referência / exibição
-      getIndex('nome_aluno_pdf', false);
+      getIndex('nome_aluno', false);
       getIndex('turma_letra', false);
 
       // colunas para criação de usuário
-      getIndex('foto_aluno', false);
-      getIndex('cpf_raw', false);
       getIndex('email_final', false);
       getIndex('senha_inicial', false);
+      getIndex('cpf_raw', false);
+      getIndex('foto_aluno', false);
 
       if (erroCols.length > 0) {
         setErros(erroCols);
@@ -142,14 +283,15 @@ const SecretariaImportarMatriculasPage: React.FC = () => {
       }
 
       const rows: MatriculaCsvRow[] = [];
-      const inserts: MatriculaInsert[] = [];
+      const insertsMatriculas: MatriculaInsert[] = [];
       const errosLinha: string[] = [];
       const usuariosMap = new Map<number, UsuarioCsvRow>();
+      const alunosMap = new Map<number, AlunoUpsertRow>();
+      const alunosRawMap = new Map<number, MatriculaCsvRow>();
 
       dataLines.forEach((linha, i) => {
         const partes = linha.split(',');
         if (partes.length < headers.length) {
-          // linha quebrada → ignora
           return;
         }
 
@@ -158,7 +300,6 @@ const SecretariaImportarMatriculasPage: React.FC = () => {
           raw[h] = (partes[idx] ?? '').trim();
         });
 
-        // ignora linhas onde não achou o aluno no processo de migração (tem_id_aluno = False)
         const temId = (raw.tem_id_aluno ?? '').toString().toLowerCase();
         if (temId === 'false' || temId === '0') {
           return;
@@ -174,12 +315,15 @@ const SecretariaImportarMatriculasPage: React.FC = () => {
         const idAluno = Number(raw.id_aluno);
         const idNivel = Number(raw.id_nivel_ensino);
         const idTurma = Number(raw.id_turma);
-        const anoLetivo = Number(raw.ano_letivo);
+        const anoLetivo = Number(raw.ano_letivo || '2025');
         const idStatus = Number(raw.id_status_matricula || 1);
-        const numeroInscricao = String(raw.numero_inscricao || '').trim();
-        const dataMatricula = String(
-          raw.data_matricula || `${anoLetivo || 2025}-01-01`,
+        const numeroInscricao = String(
+          raw.numero_inscricao || raw.num_inscricao_aluno || '',
         ).trim();
+        const dataMatricula =
+          normalizarData(raw.data_matricula) ||
+          normalizarData(raw.data_matricula_import) ||
+          `${anoLetivo || 2025}-01-01`;
 
         if (
           Number.isNaN(idAluno) ||
@@ -195,66 +339,175 @@ const SecretariaImportarMatriculasPage: React.FC = () => {
         }
 
         const fotoAluno = String(raw.foto_aluno || '').trim();
-        const cpfRaw = String(raw.cpf_raw || '').trim();
-        const emailFinal = String(raw.email_final || '').trim().toLowerCase();
-        const senhaInicial = String(raw.senha_inicial || '').trim();
+        const cpfRaw = String(raw.cpf_raw || raw.num_cpf_aluno || '').trim();
+        const emailFinal = String(
+          raw.email_final || raw.email_aluno || '',
+        )
+          .trim()
+          .toLowerCase();
+        const senhaInicialRaw = String(raw.senha_inicial || '').trim();
+        const celular = String(raw.num_celular_aluno || '').trim();
 
-        rows.push({
+        const rowObj: MatriculaCsvRow = {
+          ...raw,
           id_aluno: raw.id_aluno,
-          nome_aluno_pdf: raw.nome_aluno_pdf,
-          data_nasc_pdf: raw.data_nasc_pdf,
-          nome_aluno_sistema: raw.nome_aluno_sistema,
-          data_nasc_sistema: raw.data_nasc_sistema,
           id_nivel_ensino: raw.id_nivel_ensino,
           turma_letra: raw.turma_letra,
           id_turma: raw.id_turma,
-          numero_inscricao: raw.numero_inscricao,
+          numero_inscricao: numeroInscricao,
           sige_id: raw.sige_id,
-          ano_letivo: raw.ano_letivo,
-          id_status_matricula: raw.id_status_matricula,
-          data_matricula: raw.data_matricula,
-          tem_id_aluno: raw.tem_id_aluno,
+          ano_letivo: String(anoLetivo),
+          id_status_matricula: String(idStatus),
+          data_matricula: dataMatricula,
           foto_aluno: fotoAluno,
           cpf_raw: cpfRaw,
           email_final: emailFinal,
-          senha_inicial: senhaInicial,
-        });
+          senha_inicial: senhaInicialRaw,
+        };
 
-        inserts.push({
+        rows.push(rowObj);
+
+        insertsMatriculas.push({
           id_aluno: idAluno,
           id_nivel_ensino: idNivel,
           id_turma: idTurma,
           numero_inscricao: numeroInscricao,
           ano_letivo: anoLetivo,
           id_status_matricula: idStatus,
-          data_matricula: dataMatricula,
+          data_matricula: dataMatricula!,
         });
 
-        // Preparar dados para criação de usuário (se tiver email e senha)
-        if (emailFinal && senhaInicial && !usuariosMap.has(idAluno)) {
-          const nomeAluno =
-            String(raw.nome_aluno_sistema || raw.nome_aluno_pdf || '').trim();
+        if (!alunosRawMap.has(idAluno)) {
+          alunosRawMap.set(idAluno, rowObj);
+        }
 
+        const usaTransporte = toBool(raw.uso_transporte);
+        const possuiNecEsp = toBool(raw.possui_necessidadeEspecial);
+        const possuiRestAli = toBool(raw.possui_restriAlimentar);
+        const possuiProgSoc = toBool(raw.possui_programaSocial);
+
+        if (!alunosMap.has(idAluno)) {
+          const alunoUp: AlunoUpsertRow = {
+            id_aluno: idAluno,
+            nis: raw.num_nis_aluno || undefined,
+            nome_mae: raw.nome_mae_aluno || 'Não informado',
+            nome_pai: raw.nome_pai_aluno || undefined,
+            usa_transporte_escolar: usaTransporte,
+            possui_necessidade_especial: possuiNecEsp,
+            qual_necessidade_especial: raw.necessidadeEspecial_qual || undefined,
+            possui_restricao_alimentar: possuiRestAli,
+            qual_restricao_alimentar: raw.restriAlimentar_qual || undefined,
+            possui_beneficio_governo: possuiProgSoc,
+            qual_beneficio_governo: raw.programaSocial_qual || undefined,
+            observacoes_gerais: raw.observacao || undefined,
+          };
+          alunosMap.set(idAluno, alunoUp);
+        }
+
+        let senhaParaUsuario = senhaInicialRaw;
+        if (!senhaParaUsuario && emailFinal) {
+          const base =
+            numeroInscricao || String(raw.sige_id || '') || String(raw.id_aluno || '');
+          if (base) {
+            senhaParaUsuario = `${base}@ceja`;
+            errosLinha.push(
+              `Linha ${i + 2}: aluno "${raw.nome_aluno}" está sem senha_inicial (CPF). Será usada a senha gerada "${senhaParaUsuario}".`,
+            );
+          } else {
+            errosLinha.push(
+              `Linha ${i + 2}: aluno "${raw.nome_aluno}" tem email_final mas está sem senha_inicial e sem número de matrícula/SIGE. Usuário de login não será criado automaticamente.`,
+            );
+          }
+        }
+
+        if (emailFinal && senhaParaUsuario && !usuariosMap.has(idAluno)) {
+          const nomeAluno = String(raw.nome_aluno || '').trim();
           usuariosMap.set(idAluno, {
             id_aluno: idAluno,
             nome: nomeAluno || `Aluno ${idAluno}`,
             email: emailFinal,
-            senha: senhaInicial,
+            senha: senhaParaUsuario,
             cpf: cpfRaw || undefined,
             foto_aluno: fotoAluno || undefined,
+            data_nasc: normalizarData(raw.data_nasc_aluno) || undefined,
+            sexo: raw.sexo_aluno || undefined,
+            raca: raw.raca_aluno || undefined,
+            celular: celular || undefined,
+            logradouro: raw.logradouro_endereco_aluno || undefined,
+            numero_endereco: raw.numero_endereco_aluno || undefined,
+            bairro: raw.bairro_endereco_aluno || undefined,
+            municipio: raw.municipio_endereco_aluno || undefined,
+            facebook: raw.facebook_aluno || undefined,
+            instagram: raw.instagram_aluno || undefined,
           });
-        }
-
-        if (emailFinal && !senhaInicial) {
-          errosLinha.push(
-            `Linha ${i + 2}: aluno "${raw.nome_aluno_sistema || raw.nome_aluno_pdf}" tem email_final mas está sem senha_inicial (CPF). Usuário de login não será criado automaticamente.`,
-          );
         }
       });
 
+      // Montar payload de SASP (um por aluno)
+      const saspMap = new Map<number, FormularioSaspRow>();
+      alunosRawMap.forEach((row, idAluno) => {
+        const dataEnt = normalizarData(row.data_matricula) || `${row.ano_letivo || '2025'}-01-01`;
+
+        const trabalha = !!row.local_funcaoTrab && row.local_funcaoTrab.trim() !== '';
+        const repetiu = toBool(row.repetiu_ano);
+        const temFilhos = toBool(row.possui_filhos);
+        const desistiu = row.porque_desistiu || row.outras_escolasDesistiu ? true : false;
+
+        const extraObs: string[] = [];
+        if (row.situacao_aluno) {
+          extraObs.push(`Situação aluno (origem): ${row.situacao_aluno}`);
+        }
+        if (row.marcar_aluno) {
+          extraObs.push(`Marcar aluno: ${row.marcar_aluno}`);
+        }
+        if (row.num_am_aluno) {
+          extraObs.push(`Número AM aluno: ${row.num_am_aluno}`);
+        }
+
+        const observacoesSasp = [
+          row.observacao_sasp || '',
+          extraObs.join(' | '),
+        ]
+          .filter(Boolean)
+          .join(' | ');
+
+        const sasp: FormularioSaspRow = {
+          id_aluno: idAluno,
+          data_entrevista: dataEnt!,
+          escola_origem: row.escola_origem || undefined,
+          cidade_escola_origem: null,
+          disciplinas_indicadas_aproveitamento:
+            row.disciplinas_indicadas || null,
+          motivo_retorno_estudos: row.porque_voltouEstudos || null,
+          trabalha,
+          local_trabalho: row.local_funcaoTrab || null,
+          funcao_trabalho: null,
+          repetiu_ano: repetiu,
+          desistiu_estudar: desistiu,
+          motivos_desistencia: row.porque_desistiu || null,
+          escolas_desistiu: row.outras_escolasDesistiu || null,
+          materias_dificuldade: row.materias_dificeis || null,
+          relacao_tecnologia: null,
+          curso_superior_desejado: null,
+          atividade_cultural_interesse: null,
+          esporte_interesse: null,
+          pessoas_residencia: toIntOrNull(row.quantidade_emCasa),
+          parentes_moradia: row.quem_saoParentes || null,
+          responsavel_pelos_estudos: row.responsavel_estudos || null,
+          tem_filhos: temFilhos,
+          quantos_filhos: toIntOrNull(row.quantidade_filhos),
+          como_conheceu_ceja: row.tomou_conhecimentoCeja || null,
+          observacoes_sasp: observacoesSasp || null,
+        };
+
+        saspMap.set(idAluno, sasp);
+      });
+
       setCsvRows(rows);
-      setLinhasValidas(inserts);
+      setLinhasValidas(insertsMatriculas);
       setUsuariosCsv(Array.from(usuariosMap.values()));
+      setAlunosUpsert(Array.from(alunosMap.values()));
+      setSaspRows(Array.from(saspMap.values()));
 
       if (errosLinha.length > 0) {
         setErros(errosLinha);
@@ -262,7 +515,9 @@ const SecretariaImportarMatriculasPage: React.FC = () => {
 
       notificar({
         tipo: 'info',
-        mensagem: `Arquivo lido com sucesso: ${inserts.length} matrículas prontas para importação. Alunos com dados para criar usuário: ${usuariosMap.size}.`,
+        mensagem: `Arquivo lido com sucesso: ${insertsMatriculas.length} matrículas prontas para importação. Alunos únicos: ${
+          alunosMap.size
+        }. Usuários a criar/atualizar (pela lógica): ${usuariosMap.size}.`,
       });
     } catch (error: any) {
       console.error(error);
@@ -323,6 +578,16 @@ const SecretariaImportarMatriculasPage: React.FC = () => {
     [usuariosCsv],
   );
 
+  const totalAlunosParaUpsert = useMemo(
+    () => alunosUpsert.length,
+    [alunosUpsert],
+  );
+
+  const totalSaspParaInserir = useMemo(
+    () => saspRows.length,
+    [saspRows],
+  );
+
   const handleImportar = async () => {
     if (!supabase) {
       notificar({
@@ -343,7 +608,7 @@ const SecretariaImportarMatriculasPage: React.FC = () => {
     if (somenteSimulacao) {
       notificar({
         tipo: 'info',
-        mensagem: `Simulação: seriam inseridas ${linhasValidas.length} matrículas e, se o client tiver permissão, criados até ${totalUsuariosParaCriar} usuários de aluno (um por id_aluno com email/senha).`,
+        mensagem: `Simulação: seriam inseridas ${linhasValidas.length} matrículas, upsert de ${totalAlunosParaUpsert} alunos em 'alunos', criação de até ${totalUsuariosParaCriar} usuários de login, e inserção de até ${totalSaspParaInserir} formulários SASP.`,
       });
       return;
     }
@@ -355,16 +620,28 @@ const SecretariaImportarMatriculasPage: React.FC = () => {
     let usuariosCriados = 0;
 
     try {
-      // 1. Criação de usuários de login (se possível)
+      // 0. Upsert em ALUNOS (todos os campos do CSV para a tabela alunos)
+      if (alunosUpsert.length > 0) {
+        const { error: erroUpsertAlunos } = await supabase
+          .from('alunos')
+          .upsert(alunosUpsert, { onConflict: 'id_aluno' });
+
+        if (erroUpsertAlunos) {
+          errosAcumulados.push(
+            `Falha ao fazer upsert na tabela 'alunos': ${erroUpsertAlunos.message}`,
+          );
+        }
+      }
+
+      // 1. Criação de usuários de login (Auth + usuarios + vínculo em alunos.user_id)
       if (usuariosCsv.length > 0) {
         const adminAuth = (supabase as any).auth?.admin;
 
         if (!adminAuth || typeof adminAuth.createUser !== 'function') {
           errosAcumulados.push(
-            'Este cliente Supabase não possui acesso a supabase.auth.admin. As matrículas serão importadas normalmente, mas a criação automática de usuários de login NÃO será executada. Execute essa etapa em um backend com chave service_role ou função Edge.',
+            'Este cliente Supabase não possui acesso a supabase.auth.admin. As matrículas e dados de alunos/SASP serão importados, mas a criação automática de usuários de login NÃO será executada. Para criar usuários, rode este processo a partir de um backend com chave service_role ou função Edge.',
           );
         } else {
-          // Descobrir quais alunos já têm user_id vinculado (se a tabela estiver populada)
           const idsAlunos = Array.from(
             new Set(usuariosCsv.map((u) => u.id_aluno)),
           );
@@ -396,7 +673,6 @@ const SecretariaImportarMatriculasPage: React.FC = () => {
           );
 
           if (candidatos.length > 0) {
-            // Também filtrar por email já existente na tabela usuarios
             const emailsCandidatos = candidatos.map((u) => u.email);
             const { data: usuariosExistentes, error: erroUsuariosExistentes } =
               await supabase
@@ -443,15 +719,24 @@ const SecretariaImportarMatriculasPage: React.FC = () => {
 
                   const authUserId = data.user.id;
 
-                  // Inserir em public.usuarios
                   const { error: erroInsertUsuario } = await supabase
                     .from('usuarios')
                     .insert({
                       id: authUserId,
-                      id_tipo_usuario: 5, // Aluno
+                      id_tipo_usuario: 5,
                       name: u.nome,
                       email: u.email,
                       cpf: u.cpf ?? null,
+                      data_nascimento: u.data_nasc ?? null,
+                      sexo: u.sexo ?? null,
+                      raca: u.raca ?? null,
+                      celular: u.celular ?? null,
+                      logradouro: u.logradouro ?? null,
+                      numero_endereco: u.numero_endereco ?? null,
+                      bairro: u.bairro ?? null,
+                      municipio: u.municipio ?? null,
+                      facebook_url: u.facebook ?? null,
+                      instagram_url: u.instagram ?? null,
                       foto_url: u.foto_aluno ?? null,
                     });
 
@@ -461,7 +746,6 @@ const SecretariaImportarMatriculasPage: React.FC = () => {
                     );
                   }
 
-                  // Atualizar alunos.user_id
                   const { error: erroUpdateAluno } = await supabase
                     .from('alunos')
                     .update({ user_id: authUserId })
@@ -487,7 +771,43 @@ const SecretariaImportarMatriculasPage: React.FC = () => {
         }
       }
 
-      // 2. Inserir matrículas
+      // 2. Inserir FORMULARIO_SASP (um por aluno, se ainda não existir)
+      if (saspRows.length > 0) {
+        const idsAlunosSasp = Array.from(
+          new Set(saspRows.map((s) => s.id_aluno)),
+        );
+
+        const { data: saspExistentes, error: erroSaspExistentes } = await supabase
+          .from('formulario_sasp')
+          .select('id_aluno')
+          .in('id_aluno', idsAlunosSasp);
+
+        const idsJaTemSasp = new Set<number>();
+        if (!erroSaspExistentes && saspExistentes) {
+          saspExistentes.forEach((s: any) => {
+            idsJaTemSasp.add(Number(s.id_aluno));
+          });
+        }
+
+        const saspParaInserir = saspRows.filter(
+          (s) => !idsJaTemSasp.has(s.id_aluno),
+        );
+
+        for (let i = 0; i < saspParaInserir.length; i += CHUNK_SIZE_SASP) {
+          const chunk = saspParaInserir.slice(i, i + CHUNK_SIZE_SASP);
+          const { error: erroInsertSasp } = await supabase
+            .from('formulario_sasp')
+            .insert(chunk);
+          if (erroInsertSasp) {
+            errosAcumulados.push(
+              `Falha ao inserir parte dos formulários SASP: ${erroInsertSasp.message}`,
+            );
+            break;
+          }
+        }
+      }
+
+      // 3. Inserir MATRÍCULAS
       for (let i = 0; i < linhasValidas.length; i += CHUNK_SIZE_MATRICULAS) {
         const chunk = linhasValidas.slice(i, i + CHUNK_SIZE_MATRICULAS);
         const { error } = await supabase.from('matriculas').insert(chunk);
@@ -498,10 +818,12 @@ const SecretariaImportarMatriculasPage: React.FC = () => {
 
       const partesMensagem: string[] = [
         `Importação concluída: ${linhasValidas.length} matrículas criadas.`,
+        `Alunos upsertados na tabela 'alunos': ${totalAlunosParaUpsert}.`,
+        `Formulários SASP inseridos (novos): até ${totalSaspParaInserir}.`,
       ];
       if (usuariosCsv.length > 0) {
         partesMensagem.push(
-          `Usuários de aluno criados: ${usuariosCriados} (veja avisos abaixo para possíveis duplicidades/erros).`,
+          `Usuários de aluno criados: ${usuariosCriados} (veja avisos abaixo para senhas geradas ou erros).`,
         );
       }
 
@@ -511,7 +833,7 @@ const SecretariaImportarMatriculasPage: React.FC = () => {
       });
 
       if (errosAcumulados.length > 0) {
-        setErros(errosAcumulados);
+        setErros((prev) => [...prev, ...errosAcumulados]);
       }
 
       navigate('/secretaria/matriculas');
@@ -519,14 +841,14 @@ const SecretariaImportarMatriculasPage: React.FC = () => {
       console.error(error);
       setErros((prev) => [
         ...prev,
-        `Erro ao importar matrículas e/ou criar usuários: ${
+        `Erro ao importar tudo (alunos, usuários, SASP e matrículas): ${
           error?.message || String(error)
         }`,
       ]);
       notificar({
         tipo: 'erro',
         mensagem:
-          'Falha ao importar matrículas e/ou criar usuários. Verifique os detalhes na tela.',
+          'Falha ao importar. Veja os detalhes dos erros na parte inferior da página.',
       });
     } finally {
       setImportando(false);
@@ -536,17 +858,22 @@ const SecretariaImportarMatriculasPage: React.FC = () => {
   return (
     <Box sx={{ p: 2, maxWidth: 1200, mx: 'auto' }}>
       <Typography variant="h4" gutterBottom>
-        Importar matrículas
+        Importar matrículas + alunos + SASP
       </Typography>
 
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-        Página temporária para importar em lote as matrículas de 2025 a partir
-        do arquivo CSV gerado dos relatórios do SIGE. Somente serão importadas
-        as linhas que já possuem aluno correspondente na migração
-        (<code>tem_id_aluno = True</code>). Opcionalmente, também cria os
-        usuários de login dos alunos (Auth + tabela&nbsp;
-        <code>public.usuarios</code>) usando as colunas{' '}
-        <code>email_final</code> e <code>senha_inicial</code>.
+        Esta página importa em lote:
+        <br />
+        • Usuários de login (Auth + tabela <code>usuarios</code>), usando
+        <code>email_final</code> e <code>senha_inicial</code> (ou
+        &lt;numero_inscricao&gt;@ceja);
+        <br />
+        • Dados de aluno em <code>alunos</code> (NIS, mãe/pai, transporte,
+        necessidades, benefícios, observações);
+        <br />
+        • Questionário completo em <code>formulario_sasp</code>;
+        <br />
+        • Matrículas 2025 em <code>matriculas</code> com a turma vinda dos PDFs.
       </Typography>
 
       <Paper sx={{ p: 2, mb: 3 }}>
@@ -576,9 +903,7 @@ const SecretariaImportarMatriculasPage: React.FC = () => {
           <Typography variant="body2" color="text.secondary">
             Use o arquivo{' '}
             <strong>matriculas_import_2025_completo_fotos_usuarios.csv</strong>{' '}
-            (colunas: id_aluno, id_nivel_ensino, id_turma, numero_inscricao,
-            ano_letivo, id_status_matricula, data_matricula, tem_id_aluno,
-            foto_aluno, cpf_raw, email_final, senha_inicial, etc.).
+            (aluno.csv + PDFs + colunas de usuário/senha/foto).
           </Typography>
         </Stack>
       </Paper>
@@ -586,12 +911,12 @@ const SecretariaImportarMatriculasPage: React.FC = () => {
       {linhasValidas.length > 0 && (
         <Paper sx={{ p: 2, mb: 3 }}>
           <Typography variant="h6" gutterBottom>
-            Resumo das matrículas prontas para importar
+            Resumo do que será importado
           </Typography>
 
           <Stack spacing={1} sx={{ mb: 2 }}>
             <Typography variant="body2">
-              Linhas válidas (com aluno encontrado):{' '}
+              Matrículas (linhas válidas):{' '}
               <strong>{linhasValidas.length}</strong>
             </Typography>
             <Typography variant="body2">
@@ -599,8 +924,15 @@ const SecretariaImportarMatriculasPage: React.FC = () => {
               <strong>{resumoPorNivel.medio}</strong>
             </Typography>
             <Typography variant="body2">
-              Alunos com dados para criar usuário de login (id_aluno único com
-              email_final + senha_inicial):{' '}
+              Alunos únicos (para upsert em <code>alunos</code>):{' '}
+              <strong>{totalAlunosParaUpsert}</strong>
+            </Typography>
+            <Typography variant="body2">
+              Formulários SASP (um por aluno):{' '}
+              <strong>{totalSaspParaInserir}</strong>
+            </Typography>
+            <Typography variant="body2">
+              Alunos com dados para criar usuário de login:{' '}
               <strong>{totalUsuariosParaCriar}</strong>
             </Typography>
           </Stack>
@@ -660,7 +992,7 @@ const SecretariaImportarMatriculasPage: React.FC = () => {
             >
               {somenteSimulacao
                 ? 'Simular importação'
-                : `Importar ${linhasValidas.length} matrículas`}
+                : `Importar tudo (${linhasValidas.length} matrículas)`}
             </Button>
           </Stack>
 
@@ -668,8 +1000,7 @@ const SecretariaImportarMatriculasPage: React.FC = () => {
             <Box sx={{ mt: 2 }}>
               <LinearProgress />
               <Typography variant="body2" color="text.secondary">
-                Importando matrículas (e criando usuários, se possível) no
-                Supabase...
+                Importando alunos, usuários, SASP e matrículas no Supabase...
               </Typography>
             </Box>
           )}
@@ -685,7 +1016,7 @@ const SecretariaImportarMatriculasPage: React.FC = () => {
             <TableHead>
               <TableRow>
                 <TableCell>id_aluno</TableCell>
-                <TableCell>Nome (PDF)</TableCell>
+                <TableCell>Nome</TableCell>
                 <TableCell>Turma</TableCell>
                 <TableCell>Nível</TableCell>
                 <TableCell>Nº inscrição</TableCell>
@@ -697,7 +1028,7 @@ const SecretariaImportarMatriculasPage: React.FC = () => {
               {csvRows.slice(0, 15).map((row, index) => (
                 <TableRow key={`${row.id_aluno}-${index}`}>
                   <TableCell>{row.id_aluno}</TableCell>
-                  <TableCell>{row.nome_aluno_pdf}</TableCell>
+                  <TableCell>{row.nome_aluno}</TableCell>
                   <TableCell>{row.turma_letra}</TableCell>
                   <TableCell>
                     {row.id_nivel_ensino === '1'
