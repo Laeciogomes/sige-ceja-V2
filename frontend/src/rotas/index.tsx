@@ -27,6 +27,7 @@ import SecretariaSalasPage from '../paginas/painel-secretaria/SecretariaSalasPag
 import SecretariaProtocolosPage from '../paginas/painel-secretaria/SecretariaProtocolosPage'
 import SecretariaTurmaAlunosPage from '../paginas/painel-secretaria/SecretariaTurmaAlunosPage'
 import SecretariaRelatoriosFichasPage from '../paginas/painel-secretaria/SecretariaRelatoriosFichasPage'
+import SecretariaImportarMatriculasPage from '../paginas/painel-secretaria/SecretariaImportarMatriculasPage'
 
 export const AppRoutes: React.FC = () => {
   // Inclui "carregando" para evitar redirecionar enquanto a sessão está sendo restaurada
@@ -98,6 +99,11 @@ export const AppRoutes: React.FC = () => {
           <Route path="disciplinas" element={<SecretariaDisciplinasPage />} />
           <Route path="protocolos" element={<SecretariaProtocolosPage />} />
           <Route path="matriculas" element={<SecretariaMatriculasPage />} />
+          {/* ROTA TEMPORÁRIA: importar matrículas em lote (2025) */}
+          <Route
+            path="matriculas/importar"
+            element={<SecretariaImportarMatriculasPage />}
+          />
           <Route
             path="renovacoes"
             element={<PaginaSimples titulo="Renovar matrícula" />}

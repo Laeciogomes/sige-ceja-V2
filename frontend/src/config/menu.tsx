@@ -13,6 +13,7 @@ import AssignmentIndIcon from '@mui/icons-material/AssignmentInd'
 import AutorenewIcon from '@mui/icons-material/Autorenew'
 import ListAltIcon from '@mui/icons-material/ListAlt'
 import CategoryIcon from '@mui/icons-material/Category'
+import CloudUploadIcon from '@mui/icons-material/CloudUpload'
 
 import type { PapelUsuario } from '../contextos/AuthContext'
 
@@ -100,6 +101,13 @@ export const menusPorContexto: Record<ContextoPainel, ItemMenuConfig[]> = {
       rotulo: 'Matrículas',
       caminho: '/secretaria/matriculas',
       icone: <AssignmentIndIcon />,
+      grupo: 'Acadêmico',
+    },
+    {
+      id: 'admin-sec-importar-matriculas',
+      rotulo: 'Importar matrículas',
+      caminho: '/secretaria/matriculas/importar',
+      icone: <CloudUploadIcon />,
       grupo: 'Acadêmico',
     },
     {
@@ -219,6 +227,13 @@ export const menusPorContexto: Record<ContextoPainel, ItemMenuConfig[]> = {
       grupo: 'Atendimento',
     },
     {
+      id: 'sec-importar-matriculas',
+      rotulo: 'Importar matrículas',
+      caminho: '/secretaria/matriculas/importar',
+      icone: <CloudUploadIcon />,
+      grupo: 'Atendimento',
+    },
+    {
       id: 'sec-renovacoes',
       rotulo: 'Renovar matrícula',
       caminho: '/secretaria/renovacoes',
@@ -320,6 +335,13 @@ export const menusPorContexto: Record<ContextoPainel, ItemMenuConfig[]> = {
       grupo: 'Secretaria',
     },
     {
+      id: 'coord-importar-matriculas',
+      rotulo: 'Importar matrículas',
+      caminho: '/secretaria/matriculas/importar',
+      icone: <CloudUploadIcon />,
+      grupo: 'Secretaria',
+    },
+    {
       id: 'coord-renovacoes',
       rotulo: 'Renovar matrícula',
       caminho: '/secretaria/renovacoes',
@@ -406,6 +428,13 @@ export const menusPorContexto: Record<ContextoPainel, ItemMenuConfig[]> = {
       rotulo: 'Matrículas',
       caminho: '/secretaria/matriculas',
       icone: <AssignmentIndIcon />,
+      grupo: 'Secretaria',
+    },
+    {
+      id: 'dir-importar-matriculas',
+      rotulo: 'Importar matrículas',
+      caminho: '/secretaria/matriculas/importar',
+      icone: <CloudUploadIcon />,
       grupo: 'Secretaria',
     },
     {
