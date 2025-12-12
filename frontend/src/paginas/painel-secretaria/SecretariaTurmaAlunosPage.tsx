@@ -62,6 +62,7 @@ interface MatriculaRow {
   id_matricula: number
   id_aluno: number
   id_turma: number
+  numero_inscricao: string | null
   id_status_matricula: number
   data_matricula: string | null
   ano_letivo: number
@@ -89,6 +90,7 @@ interface StatusMatriculaRow {
 interface AlunoLista {
   id_matricula: number
   id_aluno: number
+  numeroInscricao: string | null
   nome: string
   cpf: string | null
   statusId: number
@@ -100,6 +102,17 @@ interface AlunoLista {
 
 type FiltroStatus = 'todos' | number
 type FiltroPeDeMeia = 'todos' | 'sim' | 'nao'
+
+const chunkArray = <T,>(arr: T[], chunkSize: number): T[][] => {
+  if (chunkSize <= 0) return [arr]
+  const out: T[][] = []
+  for (let i = 0; i < arr.length; i += chunkSize) {
+    out.push(arr.slice(i, i + chunkSize))
+  }
+  return out
+}
+
+const uniq = <T,>(arr: T[]) => Array.from(new Set(arr))
 
 const SecretariaTurmaAlunosPage: FC = () => {
   const theme = useTheme()
@@ -221,7 +234,7 @@ const SecretariaTurmaAlunosPage: FC = () => {
         supabase
           .from('matriculas')
           .select(
-            'id_matricula, id_aluno, id_turma, id_status_matricula, data_matricula, ano_letivo',
+            'id_matricula, id_aluno, id_turma, numero_inscricao, id_status_matricula, data_matricula, ano_letivo',
           )
           .eq('id_turma', turmaIdNumber),
         supabase
@@ -248,70 +261,94 @@ const SecretariaTurmaAlunosPage: FC = () => {
       if (matriculasError) {
         console.error(matriculasError)
         erro('Erro ao carregar matrículas da turma.')
+        setMatriculas([])
       } else if (matriculasData) {
         setMatriculas(matriculasData as MatriculaRow[])
+      } else {
+        setMatriculas([])
       }
 
       if (statusError) {
         console.error(statusError)
         erro('Erro ao carregar status de matrícula.')
+        setStatusMatriculas([])
       } else if (statusData) {
         setStatusMatriculas(statusData as StatusMatriculaRow[])
+      } else {
+        setStatusMatriculas([])
       }
 
-      const matList = (matriculasData || []) as MatriculaRow[]
-      const idsAlunos = Array.from(
-        new Set(matList.map((m) => m.id_aluno).filter((id) => id != null)),
-      ) as number[]
+      const matList = ((matriculasData ?? []) as MatriculaRow[]) ?? []
+      const idsAlunos = uniq(
+        matList
+          .map((m) => m.id_aluno)
+          .filter((id): id is number => typeof id === 'number'),
+      )
 
-      if (idsAlunos.length > 0) {
-        // Primeiro busca alunos (id_aluno, user_id)
+      if (idsAlunos.length === 0) {
+        setAlunos([])
+        setUsuarios([])
+        return
+      }
+
+      // === Busca em lotes para evitar URL gigante / 400 em .in(...) ===
+      // Ajuste fino: se sua turma for enorme, reduza esses tamanhos.
+      const ALUNOS_CHUNK = 200
+      const USUARIOS_CHUNK = 80
+
+      // 1) Busca alunos (id_aluno, user_id) em chunks
+      const alunosChunks = chunkArray(idsAlunos, ALUNOS_CHUNK)
+
+      const alunosAcumulados: AlunoRow[] = []
+      for (const chunk of alunosChunks) {
         const { data: alunosData, error: alunosError } = await supabase
           .from('alunos')
           .select('id_aluno, user_id')
-          .in('id_aluno', idsAlunos)
+          .in('id_aluno', chunk)
 
         if (alunosError) {
           console.error(alunosError)
           erro('Erro ao carregar alunos.')
-          setAlunos([])
-          setUsuarios([])
-        } else {
-          const alunosList = (alunosData || []) as AlunoRow[]
-          setAlunos(alunosList)
-
-          const userIds = Array.from(
-            new Set(
-              alunosList
-                .map((a) => a.user_id)
-                .filter((id): id is string => !!id),
-            ),
-          )
-
-          if (userIds.length > 0) {
-            const { data: usuariosData, error: usuariosError } =
-              await supabase
-                .from('usuarios')
-                .select(
-                  'id, name, cpf, data_nascimento, email, foto_url',
-                )
-                .in('id', userIds)
-
-            if (usuariosError) {
-              console.error(usuariosError)
-              erro('Erro ao carregar dados de usuários (alunos).')
-              setUsuarios([])
-            } else {
-              setUsuarios((usuariosData || []) as UsuarioRow[])
-            }
-          } else {
-            setUsuarios([])
-          }
+          // não interrompe: tenta continuar com os próximos chunks
+          continue
         }
-      } else {
-        setAlunos([])
-        setUsuarios([])
+
+        alunosAcumulados.push(...((alunosData ?? []) as AlunoRow[]))
       }
+
+      setAlunos(alunosAcumulados)
+
+      const userIds = uniq(
+        alunosAcumulados
+          .map((a) => a.user_id)
+          .filter((id): id is string => !!id),
+      )
+
+      if (userIds.length === 0) {
+        setUsuarios([])
+        return
+      }
+
+      // 2) Busca usuários (perfil do aluno) em chunks
+      const usuariosChunks = chunkArray(userIds, USUARIOS_CHUNK)
+
+      const usuariosAcumulados: UsuarioRow[] = []
+      for (const chunk of usuariosChunks) {
+        const { data: usuariosData, error: usuariosError } = await supabase
+          .from('usuarios')
+          .select('id, name, cpf, data_nascimento, email, foto_url')
+          .in('id', chunk)
+
+        if (usuariosError) {
+          console.error(usuariosError)
+          erro('Erro ao carregar dados de usuários (alunos).')
+          continue
+        }
+
+        usuariosAcumulados.push(...((usuariosData ?? []) as UsuarioRow[]))
+      }
+
+      setUsuarios(usuariosAcumulados)
     } catch (e) {
       console.error(e)
       erro('Erro técnico ao carregar dados da turma.')
@@ -342,15 +379,12 @@ const SecretariaTurmaAlunosPage: FC = () => {
       const usuario = aluno ? usuarioMap.get(aluno.user_id) : undefined
       const statusNome =
         statusMap.get(m.id_status_matricula) ?? 'Status desconhecido'
-      const elegivel = calcularElegibilidadePeDeMeia(
-        m,
-        usuario,
-        turma,
-      )
+      const elegivel = calcularElegibilidadePeDeMeia(m, usuario, turma)
 
       return {
         id_matricula: m.id_matricula,
         id_aluno: m.id_aluno,
+        numeroInscricao: m.numero_inscricao ?? null,
         nome: usuario?.name ?? 'Aluno sem usuário',
         cpf: usuario?.cpf ?? null,
         statusId: m.id_status_matricula,
@@ -362,17 +396,29 @@ const SecretariaTurmaAlunosPage: FC = () => {
     })
   }, [matriculas, alunos, usuarios, statusMatriculas, turma])
 
-  // Filtros
+  // Filtros (Nome, CPF e Matrícula/numero_inscricao)
   const alunosFiltrados = useMemo(() => {
     const termo = busca.trim().toLowerCase()
+    const termoDigits = termo.replace(/[^\d]/g, '')
 
     return alunosEnriquecidos.filter((a) => {
+      const nomeLower = a.nome.toLowerCase()
+      const cpfDigits = (a.cpf ?? '').replace(/[^\d]/g, '')
+      const matriculaLower = (a.numeroInscricao ?? '').toLowerCase()
+      const matriculaDigits = (a.numeroInscricao ?? '').replace(/[^\d]/g, '')
+
+      const matchNome = termo !== '' && nomeLower.includes(termo)
+
+      const matchCpf =
+        termoDigits !== '' && cpfDigits.includes(termoDigits)
+
+      const matchMatricula =
+        termo !== '' &&
+        (matriculaLower.includes(termo) ||
+          (termoDigits !== '' && matriculaDigits.includes(termoDigits)))
+
       const matchBusca =
-        termo === '' ||
-        a.nome.toLowerCase().includes(termo) ||
-        (a.cpf ?? '')
-          .replace(/[^\d]/g, '')
-          .includes(termo.replace(/[^\d]/g, ''))
+        termo === '' || matchNome || matchCpf || matchMatricula
 
       const matchStatus =
         filtroStatus === 'todos' ? true : a.statusId === filtroStatus
@@ -429,6 +475,7 @@ const SecretariaTurmaAlunosPage: FC = () => {
       ? alpha(theme.palette.grey[400], 0.15)
       : alpha(theme.palette.common.white, 0.05)
 
+  // Cores do Cabeçalho Verde
   const headerBgColor =
     theme.palette.mode === 'light' ? green[100] : alpha(green[900], 0.4)
   const headerTextColor =
@@ -642,7 +689,7 @@ const SecretariaTurmaAlunosPage: FC = () => {
           <TextField
             fullWidth
             size="small"
-            placeholder="Buscar por nome ou CPF..."
+            placeholder="Buscar por nome, CPF ou matrícula..."
             value={busca}
             onChange={(e) => setBusca(e.target.value)}
             InputProps={{
@@ -683,9 +730,7 @@ const SecretariaTurmaAlunosPage: FC = () => {
                         color="text.secondary"
                         sx={{ ml: 0.5 }}
                       >
-                        (
-                        {totalPorStatus.get(s.id_status_matricula) ?? 0}
-                        )
+                        ({totalPorStatus.get(s.id_status_matricula) ?? 0})
                       </Typography>
                     )}
                   </MenuItem>
@@ -755,12 +800,15 @@ const SecretariaTurmaAlunosPage: FC = () => {
                         >
                           {a.nome}
                         </Typography>
-                        <Typography
-                          variant="caption"
-                          color="text.secondary"
-                        >
+
+                        <Typography variant="caption" color="text.secondary">
+                          Matrícula: {a.numeroInscricao || '—'}
+                        </Typography>
+
+                        <Typography variant="caption" color="text.secondary">
                           CPF: {a.cpf || '—'}
                         </Typography>
+
                         <Stack
                           direction="row"
                           spacing={1}
@@ -790,9 +838,7 @@ const SecretariaTurmaAlunosPage: FC = () => {
                             }
                             size="small"
                             color={a.elegivelPeDeMeia ? 'success' : 'default'}
-                            variant={
-                              a.elegivelPeDeMeia ? 'filled' : 'outlined'
-                            }
+                            variant={a.elegivelPeDeMeia ? 'filled' : 'outlined'}
                           />
                         </Stack>
                       </Stack>
@@ -810,6 +856,11 @@ const SecretariaTurmaAlunosPage: FC = () => {
                         sx={{ fontWeight: 'bold', color: headerTextColor }}
                       >
                         Aluno
+                      </TableCell>
+                      <TableCell
+                        sx={{ fontWeight: 'bold', color: headerTextColor }}
+                      >
+                        Matrícula
                       </TableCell>
                       <TableCell
                         sx={{ fontWeight: 'bold', color: headerTextColor }}
@@ -842,10 +893,7 @@ const SecretariaTurmaAlunosPage: FC = () => {
                           sx={{
                             bgcolor: isEven ? 'inherit' : zebraColor,
                             '&:hover': {
-                              bgcolor: alpha(
-                                theme.palette.primary.main,
-                                0.08,
-                              ),
+                              bgcolor: alpha(theme.palette.primary.main, 0.08),
                             },
                           }}
                         >
@@ -860,8 +908,11 @@ const SecretariaTurmaAlunosPage: FC = () => {
                           </TableCell>
                           <TableCell>
                             <Typography variant="body2">
-                              {a.cpf || '—'}
+                              {a.numeroInscricao || '—'}
                             </Typography>
+                          </TableCell>
+                          <TableCell>
+                            <Typography variant="body2">{a.cpf || '—'}</Typography>
                           </TableCell>
                           <TableCell>
                             <Chip
@@ -873,23 +924,17 @@ const SecretariaTurmaAlunosPage: FC = () => {
                           </TableCell>
                           <TableCell>
                             {a.dataMatricula
-                              ? new Date(
-                                  a.dataMatricula,
-                                ).toLocaleDateString('pt-BR')
+                              ? new Date(a.dataMatricula).toLocaleDateString(
+                                  'pt-BR',
+                                )
                               : '—'}
                           </TableCell>
                           <TableCell>
                             <Chip
-                              label={
-                                a.elegivelPeDeMeia
-                                  ? 'Elegível'
-                                  : 'Não elegível'
-                              }
+                              label={a.elegivelPeDeMeia ? 'Elegível' : 'Não elegível'}
                               size="small"
                               color={a.elegivelPeDeMeia ? 'success' : 'default'}
-                              variant={
-                                a.elegivelPeDeMeia ? 'filled' : 'outlined'
-                              }
+                              variant={a.elegivelPeDeMeia ? 'filled' : 'outlined'}
                             />
                           </TableCell>
                         </TableRow>
@@ -898,15 +943,8 @@ const SecretariaTurmaAlunosPage: FC = () => {
 
                     {alunosPaginados.length === 0 && (
                       <TableRow>
-                        <TableCell
-                          colSpan={5}
-                          align="center"
-                          sx={{ py: 4 }}
-                        >
-                          <Typography
-                            variant="body2"
-                            color="text.secondary"
-                          >
+                        <TableCell colSpan={6} align="center" sx={{ py: 4 }}>
+                          <Typography variant="body2" color="text.secondary">
                             Nenhum aluno encontrado para esta turma.
                           </Typography>
                         </TableCell>
