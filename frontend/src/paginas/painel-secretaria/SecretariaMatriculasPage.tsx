@@ -117,6 +117,11 @@ interface AlunoRow {
   observacoes_gerais: string | null
 }
 
+// Row de alunos com JOIN para usuarios (evita query gigantesca com .in(...))
+interface AlunoRowComUsuario extends AlunoRow {
+  usuarios?: UsuarioRow | null
+}
+
 interface UsuarioRow {
   id: string
   id_tipo_usuario?: number
@@ -997,22 +1002,41 @@ const SecretariaMatriculasPage: FC = () => {
           )
           .order('ano_letivo', { ascending: false })
           .order('data_matricula', { ascending: false }),
+        // IMPORTANTE (Correção B): trazer o usuário junto do aluno via relacionamento
+        // para evitar URL gigante e erro 400 quando o Supabase/PostgREST monta `id=in.(...)`.
         supabase.from('alunos').select(
-          [
-            'id_aluno',
-            'user_id',
-            'nis',
-            'nome_mae',
-            'nome_pai',
-            'usa_transporte_escolar',
-            'possui_necessidade_especial',
-            'qual_necessidade_especial',
-            'possui_restricao_alimentar',
-            'qual_restricao_alimentar',
-            'possui_beneficio_governo',
-            'qual_beneficio_governo',
-            'observacoes_gerais',
-          ].join(','),
+          `
+            id_aluno,
+            user_id,
+            nis,
+            nome_mae,
+            nome_pai,
+            usa_transporte_escolar,
+            possui_necessidade_especial,
+            qual_necessidade_especial,
+            possui_restricao_alimentar,
+            qual_restricao_alimentar,
+            possui_beneficio_governo,
+            qual_beneficio_governo,
+            observacoes_gerais,
+            usuarios (
+              id,
+              name,
+              email,
+              username,
+              foto_url,
+              data_nascimento,
+              cpf,
+              rg,
+              celular,
+              logradouro,
+              numero_endereco,
+              bairro,
+              municipio,
+              ponto_referencia,
+              raca
+            )
+          `,
         ),
         supabase.from('niveis_ensino').select('id_nivel_ensino, nome'),
         supabase.from('status_matricula').select('id_status_matricula, nome'),
@@ -1063,7 +1087,7 @@ const SecretariaMatriculasPage: FC = () => {
       }
 
       const matriculasList = (matriculasData ?? []) as unknown as MatriculaRow[]
-      const alunosList = (alunosData ?? []) as unknown as AlunoRow[]
+      const alunosList = (alunosData ?? []) as unknown as AlunoRowComUsuario[]
       const niveisList = (niveisData ?? []) as NivelEnsinoRow[]
       const statusList = (statusData ?? []) as StatusMatriculaRow[]
       const turmasList = (turmasData ?? []) as TurmaRow[]
@@ -1085,45 +1109,8 @@ const SecretariaMatriculasPage: FC = () => {
       )
       setAnosDisponiveis(anos)
 
-      const alunosById = new Map<number, AlunoRow>()
+      const alunosById = new Map<number, AlunoRowComUsuario>()
       alunosList.forEach((a) => alunosById.set(a.id_aluno, a))
-
-      const userIds = Array.from(new Set(alunosList.map((a) => a.user_id).filter((id): id is string => !!id)))
-
-      let usuariosById = new Map<string, UsuarioRow>()
-      if (userIds.length > 0) {
-        const { data: usuariosData, error: usuariosError } = await supabase
-          .from('usuarios')
-          .select(
-            [
-              'id',
-              'name',
-              'email',
-              'username',
-              'foto_url',
-              'data_nascimento',
-              'cpf',
-              'rg',
-              'celular',
-              'logradouro',
-              'numero_endereco',
-              'bairro',
-              'municipio',
-              'ponto_referencia',
-              'raca',
-            ].join(','),
-          )
-          .in('id', userIds)
-
-        if (usuariosError) {
-          console.error(usuariosError)
-          erro('Erro ao carregar dados dos usuários (alunos).')
-        } else if (usuariosData) {
-          const list = usuariosData as unknown as UsuarioRow[]
-          usuariosById = new Map<string, UsuarioRow>()
-          list.forEach((u) => usuariosById.set(u.id, u))
-        }
-      }
 
       const niveisMap = new Map<number, NivelEnsinoRow>()
       niveisList.forEach((n) => niveisMap.set(n.id_nivel_ensino, n))
@@ -1136,7 +1123,7 @@ const SecretariaMatriculasPage: FC = () => {
 
       const normalizados: MatriculaLista[] = matriculasList.map((m) => {
         const aluno = alunosById.get(m.id_aluno)
-        const usuario = aluno?.user_id ? usuariosById.get(aluno.user_id) : undefined
+        const usuario = aluno?.usuarios ?? undefined
         const nivel = niveisMap.get(m.id_nivel_ensino)
         const status = statusMap.get(m.id_status_matricula)
         const turma = m.id_turma != null ? turmasMap.get(m.id_turma) : undefined
@@ -1591,13 +1578,10 @@ const SecretariaMatriculasPage: FC = () => {
       setSalvandoEdicao(true)
 
       // 1) Atualiza public.usuarios (OBS: isso NÃO altera o email/senha no Auth)
-      // Observação de tipagem: em UsuarioRow, "email" é string (não-null). Em edição,
-      // se o campo de e-mail estiver vazio, NÃO atualizamos a coluna (mantém o valor atual).
-      const emailTrim = editAluno.email.trim().toLowerCase()
-
       const usuarioUpdate: Partial<UsuarioRow> = {
         name: nome,
-        ...(emailTrim ? { email: emailTrim } : {}),
+        // Observação: "email" em UsuarioRow é string (não-null). Em update usamos "undefined" para não alterar.
+        email: editAluno.email.trim() || undefined,
         data_nascimento: editAluno.dataNasc || null,
         cpf: editAluno.cpf.trim() || null,
         celular: editAluno.celular.trim() || null,
