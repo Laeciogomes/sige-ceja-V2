@@ -60,6 +60,8 @@ import LocalAtmIcon from '@mui/icons-material/LocalAtm'
 import PhotoCameraIcon from '@mui/icons-material/PhotoCamera'
 import EditIcon from '@mui/icons-material/Edit'
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
+import { green } from '@mui/material/colors'
+
 
 import { useSupabase } from '../../contextos/SupabaseContext'
 import { useNotificacaoContext } from '../../contextos/NotificacaoContext'
@@ -505,15 +507,15 @@ const SecretariaMatriculasPage: FC = () => {
     return theme.palette.text.secondary
   }
 
+  // Cores do Cabeçalho Verde
   const headerBgColor =
-    theme.palette.mode === 'light'
-      ? alpha(theme.palette.primary.light, 0.18)
-      : alpha(theme.palette.primary.dark, 0.35)
+    theme.palette.mode === 'light' ? green[100] : alpha(green[900], 0.4)
 
   const headerTextColor =
     theme.palette.mode === 'light'
-      ? theme.palette.primary.dark
-      : theme.palette.primary.contrastText
+      ? theme.palette.success.dark
+      : theme.palette.success.light
+      
 
   const zebraColor =
     theme.palette.mode === 'light'
