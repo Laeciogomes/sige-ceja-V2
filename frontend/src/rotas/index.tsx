@@ -1,5 +1,3 @@
-// src/rotas/index.tsx
-
 import React from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 
@@ -28,6 +26,9 @@ import SecretariaProtocolosPage from '../paginas/painel-secretaria/SecretariaPro
 import SecretariaTurmaAlunosPage from '../paginas/painel-secretaria/SecretariaTurmaAlunosPage'
 import SecretariaRelatoriosFichasPage from '../paginas/painel-secretaria/SecretariaRelatoriosFichasPage'
 import SecretariaImportarMatriculasPage from '../paginas/painel-secretaria/SecretariaImportarMatriculasPage'
+
+// NOVO: Página real de Atendimentos do Professor
+import ProfessorAtendimentosPage from '../paginas/painel-professor/ProfessorAtendimentosPage'
 
 export const AppRoutes: React.FC = () => {
   // Inclui "carregando" para evitar redirecionar enquanto a sessão está sendo restaurada
@@ -123,14 +124,17 @@ export const AppRoutes: React.FC = () => {
             </RotaPorPapel>
           }
         />
+
+        {/* ✅ TROCA AQUI: antes era <PaginaSimples titulo="Atendimentos" /> */}
         <Route
           path="professores/atendimentos"
           element={
             <RotaPorPapel papeisPermitidos={['PROFESSOR', 'ADMIN']}>
-              <PaginaSimples titulo="Atendimentos" />
+              <ProfessorAtendimentosPage />
             </RotaPorPapel>
           }
         />
+
         <Route
           path="professores/acompanhamento"
           element={
