@@ -1,3 +1,5 @@
+// src/paginas/painel-professor/ProfessorAtendimentosPage.tsx
+
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import {
@@ -39,8 +41,11 @@ import RefreshIcon from '@mui/icons-material/Autorenew'
 import VisibilityIcon from '@mui/icons-material/Visibility'
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'
 import WarningAmberIcon from '@mui/icons-material/WarningAmber'
+import MeetingRoomIcon from '@mui/icons-material/MeetingRoom'
+import SchoolIcon from '@mui/icons-material/School'
+import PersonSearchIcon from '@mui/icons-material/PersonSearch'
 
-// Ajuste estes imports conforme a sua estrutura real (mantive como no arquivo anterior)
+// Ajuste estes imports conforme a sua estrutura real
 import { useSupabase } from '../../contextos/SupabaseContext'
 import { useNotificacaoContext } from '../../contextos/NotificacaoContext'
 import { useAuth } from '../../contextos/AuthContext'
@@ -55,17 +60,6 @@ type SalaAtendimento = {
 type TipoProtocolo = {
   id_tipo_protocolo: number
   nome: string
-}
-
-type Disciplina = {
-  id_disciplina: number
-  nome_disciplina: string
-}
-
-type AnoEscolar = {
-  id_ano_escolar: number
-  nome_ano: string
-  id_nivel_ensino: number
 }
 
 type ConfigDisciplinaAno = {
@@ -89,12 +83,21 @@ type AlunoOption = {
   id_aluno: number
   nome: string
   email?: string | null
+
+  // Opcional: quando encontrado por matrícula
+  id_matricula?: number | null
+  numero_inscricao?: string | null
+  ano_letivo?: number | null
+  status_matricula_nome?: string | null
 }
 
 type OpcaoDisciplinaAno = {
+  id_config: number
   id_disciplina: number
   id_ano_escolar: number
   quantidade_protocolos: number
+  disciplina_nome: string
+  ano_nome: string
   label: string
 }
 
@@ -140,11 +143,15 @@ function first<T>(v: T | T[] | null | undefined): T | null {
 }
 
 function normalizarTexto(valor: string): string {
-  return valor
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .trim()
+  try {
+    return valor
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .trim()
+  } catch {
+    return (valor || '').toLowerCase().trim()
+  }
 }
 
 function hojeISODateLocal(): string {
@@ -186,6 +193,10 @@ function statusChipProps(status: string): { label: string; color?: 'default' | '
   return { label: status, color: 'default' }
 }
 
+function papelDoUsuario(usuario: any): string {
+  return String(usuario?.papel ?? usuario?.role ?? usuario?.tipo ?? usuario?.tipo_usuario ?? '').trim()
+}
+
 export default function ProfessorAtendimentosPage() {
   const theme = useTheme()
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'))
@@ -193,56 +204,6 @@ export default function ProfessorAtendimentosPage() {
   const { supabase } = useSupabase()
   const { usuario } = useAuth()
   const { sucesso, aviso, erro, info } = useNotificacaoContext()
-
-  const [carregandoBase, setCarregandoBase] = useState(true)
-  const [carregandoSessoes, setCarregandoSessoes] = useState(false)
-  const [carregandoRegistros, setCarregandoRegistros] = useState(false)
-
-  const [idProfessor, setIdProfessor] = useState<number | null>(null)
-
-  const [salas, setSalas] = useState<SalaAtendimento[]>([])
-  const [tiposProtocolo, setTiposProtocolo] = useState<TipoProtocolo[]>([])
-  const [disciplinas, setDisciplinas] = useState<Disciplina[]>([])
-  const [anosEscolares, setAnosEscolares] = useState<AnoEscolar[]>([])
-  const [configs, setConfigs] = useState<ConfigDisciplinaAno[]>([])
-  const [statusMatriculas, setStatusMatriculas] = useState<StatusMatricula[]>([])
-  const [statusDisciplinas, setStatusDisciplinas] = useState<StatusDisciplinaAluno[]>([])
-  const [alunos, setAlunos] = useState<AlunoOption[]>([])
-
-  const [filtroDataInicio, setFiltroDataInicio] = useState<string>(hojeISODateLocal())
-  const [filtroDataFim, setFiltroDataFim] = useState<string>(hojeISODateLocal())
-  const [filtroTexto, setFiltroTexto] = useState<string>('')
-  const [filtroSalaId, setFiltroSalaId] = useState<number | 'todas'>('todas')
-
-  const [sessoes, setSessoes] = useState<SessaoView[]>([])
-
-  // Dialog: Nova sessão (tudo como string para Select)
-  const [dlgNovaSessao, setDlgNovaSessao] = useState(false)
-  const [novaSessaoAluno, setNovaSessaoAluno] = useState<AlunoOption | null>(null)
-  const [novaSessaoSalaId, setNovaSessaoSalaId] = useState<string>('') // <- string
-  const [novaSessaoDiscAno, setNovaSessaoDiscAno] = useState<OpcaoDisciplinaAno | null>(null)
-  const [novaSessaoEntrada, setNovaSessaoEntrada] = useState<string>(agoraParaInputDateTimeLocal())
-  const [novaSessaoResumo, setNovaSessaoResumo] = useState<string>('')
-  const [salvandoNovaSessao, setSalvandoNovaSessao] = useState(false)
-
-  // Dialog: Sessão
-  const [dlgSessao, setDlgSessao] = useState(false)
-  const [sessaoAtual, setSessaoAtual] = useState<SessaoView | null>(null)
-  const [registros, setRegistros] = useState<RegistroView[]>([])
-  const [salvandoSessao, setSalvandoSessao] = useState(false)
-
-  // Dialog: Registro (tudo string para Select)
-  const [dlgRegistro, setDlgRegistro] = useState(false)
-  const [registroEditandoId, setRegistroEditandoId] = useState<number | null>(null)
-  const [regNumero, setRegNumero] = useState<string>('') // <- string
-  const [regTipoId, setRegTipoId] = useState<string>('') // <- string
-  const [regStatus, setRegStatus] = useState<string>('A fazer')
-  const [regNota, setRegNota] = useState<string>('')
-  const [regAdaptada, setRegAdaptada] = useState<boolean>(false)
-  const [regSintese, setRegSintese] = useState<string>('')
-  const [salvandoRegistro, setSalvandoRegistro] = useState(false)
-
-  const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null)
 
   const mountedRef = useRef(true)
   useEffect(() => {
@@ -252,6 +213,101 @@ export default function ProfessorAtendimentosPage() {
     }
   }, [])
 
+  const PAPEL = useMemo(() => papelDoUsuario(usuario), [usuario])
+  const ehPrivilegiado = useMemo(() => {
+    const p = normalizarTexto(PAPEL)
+    return p.includes('admin') || p.includes('diretor') || p.includes('coorden')
+  }, [PAPEL])
+
+  const LIMITE_DISCIPLINAS_ABERTAS_PARA_PROFESSOR = 3
+
+  const [carregandoBase, setCarregandoBase] = useState(true)
+  const [carregandoSessoes, setCarregandoSessoes] = useState(false)
+  const [carregandoRegistros, setCarregandoRegistros] = useState(false)
+
+  const [idProfessor, setIdProfessor] = useState<number | null>(null)
+
+  // Somente salas lotadas do professor
+  const [salas, setSalas] = useState<SalaAtendimento[]>([])
+
+  // Mapa: sala -> opções (disciplina/ano) permitidas naquela sala
+  const [mapaSalaOpcoes, setMapaSalaOpcoes] = useState<Record<number, OpcaoDisciplinaAno[]>>({})
+
+  // Lista “global” de configs (derivada das salas do professor) para validar limites de protocolos
+  const [configs, setConfigs] = useState<ConfigDisciplinaAno[]>([])
+
+  const [tiposProtocolo, setTiposProtocolo] = useState<TipoProtocolo[]>([])
+  const [statusMatriculas, setStatusMatriculas] = useState<StatusMatricula[]>([])
+  const [statusDisciplinas, setStatusDisciplinas] = useState<StatusDisciplinaAluno[]>([])
+
+  const [filtroDataInicio, setFiltroDataInicio] = useState<string>(hojeISODateLocal())
+  const [filtroDataFim, setFiltroDataFim] = useState<string>(hojeISODateLocal())
+  const [filtroTexto, setFiltroTexto] = useState<string>('')
+  const [filtroSalaId, setFiltroSalaId] = useState<number | 'todas'>('todas')
+
+  const [sessoes, setSessoes] = useState<SessaoView[]>([])
+
+  // ===========================
+  // Dialog: Escolher Sala (quando > 1)
+  // ===========================
+  const [dlgEscolherSala, setDlgEscolherSala] = useState(false)
+
+  // ===========================
+  // Dialog: Nova sessão
+  // ===========================
+  const [dlgNovaSessao, setDlgNovaSessao] = useState(false)
+
+  const [novaSessaoSalaId, setNovaSessaoSalaId] = useState<number | null>(null)
+
+  const [novaSessaoAluno, setNovaSessaoAluno] = useState<AlunoOption | null>(null)
+  const [buscaAluno, setBuscaAluno] = useState<string>('')
+  const [opcoesAluno, setOpcoesAluno] = useState<AlunoOption[]>([])
+  const [buscandoAluno, setBuscandoAluno] = useState(false)
+  const debounceRef = useRef<number | null>(null)
+
+  const [novaSessaoMatriculaId, setNovaSessaoMatriculaId] = useState<number | null>(null)
+  const [novaSessaoNumeroInscricao, setNovaSessaoNumeroInscricao] = useState<string | null>(null)
+
+  // Contexto do aluno na sala (fichas abertas / progresso existente)
+  const [carregandoAlunoContexto, setCarregandoAlunoContexto] = useState(false)
+  const [qtdeDisciplinasAbertas, setQtdeDisciplinasAbertas] = useState<number>(0)
+  const [alunoTemFichaNaSala, setAlunoTemFichaNaSala] = useState<boolean>(true)
+  const [progressoPorDiscAno, setProgressoPorDiscAno] = useState<Map<string, number>>(new Map())
+
+  const [novaSessaoDiscAno, setNovaSessaoDiscAno] = useState<OpcaoDisciplinaAno | null>(null)
+  const [confirmarAberturaFicha, setConfirmarAberturaFicha] = useState<boolean>(false)
+
+  const [novaSessaoEntrada, setNovaSessaoEntrada] = useState<string>(agoraParaInputDateTimeLocal())
+  const [novaSessaoResumo, setNovaSessaoResumo] = useState<string>('')
+
+  const [salvandoNovaSessao, setSalvandoNovaSessao] = useState(false)
+
+  // ===========================
+  // Dialog: Sessão
+  // ===========================
+  const [dlgSessao, setDlgSessao] = useState(false)
+  const [sessaoAtual, setSessaoAtual] = useState<SessaoView | null>(null)
+  const [registros, setRegistros] = useState<RegistroView[]>([])
+  const [salvandoSessao, setSalvandoSessao] = useState(false)
+
+  // ===========================
+  // Dialog: Registro
+  // ===========================
+  const [dlgRegistro, setDlgRegistro] = useState(false)
+  const [registroEditandoId, setRegistroEditandoId] = useState<number | null>(null)
+  const [regNumero, setRegNumero] = useState<string>('') // string
+  const [regTipoId, setRegTipoId] = useState<string>('') // string
+  const [regStatus, setRegStatus] = useState<string>('A fazer')
+  const [regNota, setRegNota] = useState<string>('')
+  const [regAdaptada, setRegAdaptada] = useState<boolean>(false)
+  const [regSintese, setRegSintese] = useState<string>('')
+  const [salvandoRegistro, setSalvandoRegistro] = useState(false)
+
+  const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null)
+
+  // ===========================
+  // Derived
+  // ===========================
   const mapaConfigPorDiscAno = useMemo(() => {
     const m = new Map<string, ConfigDisciplinaAno>()
     configs.forEach((c) => {
@@ -260,21 +316,31 @@ export default function ProfessorAtendimentosPage() {
     return m
   }, [configs])
 
-  const opcoesDisciplinaAno: OpcaoDisciplinaAno[] = useMemo(() => {
-    const lista: OpcaoDisciplinaAno[] = []
-    for (const c of configs) {
-      const disc = disciplinas.find((d) => d.id_disciplina === c.id_disciplina)
-      const ano = anosEscolares.find((a) => a.id_ano_escolar === c.id_ano_escolar)
-      const label = `${disc?.nome_disciplina ?? 'Disciplina'} — ${ano?.nome_ano ?? 'Ano'} (protocolos: ${c.quantidade_protocolos})`
-      lista.push({
-        id_disciplina: c.id_disciplina,
-        id_ano_escolar: c.id_ano_escolar,
-        quantidade_protocolos: c.quantidade_protocolos,
-        label,
-      })
-    }
-    return lista.sort((a, b) => a.label.localeCompare(b.label))
-  }, [configs, disciplinas, anosEscolares])
+  const opcoesDisciplinaAnoDaSala: OpcaoDisciplinaAno[] = useMemo(() => {
+    if (!novaSessaoSalaId) return []
+    return (mapaSalaOpcoes[novaSessaoSalaId] ?? []).slice().sort((a, b) => a.label.localeCompare(b.label))
+  }, [novaSessaoSalaId, mapaSalaOpcoes])
+
+  const salaSelecionada = useMemo(() => {
+    if (!novaSessaoSalaId) return null
+    return salas.find((s) => s.id_sala === novaSessaoSalaId) ?? null
+  }, [salas, novaSessaoSalaId])
+
+  const chaveDiscAnoSelecionada = useMemo(() => {
+    if (!novaSessaoDiscAno) return null
+    return `${novaSessaoDiscAno.id_disciplina}-${novaSessaoDiscAno.id_ano_escolar}`
+  }, [novaSessaoDiscAno])
+
+  const idProgressoSelecionado = useMemo(() => {
+    if (!chaveDiscAnoSelecionada) return null
+    return progressoPorDiscAno.get(chaveDiscAnoSelecionada) ?? null
+  }, [progressoPorDiscAno, chaveDiscAnoSelecionada])
+
+  const disciplinaJaAberta = Boolean(idProgressoSelecionado)
+
+  const podeAbrirNovaDisciplina = useMemo(() => {
+    return ehPrivilegiado || qtdeDisciplinasAbertas < LIMITE_DISCIPLINAS_ABERTAS_PARA_PROFESSOR
+  }, [ehPrivilegiado, qtdeDisciplinasAbertas])
 
   const sessoesFiltradas = useMemo(() => {
     const q = normalizarTexto(filtroTexto)
@@ -292,12 +358,23 @@ export default function ProfessorAtendimentosPage() {
     })
   }, [sessoes, filtroTexto, filtroSalaId])
 
+  const kpis = useMemo(() => {
+    const total = sessoesFiltradas.length
+    const abertas = sessoesFiltradas.filter((s) => !s.hora_saida).length
+    const encerradas = total - abertas
+    return { total, abertas, encerradas }
+  }, [sessoesFiltradas])
+
+  // ===========================
+  // Base load
+  // ===========================
   const carregarBase = useCallback(async () => {
     if (!supabase) return
     if (!usuario?.id) return
 
     setCarregandoBase(true)
     try {
+      // 1) professor
       const { data: prof, error: errProf } = await supabase
         .from('professores')
         .select('id_professor')
@@ -313,60 +390,121 @@ export default function ProfessorAtendimentosPage() {
         erro('Seu usuário não está vinculado a um Professor. Peça à Secretaria/Admin para vincular.')
         return
       }
-      setIdProfessor(Number(prof.id_professor))
+      const professorId = Number(prof.id_professor)
+      setIdProfessor(professorId)
 
-      const [
-        salasRes,
-        tiposRes,
-        discRes,
-        anosRes,
-        configRes,
-        statusMatRes,
-        statusDiscRes,
-        alunosRes,
-      ] = await Promise.all([
-        supabase.from('salas_atendimento').select('id_sala,nome,tipo_sala,is_ativa').eq('is_ativa', true).order('nome'),
+      // 2) carregar tabelas auxiliares em paralelo (independente das salas)
+      const [tiposRes, statusMatRes, statusDiscRes] = await Promise.all([
         supabase.from('tipos_protocolo').select('id_tipo_protocolo,nome').order('nome'),
-        supabase.from('disciplinas').select('id_disciplina,nome_disciplina').order('nome_disciplina'),
-        supabase.from('anos_escolares').select('id_ano_escolar,nome_ano,id_nivel_ensino').order('nome_ano'),
-        supabase.from('config_disciplina_ano').select('id_config,id_disciplina,id_ano_escolar,quantidade_protocolos'),
         supabase.from('status_matricula').select('id_status_matricula,nome').order('id_status_matricula'),
         supabase.from('status_disciplina_aluno').select('id_status_disciplina,nome').order('id_status_disciplina'),
-        supabase
-          .from('alunos')
-          .select('id_aluno,user_id,usuarios(name,email)')
-          .order('id_aluno', { ascending: true }),
       ])
 
-      if (salasRes.error) throw salasRes.error
       if (tiposRes.error) throw tiposRes.error
-      if (discRes.error) throw discRes.error
-      if (anosRes.error) throw anosRes.error
-      if (configRes.error) throw configRes.error
       if (statusMatRes.error) throw statusMatRes.error
       if (statusDiscRes.error) throw statusDiscRes.error
-      if (alunosRes.error) throw alunosRes.error
 
-      setSalas((salasRes.data ?? []) as SalaAtendimento[])
       setTiposProtocolo((tiposRes.data ?? []) as TipoProtocolo[])
-      setDisciplinas((discRes.data ?? []) as Disciplina[])
-      setAnosEscolares((anosRes.data ?? []) as AnoEscolar[])
-      setConfigs((configRes.data ?? []) as ConfigDisciplinaAno[])
       setStatusMatriculas((statusMatRes.data ?? []) as StatusMatricula[])
       setStatusDisciplinas((statusDiscRes.data ?? []) as StatusDisciplinaAluno[])
 
-      const alunosFormatados: AlunoOption[] = (alunosRes.data ?? []).map((a: any) => {
-        const u = first(a?.usuarios) as any
-        return {
-          id_aluno: Number(a.id_aluno),
-          nome: u?.name ?? `Aluno #${a.id_aluno}`,
-          email: u?.email ?? null,
-        }
-      })
-      setAlunos(alunosFormatados)
+      // 3) salas do professor (lotação)
+      const { data: profSalas, error: errSalas } = await supabase
+        .from('professores_salas')
+        .select(
+          `
+          id_sala,
+          ativo,
+          salas_atendimento(
+            id_sala,
+            nome,
+            tipo_sala,
+            is_ativa
+          )
+        `
+        )
+        .eq('id_professor', professorId)
+        .eq('ativo', true)
 
-      if (alunosFormatados.length === 0) {
-        info('Nenhum aluno encontrado. Cadastre/importe alunos e matrículas pela Secretaria.')
+      if (errSalas) throw errSalas
+
+      const salasProfessor: SalaAtendimento[] = (profSalas ?? [])
+        .map((r: any) => first(r?.salas_atendimento))
+        .filter(Boolean)
+        .filter((s: any) => Boolean(s?.is_ativa))
+        .map((s: any) => ({
+          id_sala: Number(s.id_sala),
+          nome: String(s.nome),
+          tipo_sala: String(s.tipo_sala),
+          is_ativa: Boolean(s.is_ativa),
+        }))
+        .sort((a, b) => a.nome.localeCompare(b.nome))
+
+      setSalas(salasProfessor)
+
+      if (salasProfessor.length === 0) {
+        info('Você não está lotado em nenhuma sala ativa. Peça ao Admin/Secretaria para vincular em Professores → Salas.')
+      }
+
+      // 4) disciplinas por sala (salas_config_disciplina_ano -> config_disciplina_ano)
+      const salaIds = salasProfessor.map((s) => s.id_sala)
+      if (salaIds.length > 0) {
+        const { data: salaCfg, error: errCfg } = await supabase
+          .from('salas_config_disciplina_ano')
+          .select(
+            `
+            id_sala,
+            config_disciplina_ano(
+              id_config,
+              id_disciplina,
+              id_ano_escolar,
+              quantidade_protocolos,
+              disciplinas(nome_disciplina),
+              anos_escolares(nome_ano)
+            )
+          `
+          )
+          .in('id_sala', salaIds)
+
+        if (errCfg) throw errCfg
+
+        const mapa: Record<number, OpcaoDisciplinaAno[]> = {}
+        const uniq = new Map<number, ConfigDisciplinaAno>()
+
+        for (const row of salaCfg ?? []) {
+          const idSala = Number((row as any)?.id_sala)
+          const cfg = first((row as any)?.config_disciplina_ano) as any
+          if (!cfg?.id_config) continue
+
+          const disc = first(cfg?.disciplinas) as any
+          const ano = first(cfg?.anos_escolares) as any
+
+          const opt: OpcaoDisciplinaAno = {
+            id_config: Number(cfg.id_config),
+            id_disciplina: Number(cfg.id_disciplina),
+            id_ano_escolar: Number(cfg.id_ano_escolar),
+            quantidade_protocolos: Number(cfg.quantidade_protocolos),
+            disciplina_nome: String(disc?.nome_disciplina ?? `Disciplina #${cfg.id_disciplina}`),
+            ano_nome: String(ano?.nome_ano ?? `Ano #${cfg.id_ano_escolar}`),
+            label: `${String(disc?.nome_disciplina ?? 'Disciplina')} — ${String(ano?.nome_ano ?? 'Ano')} (protocolos: ${cfg.quantidade_protocolos})`,
+          }
+
+          if (!mapa[idSala]) mapa[idSala] = []
+          mapa[idSala].push(opt)
+
+          uniq.set(Number(cfg.id_config), {
+            id_config: Number(cfg.id_config),
+            id_disciplina: Number(cfg.id_disciplina),
+            id_ano_escolar: Number(cfg.id_ano_escolar),
+            quantidade_protocolos: Number(cfg.quantidade_protocolos),
+          })
+        }
+
+        setMapaSalaOpcoes(mapa)
+        setConfigs(Array.from(uniq.values()))
+      } else {
+        setMapaSalaOpcoes({})
+        setConfigs([])
       }
     } catch (e: any) {
       console.error(e)
@@ -376,6 +514,9 @@ export default function ProfessorAtendimentosPage() {
     }
   }, [supabase, usuario?.id, erro, info])
 
+  // ===========================
+  // Sessions load
+  // ===========================
   const carregarSessoes = useCallback(
     async (professorId: number, dataInicio: string, dataFim: string) => {
       if (!supabase) return
@@ -463,6 +604,9 @@ export default function ProfessorAtendimentosPage() {
     [supabase, erro]
   )
 
+  // ===========================
+  // Records load
+  // ===========================
   const carregarRegistrosDaSessao = useCallback(
     async (sessaoId: number) => {
       if (!supabase) return
@@ -522,11 +666,9 @@ export default function ProfessorAtendimentosPage() {
     [supabase, erro]
   )
 
-  const obterIdStatusMatriculaAtiva = useCallback((): number | null => {
-    const ativa = statusMatriculas.find((s) => normalizarTexto(s.nome).includes('ativa'))
-    return ativa ? Number(ativa.id_status_matricula) : null
-  }, [statusMatriculas])
-
+  // ===========================
+  // Helpers: status default e matrícula preferencial
+  // ===========================
   const obterIdStatusDisciplinaDefault = useCallback((): number | null => {
     const cursando = statusDisciplinas.find((s) => normalizarTexto(s.nome).includes('cursando'))
     if (cursando) return Number(cursando.id_status_disciplina)
@@ -538,34 +680,42 @@ export default function ProfessorAtendimentosPage() {
   }, [statusDisciplinas])
 
   const obterMatriculaPreferencial = useCallback(
-    async (alunoId: number): Promise<number | null> => {
+    async (alunoId: number): Promise<{ id_matricula: number; numero_inscricao?: string | null } | null> => {
       if (!supabase) return null
 
-      const ativaId = obterIdStatusMatriculaAtiva()
+      // Preferir status "Ativa", se existir
+      const ativa = statusMatriculas.find((s) => normalizarTexto(s.nome).includes('ativa'))
+      const ativaId = ativa ? Number(ativa.id_status_matricula) : null
+
       const { data, error: err } = await supabase
         .from('matriculas')
-        .select('id_matricula,id_status_matricula,ano_letivo,data_matricula')
+        .select('id_matricula,id_status_matricula,ano_letivo,data_matricula,numero_inscricao,status_matricula(nome)')
         .eq('id_aluno', alunoId)
         .order('ano_letivo', { ascending: false })
         .order('data_matricula', { ascending: false })
 
       if (err) throw err
 
-      const lista = (data ?? []).map((m: any) => ({
-        id_matricula: Number(m.id_matricula),
-        id_status_matricula: Number(m.id_status_matricula),
-      }))
+      const lista = (data ?? []).map((m: any) => {
+        const sm = first(m?.status_matricula) as any
+        return {
+          id_matricula: Number(m.id_matricula),
+          id_status_matricula: Number(m.id_status_matricula),
+          numero_inscricao: m?.numero_inscricao ? String(m.numero_inscricao) : null,
+          status_nome: sm?.nome ? String(sm.nome) : null,
+        }
+      })
 
       if (lista.length === 0) return null
 
       if (ativaId != null) {
-        const ativa = lista.find((m) => m.id_status_matricula === ativaId)
-        if (ativa) return ativa.id_matricula
+        const ativaRow = lista.find((m) => m.id_status_matricula === ativaId)
+        if (ativaRow) return { id_matricula: ativaRow.id_matricula, numero_inscricao: ativaRow.numero_inscricao }
       }
 
-      return lista[0].id_matricula
+      return { id_matricula: lista[0].id_matricula, numero_inscricao: lista[0].numero_inscricao }
     },
-    [supabase, obterIdStatusMatriculaAtiva]
+    [supabase, statusMatriculas]
   )
 
   const garantirProgresso = useCallback(
@@ -581,13 +731,10 @@ export default function ProfessorAtendimentosPage() {
         .maybeSingle()
 
       if (errSel) throw errSel
-
       if (existente?.id_progresso) return Number(existente.id_progresso)
 
       const statusDefaultId = obterIdStatusDisciplinaDefault()
-      if (!statusDefaultId) {
-        throw new Error('Tabela status_disciplina_aluno não possui valores para status inicial.')
-      }
+      if (!statusDefaultId) throw new Error('Tabela status_disciplina_aluno não possui valores para status inicial.')
 
       const { data: criado, error: errIns } = await supabase
         .from('progresso_aluno')
@@ -608,15 +755,325 @@ export default function ProfessorAtendimentosPage() {
     [supabase, obterIdStatusDisciplinaDefault]
   )
 
-  const abrirDialogNovaSessao = useCallback(() => {
+  // ===========================
+  // Busca de aluno (nome ou matrícula)
+  // ===========================
+  const buscarAlunos = useCallback(
+    async (termo: string) => {
+      if (!supabase) return
+
+      const t = termo.trim()
+      if (t.length < 2 && !/^\d+$/.test(t)) {
+        setOpcoesAluno([])
+        return
+      }
+
+      setBuscandoAluno(true)
+      try {
+        const isNum = /^\d+$/.test(t)
+
+        // Caso 1: digitou número -> procurar por numero_inscricao
+        if (isNum) {
+          const { data, error: err } = await supabase
+            .from('matriculas')
+            .select(
+              `
+              id_matricula,
+              id_aluno,
+              numero_inscricao,
+              ano_letivo,
+              status_matricula(nome),
+              alunos!inner(
+                id_aluno,
+                usuarios!inner(
+                  name,
+                  email
+                )
+              )
+            `
+            )
+            .ilike('numero_inscricao', `%${t}%`)
+            .order('ano_letivo', { ascending: false })
+            .order('data_matricula', { ascending: false })
+            .limit(25)
+
+          if (err) throw err
+
+          const opts: AlunoOption[] = (data ?? []).map((m: any) => {
+            const a = first(m?.alunos) as any
+            const u = first(a?.usuarios) as any
+            const sm = first(m?.status_matricula) as any
+
+            return {
+              id_aluno: Number(m.id_aluno),
+              nome: String(u?.name ?? `Aluno #${m.id_aluno}`),
+              email: u?.email ?? null,
+              id_matricula: Number(m.id_matricula),
+              numero_inscricao: m?.numero_inscricao ? String(m.numero_inscricao) : null,
+              ano_letivo: m?.ano_letivo != null ? Number(m.ano_letivo) : null,
+              status_matricula_nome: sm?.nome ? String(sm.nome) : null,
+            }
+          })
+
+          setOpcoesAluno(opts)
+          return
+        }
+
+        // Caso 2: texto -> procurar alunos por nome, depois anexar matrícula “preferencial”
+        const { data: alunosData, error: errAlunos } = await supabase
+          .from('alunos')
+          .select(
+            `
+            id_aluno,
+            usuarios!inner(
+              name,
+              email
+            )
+          `
+          )
+          .ilike('usuarios.name', `%${t}%`)
+          .order('id_aluno', { ascending: false })
+          .limit(25)
+
+        if (errAlunos) throw errAlunos
+
+        const ids = (alunosData ?? []).map((a: any) => Number(a.id_aluno)).filter((x: any) => Number.isFinite(x))
+
+        // buscar matrículas destes alunos (para exibir nº inscrição e escolher preferencial)
+        let mats: any[] = []
+        if (ids.length > 0) {
+          const { data: matsData, error: errMats } = await supabase
+            .from('matriculas')
+            .select('id_matricula,id_aluno,numero_inscricao,ano_letivo,data_matricula,id_status_matricula,status_matricula(nome)')
+            .in('id_aluno', ids)
+            .order('ano_letivo', { ascending: false })
+            .order('data_matricula', { ascending: false })
+            .limit(500)
+
+          if (errMats) throw errMats
+          mats = matsData ?? []
+        }
+
+        const matsPorAluno = new Map<number, any[]>()
+        for (const m of mats) {
+          const aid = Number(m?.id_aluno)
+          if (!matsPorAluno.has(aid)) matsPorAluno.set(aid, [])
+          matsPorAluno.get(aid)!.push(m)
+        }
+
+        const escolherMelhorMatricula = (lista: any[]) => {
+          if (!lista?.length) return null
+          // preferir status nome contendo "ativa"
+          const ativa = lista.find((m) => {
+            const sm = first(m?.status_matricula) as any
+            return normalizarTexto(String(sm?.nome ?? '')).includes('ativa')
+          })
+          return ativa ?? lista[0]
+        }
+
+        const opts: AlunoOption[] = (alunosData ?? []).map((a: any) => {
+          const u = first(a?.usuarios) as any
+          const listaM = matsPorAluno.get(Number(a.id_aluno)) ?? []
+          const melhor = escolherMelhorMatricula(listaM)
+          const sm = first(melhor?.status_matricula) as any
+
+          return {
+            id_aluno: Number(a.id_aluno),
+            nome: String(u?.name ?? `Aluno #${a.id_aluno}`),
+            email: u?.email ?? null,
+
+            id_matricula: melhor?.id_matricula != null ? Number(melhor.id_matricula) : null,
+            numero_inscricao: melhor?.numero_inscricao ? String(melhor.numero_inscricao) : null,
+            ano_letivo: melhor?.ano_letivo != null ? Number(melhor.ano_letivo) : null,
+            status_matricula_nome: sm?.nome ? String(sm.nome) : null,
+          }
+        })
+
+        setOpcoesAluno(opts)
+      } catch (e: any) {
+        console.error(e)
+        setOpcoesAluno([])
+      } finally {
+        if (mountedRef.current) setBuscandoAluno(false)
+      }
+    },
+    [supabase]
+  )
+
+  // ===========================
+  // Contexto do aluno na sala (progresso)
+  // ===========================
+  const carregarContextoAlunoNaSala = useCallback(
+    async (aluno: AlunoOption, salaId: number) => {
+      if (!supabase) return
+
+      setCarregandoAlunoContexto(true)
+      try {
+        // 1) matrícula: se veio pelo resultado (por numero_inscricao), usa; senão tenta preferencial
+        let idMatricula: number | null = aluno?.id_matricula != null ? Number(aluno.id_matricula) : null
+        let numeroInscricao: string | null = aluno?.numero_inscricao ? String(aluno.numero_inscricao) : null
+
+        if (!idMatricula) {
+          const pref = await obterMatriculaPreferencial(aluno.id_aluno)
+          if (!pref) {
+            setNovaSessaoMatriculaId(null)
+            setNovaSessaoNumeroInscricao(null)
+            setQtdeDisciplinasAbertas(0)
+            setAlunoTemFichaNaSala(false)
+            setProgressoPorDiscAno(new Map())
+            return
+          }
+          idMatricula = pref.id_matricula
+          numeroInscricao = pref.numero_inscricao ?? null
+        }
+
+        setNovaSessaoMatriculaId(idMatricula)
+        setNovaSessaoNumeroInscricao(numeroInscricao)
+
+        // 2) progressos na matrícula
+        const { data: progs, error: errProgs } = await supabase
+          .from('progresso_aluno')
+          .select('id_progresso,id_disciplina,id_ano_escolar,data_conclusao')
+          .eq('id_matricula', idMatricula)
+          .limit(2000)
+
+        if (errProgs) throw errProgs
+
+        const map = new Map<string, number>()
+        let abertas = 0
+
+        for (const p of progs ?? []) {
+          const idDisc = Number((p as any)?.id_disciplina)
+          const idAno = Number((p as any)?.id_ano_escolar)
+          const idProg = Number((p as any)?.id_progresso)
+          const key = `${idDisc}-${idAno}`
+          if (Number.isFinite(idDisc) && Number.isFinite(idAno) && Number.isFinite(idProg)) {
+            map.set(key, idProg)
+          }
+          // aberta se data_conclusao é null
+          if ((p as any)?.data_conclusao == null) abertas += 1
+        }
+
+        setProgressoPorDiscAno(map)
+        setQtdeDisciplinasAbertas(abertas)
+
+        // 3) aluno tem ficha aberta em alguma disciplina desta sala?
+        const opcoesSala = (mapaSalaOpcoes[salaId] ?? []) as OpcaoDisciplinaAno[]
+        const temAlguma = opcoesSala.some((o) => map.has(`${o.id_disciplina}-${o.id_ano_escolar}`))
+        setAlunoTemFichaNaSala(temAlguma)
+
+        // UX: se já existir alguma aberta na sala, auto-seleciona a primeira disciplina “aberta”
+        if (opcoesSala.length > 0) {
+          const primeiraAberta = opcoesSala.find((o) => map.has(`${o.id_disciplina}-${o.id_ano_escolar}`))
+          if (primeiraAberta) {
+            setNovaSessaoDiscAno(primeiraAberta)
+            setConfirmarAberturaFicha(false)
+          } else {
+            setNovaSessaoDiscAno(null)
+            setConfirmarAberturaFicha(false)
+          }
+        } else {
+          setNovaSessaoDiscAno(null)
+          setConfirmarAberturaFicha(false)
+        }
+      } catch (e: any) {
+        console.error(e)
+        erro('Falha ao verificar fichas/progressos do aluno nesta sala.')
+        setNovaSessaoMatriculaId(null)
+        setNovaSessaoNumeroInscricao(null)
+        setQtdeDisciplinasAbertas(0)
+        setAlunoTemFichaNaSala(false)
+        setProgressoPorDiscAno(new Map())
+      } finally {
+        if (mountedRef.current) setCarregandoAlunoContexto(false)
+      }
+    },
+    [supabase, mapaSalaOpcoes, obterMatriculaPreferencial, erro]
+  )
+
+  // ===========================
+  // Abertura de dialogs (fluxo sala -> novo atendimento)
+  // ===========================
+  const resetarFormularioNovaSessao = useCallback(() => {
     setNovaSessaoAluno(null)
-    setNovaSessaoSalaId('')
+    setBuscaAluno('')
+    setOpcoesAluno([])
+    setNovaSessaoMatriculaId(null)
+    setNovaSessaoNumeroInscricao(null)
+    setQtdeDisciplinasAbertas(0)
+    setAlunoTemFichaNaSala(true)
+    setProgressoPorDiscAno(new Map())
     setNovaSessaoDiscAno(null)
+    setConfirmarAberturaFicha(false)
+
     setNovaSessaoEntrada(agoraParaInputDateTimeLocal())
     setNovaSessaoResumo('')
-    setDlgNovaSessao(true)
   }, [])
 
+  const abrirNovoAtendimento = useCallback(() => {
+    resetarFormularioNovaSessao()
+
+    if (!salas.length) {
+      erro('Você não possui sala vinculada. Solicite ao Admin/Secretaria para vincular em Professores → Salas.')
+      return
+    }
+
+    if (salas.length === 1) {
+      setNovaSessaoSalaId(salas[0].id_sala)
+      setDlgNovaSessao(true)
+      return
+    }
+
+    // Mais de uma sala: abre modal de escolha
+    setNovaSessaoSalaId(null)
+    setDlgEscolherSala(true)
+  }, [resetarFormularioNovaSessao, salas, erro])
+
+  const escolherSala = useCallback(
+    (idSala: number) => {
+      setNovaSessaoSalaId(idSala)
+
+      // trocar sala implica recalcular contexto do aluno e disciplina
+      setNovaSessaoDiscAno(null)
+      setConfirmarAberturaFicha(false)
+      setAlunoTemFichaNaSala(true)
+      setProgressoPorDiscAno(new Map())
+
+      setDlgEscolherSala(false)
+      setDlgNovaSessao(true)
+
+      if (novaSessaoAluno) {
+        void carregarContextoAlunoNaSala(novaSessaoAluno, idSala)
+      }
+    },
+    [novaSessaoAluno, carregarContextoAlunoNaSala]
+  )
+
+  // Debounce de busca do aluno (apenas quando dialog aberto)
+  useEffect(() => {
+    if (!dlgNovaSessao) return
+
+    if (debounceRef.current) window.clearTimeout(debounceRef.current)
+    debounceRef.current = window.setTimeout(() => void buscarAlunos(buscaAluno), 350)
+
+    return () => {
+      if (debounceRef.current) window.clearTimeout(debounceRef.current)
+    }
+  }, [buscaAluno, dlgNovaSessao, buscarAlunos])
+
+  // Quando escolher aluno/sala, recalcula contexto
+  useEffect(() => {
+    if (!dlgNovaSessao) return
+    if (!supabase) return
+    if (!novaSessaoSalaId) return
+    if (!novaSessaoAluno) return
+
+    void carregarContextoAlunoNaSala(novaSessaoAluno, novaSessaoSalaId)
+  }, [dlgNovaSessao, supabase, novaSessaoSalaId, novaSessaoAluno, carregarContextoAlunoNaSala])
+
+  // ===========================
+  // Criar sessão (com regra de abertura de ficha)
+  // ===========================
   const criarSessao = useCallback(async () => {
     if (!supabase) return
     if (!usuario?.id) return
@@ -625,16 +1082,16 @@ export default function ProfessorAtendimentosPage() {
       erro('Professor não identificado. Recarregue a página ou verifique seu vínculo.')
       return
     }
-    if (!novaSessaoAluno?.id_aluno) {
-      aviso('Selecione o aluno.')
-      return
-    }
     if (!novaSessaoSalaId) {
       aviso('Selecione a sala.')
       return
     }
+    if (!novaSessaoAluno?.id_aluno) {
+      aviso('Selecione o aluno (nome ou nº de inscrição).')
+      return
+    }
     if (!novaSessaoDiscAno) {
-      aviso('Selecione disciplina/ano.')
+      aviso('Selecione a disciplina/ano desta sala.')
       return
     }
     if (!novaSessaoEntrada?.trim()) {
@@ -644,17 +1101,39 @@ export default function ProfessorAtendimentosPage() {
 
     setSalvandoNovaSessao(true)
     try {
-      const idMatricula = await obterMatriculaPreferencial(novaSessaoAluno.id_aluno)
+      // Matrícula
+      let idMatricula = novaSessaoMatriculaId
       if (!idMatricula) {
-        aviso('Este aluno não possui matrícula cadastrada. A Secretaria deve cadastrar a matrícula primeiro.')
-        return
+        const pref = await obterMatriculaPreferencial(novaSessaoAluno.id_aluno)
+        if (!pref) {
+          aviso('Este aluno não possui matrícula cadastrada. A Secretaria deve cadastrar a matrícula primeiro.')
+          return
+        }
+        idMatricula = pref.id_matricula
+        setNovaSessaoMatriculaId(idMatricula)
+        setNovaSessaoNumeroInscricao(pref.numero_inscricao ?? null)
       }
 
-      const idProgresso = await garantirProgresso(
-        idMatricula,
-        novaSessaoDiscAno.id_disciplina,
-        novaSessaoDiscAno.id_ano_escolar
-      )
+      const key = `${novaSessaoDiscAno.id_disciplina}-${novaSessaoDiscAno.id_ano_escolar}`
+      const progExistente = progressoPorDiscAno.get(key) ?? null
+
+      // Se não houver ficha/progresso, precisamos “abrir”
+      if (!progExistente) {
+        if (!podeAbrirNovaDisciplina) {
+          erro(
+            `Aluno já possui ${qtdeDisciplinasAbertas} disciplinas abertas. Para abrir uma nova disciplina, somente ADMIN/DIRETOR/COORDENAÇÃO.`
+          )
+          return
+        }
+        if (!confirmarAberturaFicha) {
+          aviso('Esta disciplina ainda não está aberta para o aluno. Marque “Confirmo abrir ficha” para continuar.')
+          return
+        }
+      }
+
+      const idProgresso = progExistente
+        ? progExistente
+        : await garantirProgresso(idMatricula, novaSessaoDiscAno.id_disciplina, novaSessaoDiscAno.id_ano_escolar)
 
       const horaEntradaISO = new Date(novaSessaoEntrada).toISOString()
 
@@ -663,7 +1142,7 @@ export default function ProfessorAtendimentosPage() {
         .insert({
           id_aluno: novaSessaoAluno.id_aluno,
           id_professor: idProfessor,
-          id_sala: Number(novaSessaoSalaId),
+          id_sala: novaSessaoSalaId,
           id_progresso: idProgresso,
           hora_entrada: horaEntradaISO,
           resumo_atividades: novaSessaoResumo.trim() ? novaSessaoResumo.trim() : null,
@@ -693,10 +1172,12 @@ export default function ProfessorAtendimentosPage() {
       if (errIns) throw errIns
 
       sucesso('Sessão criada. Agora lance os protocolos desta sessão.')
+
       setDlgNovaSessao(false)
 
       await carregarSessoes(idProfessor, filtroDataInicio, filtroDataFim)
 
+      // Montar para abrir dialog da sessão
       const aluno = first(nova?.alunos) as any
       const alunoUser = first(aluno?.usuarios) as any
       const sala = first(nova?.salas_atendimento) as any
@@ -735,12 +1216,17 @@ export default function ProfessorAtendimentosPage() {
     supabase,
     usuario?.id,
     idProfessor,
-    novaSessaoAluno,
     novaSessaoSalaId,
+    novaSessaoAluno,
     novaSessaoDiscAno,
     novaSessaoEntrada,
     novaSessaoResumo,
+    novaSessaoMatriculaId,
     obterMatriculaPreferencial,
+    progressoPorDiscAno,
+    podeAbrirNovaDisciplina,
+    qtdeDisciplinasAbertas,
+    confirmarAberturaFicha,
     garantirProgresso,
     carregarSessoes,
     filtroDataInicio,
@@ -751,6 +1237,9 @@ export default function ProfessorAtendimentosPage() {
     erro,
   ])
 
+  // ===========================
+  // Sessão dialog helpers
+  // ===========================
   const abrirSessao = useCallback(
     async (s: SessaoView) => {
       setSessaoAtual(s)
@@ -845,6 +1334,18 @@ export default function ProfessorAtendimentosPage() {
     }
   }, [supabase, sessaoAtual, sucesso, erro, idProfessor, carregarSessoes, filtroDataInicio, filtroDataFim])
 
+  // ===========================
+  // Registro dialog helpers
+  // ===========================
+  const limiteProtocolosSessao = useMemo(() => {
+    if (!sessaoAtual) return null
+    const idDisc = sessaoAtual.id_disciplina ?? null
+    const idAno = sessaoAtual.id_ano_escolar ?? null
+    if (!idDisc || !idAno) return null
+    const cfg = mapaConfigPorDiscAno.get(`${idDisc}-${idAno}`)
+    return cfg?.quantidade_protocolos ?? null
+  }, [sessaoAtual, mapaConfigPorDiscAno])
+
   const abrirDialogNovoRegistro = useCallback(() => {
     if (!sessaoAtual) return
 
@@ -853,9 +1354,9 @@ export default function ProfessorAtendimentosPage() {
 
     const idDisc = sessaoAtual.id_disciplina ?? null
     const idAno = sessaoAtual.id_ano_escolar ?? null
-    const config = idDisc && idAno ? mapaConfigPorDiscAno.get(`${idDisc}-${idAno}`) : undefined
+    const cfg = idDisc && idAno ? mapaConfigPorDiscAno.get(`${idDisc}-${idAno}`) : undefined
+    const limite = cfg?.quantidade_protocolos ?? 50
 
-    const limite = config?.quantidade_protocolos ?? 50
     while (usados.has(sugestao) && sugestao <= limite) sugestao += 1
 
     setRegistroEditandoId(null)
@@ -897,8 +1398,8 @@ export default function ProfessorAtendimentosPage() {
 
     const idDisc = sessaoAtual.id_disciplina ?? null
     const idAno = sessaoAtual.id_ano_escolar ?? null
-    const config = idDisc && idAno ? mapaConfigPorDiscAno.get(`${idDisc}-${idAno}`) : undefined
-    const limite = config?.quantidade_protocolos ?? null
+    const cfg = idDisc && idAno ? mapaConfigPorDiscAno.get(`${idDisc}-${idAno}`) : undefined
+    const limite = cfg?.quantidade_protocolos ?? null
 
     if (limite != null && (numero < 1 || numero > limite)) {
       return { ok: false, msg: `Número de protocolo inválido. Permitido: 1 a ${limite}.` }
@@ -1019,6 +1520,9 @@ export default function ProfessorAtendimentosPage() {
     }
   }, [supabase, sessaoAtual, confirmDeleteId, sucesso, erro, carregarRegistrosDaSessao])
 
+  // ===========================
+  // Initial load
+  // ===========================
   useEffect(() => {
     void (async () => {
       await carregarBase()
@@ -1033,33 +1537,53 @@ export default function ProfessorAtendimentosPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [carregandoBase, idProfessor])
 
-  const limiteProtocolosSessao = useMemo(() => {
-    if (!sessaoAtual) return null
-    const idDisc = sessaoAtual.id_disciplina ?? null
-    const idAno = sessaoAtual.id_ano_escolar ?? null
-    if (!idDisc || !idAno) return null
-    const cfg = mapaConfigPorDiscAno.get(`${idDisc}-${idAno}`)
-    return cfg?.quantidade_protocolos ?? null
-  }, [sessaoAtual, mapaConfigPorDiscAno])
+  // ===========================
+  // UI
+  // ===========================
+  const podeCriarSessaoAgora =
+    Boolean(idProfessor) &&
+    Boolean(novaSessaoSalaId) &&
+    Boolean(novaSessaoAluno?.id_aluno) &&
+    Boolean(novaSessaoDiscAno) &&
+    Boolean(novaSessaoEntrada?.trim()) &&
+    (disciplinaJaAberta || (podeAbrirNovaDisciplina && confirmarAberturaFicha))
 
   return (
     <Box sx={{ p: 2, maxWidth: 1400, mx: 'auto' }}>
-      <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems={{ xs: 'stretch', md: 'center' }} justifyContent="space-between">
+      {/* Header */}
+      <Stack
+        direction={{ xs: 'column', md: 'row' }}
+        spacing={2}
+        alignItems={{ xs: 'stretch', md: 'center' }}
+        justifyContent="space-between"
+      >
         <Box sx={{ minWidth: 0 }}>
           <Typography variant="h4" sx={{ fontWeight: 900, lineHeight: 1.1 }}>
             Atendimentos
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            Sessões de atendimento e lançamento de protocolos (professor).
+            Sessões do professor, com protocolos por disciplina/ano. Sala e disciplinas são carregadas pela sua lotação.
           </Typography>
+
+          <Stack direction="row" spacing={1} sx={{ mt: 1, flexWrap: 'wrap' }}>
+            <Chip size="small" label={`Total: ${kpis.total}`} variant="outlined" />
+            <Chip size="small" label={`Abertas: ${kpis.abertas}`} color="warning" variant="outlined" />
+            <Chip size="small" label={`Encerradas: ${kpis.encerradas}`} color="success" variant="outlined" />
+            <Chip size="small" label={`Papel: ${PAPEL || '-'}`} variant="outlined" />
+          </Stack>
         </Box>
 
         <Stack direction="row" spacing={1} justifyContent={{ xs: 'flex-start', md: 'flex-end' }}>
-          <Button variant="contained" startIcon={<AddIcon />} onClick={abrirDialogNovaSessao} disabled={carregandoBase || !idProfessor}>
+          <Button
+            variant="contained"
+            startIcon={<AddIcon />}
+            onClick={abrirNovoAtendimento}
+            disabled={carregandoBase || !idProfessor || salas.length === 0}
+          >
             Novo atendimento
           </Button>
 
-          <Tooltip title="Recarregar">
+          <Tooltip title="Recarregar sessões">
             <span>
               <IconButton
                 onClick={async () => {
@@ -1075,6 +1599,7 @@ export default function ProfessorAtendimentosPage() {
         </Stack>
       </Stack>
 
+      {/* Filtros */}
       <Paper
         variant="outlined"
         sx={{
@@ -1116,7 +1641,7 @@ export default function ProfessorAtendimentosPage() {
             <Select
               labelId="filtro-sala-label"
               label="Sala"
-              value={filtroSalaId}
+              value={String(filtroSalaId)}
               onChange={(e) => {
                 const v = String(e.target.value)
                 setFiltroSalaId(v === 'todas' ? 'todas' : Number(v))
@@ -1186,19 +1711,29 @@ export default function ProfessorAtendimentosPage() {
                     : alpha(theme.palette.warning.main, theme.palette.mode === 'light' ? 0.25 : 0.35),
                 }}
               >
-                <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} alignItems={{ md: 'center' }} justifyContent="space-between">
+                <Stack
+                  direction={{ xs: 'column', md: 'row' }}
+                  spacing={1.5}
+                  alignItems={{ md: 'center' }}
+                  justifyContent="space-between"
+                >
                   <Box sx={{ minWidth: 0 }}>
                     <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
                       <Typography variant="subtitle1" sx={{ fontWeight: 900 }}>
                         {s.aluno_nome}
                       </Typography>
-                      <Chip size="small" label={s.hora_saida ? 'Encerrada' : 'Aberta'} color={s.hora_saida ? 'success' : 'warning'} />
+                      <Chip
+                        size="small"
+                        label={s.hora_saida ? 'Encerrada' : 'Aberta'}
+                        color={s.hora_saida ? 'success' : 'warning'}
+                      />
                       <Chip size="small" label={s.sala_nome ?? '-'} variant="outlined" />
                       <Chip size="small" label={`${s.disciplina_nome ?? '-'} — ${s.ano_nome ?? '-'}`} variant="outlined" />
                     </Stack>
 
                     <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-                      Entrada: {formatarDataHoraBR(s.hora_entrada)} {s.hora_saida ? `• Saída: ${formatarDataHoraBR(s.hora_saida)}` : ''}
+                      Entrada: {formatarDataHoraBR(s.hora_entrada)}{' '}
+                      {s.hora_saida ? `• Saída: ${formatarDataHoraBR(s.hora_saida)}` : ''}
                     </Typography>
 
                     {s.resumo_atividades ? (
@@ -1220,7 +1755,67 @@ export default function ProfessorAtendimentosPage() {
         </Box>
       </Paper>
 
-      {/* Dialog: Nova Sessão */}
+      {/* ===========================
+          Dialog: Escolher Sala
+         =========================== */}
+      <Dialog open={dlgEscolherSala} onClose={() => setDlgEscolherSala(false)} fullWidth maxWidth="sm">
+        <DialogTitle sx={{ fontWeight: 900 }}>
+          Selecione a sala do atendimento
+          <IconButton onClick={() => setDlgEscolherSala(false)} sx={{ position: 'absolute', right: 8, top: 8 }}>
+            <CloseIcon />
+          </IconButton>
+        </DialogTitle>
+
+        <DialogContent dividers>
+          {salas.length === 0 ? (
+            <Alert severity="warning">Você não possui sala vinculada.</Alert>
+          ) : (
+            <Stack spacing={1}>
+              <Alert severity="info">
+                Você possui mais de uma sala. Selecione onde este atendimento será realizado.
+              </Alert>
+
+              {salas.map((s) => (
+                <Paper
+                  key={s.id_sala}
+                  variant="outlined"
+                  sx={{
+                    p: 1.5,
+                    borderRadius: 2,
+                    borderColor: alpha(theme.palette.primary.main, theme.palette.mode === 'light' ? 0.25 : 0.35),
+                  }}
+                >
+                  <Stack direction="row" spacing={1.5} alignItems="center" justifyContent="space-between">
+                    <Stack direction="row" spacing={1.2} alignItems="center" sx={{ minWidth: 0 }}>
+                      <MeetingRoomIcon fontSize="small" />
+                      <Box sx={{ minWidth: 0 }}>
+                        <Typography sx={{ fontWeight: 900, lineHeight: 1.1 }}>{s.nome}</Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {s.tipo_sala}
+                        </Typography>
+                      </Box>
+                    </Stack>
+
+                    <Button variant="contained" onClick={() => escolherSala(s.id_sala)} sx={{ textTransform: 'none', fontWeight: 900 }}>
+                      Selecionar
+                    </Button>
+                  </Stack>
+                </Paper>
+              ))}
+            </Stack>
+          )}
+        </DialogContent>
+
+        <DialogActions>
+          <Button variant="outlined" onClick={() => setDlgEscolherSala(false)}>
+            Cancelar
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* ===========================
+          Dialog: Nova Sessão
+         =========================== */}
       <Dialog open={dlgNovaSessao} onClose={() => setDlgNovaSessao(false)} fullWidth maxWidth="md" fullScreen={isMobile}>
         <DialogTitle sx={{ fontWeight: 900 }}>
           Novo atendimento
@@ -1231,37 +1826,216 @@ export default function ProfessorAtendimentosPage() {
 
         <DialogContent dividers>
           <Stack spacing={2}>
-            <Alert severity="info">Fluxo: selecionar aluno + sala + disciplina/ano → criar sessão → lançar protocolos.</Alert>
+            <Alert severity="info">
+              Fluxo: escolher aluno (nome ou inscrição) → escolher disciplina/ano da sala → criar sessão → lançar protocolos.
+            </Alert>
+
+            <Paper
+              variant="outlined"
+              sx={{
+                p: 1.5,
+                borderRadius: 2,
+                borderColor: alpha(theme.palette.primary.main, theme.palette.mode === 'light' ? 0.25 : 0.35),
+              }}
+            >
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ sm: 'center' }} justifyContent="space-between">
+                <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
+                  <Chip
+                    icon={<MeetingRoomIcon />}
+                    label={salaSelecionada ? `Sala: ${salaSelecionada.nome}` : 'Sala: não selecionada'}
+                    variant="outlined"
+                  />
+                  {salaSelecionada ? <Chip label={salaSelecionada.tipo_sala} size="small" variant="outlined" /> : null}
+                </Stack>
+
+                {salas.length > 1 ? (
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => setDlgEscolherSala(true)}
+                    sx={{ textTransform: 'none', fontWeight: 900 }}
+                  >
+                    Trocar sala
+                  </Button>
+                ) : null}
+              </Stack>
+
+              {novaSessaoSalaId && (mapaSalaOpcoes[novaSessaoSalaId]?.length ?? 0) === 0 ? (
+                <Alert severity="warning" sx={{ mt: 1 }}>
+                  Esta sala não possui disciplinas configuradas. Vincule em <code>salas_config_disciplina_ano</code>.
+                </Alert>
+              ) : null}
+            </Paper>
 
             <Autocomplete
-              options={alunos}
+              fullWidth
+              options={opcoesAluno}
+              loading={buscandoAluno}
               value={novaSessaoAluno}
-              onChange={(_, v) => setNovaSessaoAluno(v)}
-              getOptionLabel={(o) => o.nome}
-              renderInput={(params) => <TextField {...params} label="Aluno" size="small" />}
-              noOptionsText="Nenhum aluno encontrado"
+              onChange={(_, v) => {
+                setNovaSessaoAluno(v)
+                setConfirmarAberturaFicha(false)
+              }}
+              inputValue={buscaAluno}
+              onInputChange={(_, v) => setBuscaAluno(v)}
+              getOptionLabel={(o) => {
+                const insc = o.numero_inscricao ? ` • Inscrição: ${o.numero_inscricao}` : ''
+                const ano = o.ano_letivo ? ` (${o.ano_letivo})` : ''
+                return `${o.nome}${insc}${ano}`
+              }}
+              isOptionEqualToValue={(o, v) => o.id_aluno === v.id_aluno && (o.id_matricula ?? null) === (v.id_matricula ?? null)}
+              noOptionsText={
+                buscaAluno.trim().length < 2 && !/^\d+$/.test(buscaAluno.trim())
+                  ? 'Digite pelo menos 2 letras do nome, ou um número de inscrição...'
+                  : 'Nenhum aluno encontrado'
+              }
+              renderOption={(props, option) => {
+                const hasInscricao = Boolean(option.numero_inscricao)
+                return (
+                  <li {...props} key={`${option.id_aluno}-${option.id_matricula ?? 'sem-mat'}`}>
+                    <Stack direction="row" spacing={1} alignItems="center" sx={{ width: '100%' }}>
+                      <PersonSearchIcon fontSize="small" />
+                      <Box sx={{ minWidth: 0, flex: 1 }}>
+                        <Typography sx={{ fontWeight: 900, lineHeight: 1.1 }}>{option.nome}</Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {hasInscricao ? `Inscrição: ${option.numero_inscricao}` : 'Sem inscrição identificada'}{' '}
+                          {option.ano_letivo ? `• Ano: ${option.ano_letivo}` : ''}{' '}
+                          {option.status_matricula_nome ? `• Status: ${option.status_matricula_nome}` : ''}
+                        </Typography>
+                      </Box>
+                      {hasInscricao ? <Chip size="small" label={option.numero_inscricao} variant="outlined" /> : null}
+                    </Stack>
+                  </li>
+                )
+              }}
+              renderInput={(params) => (
+                <TextField
+                  {...params}
+                  label="Aluno (nome ou nº de inscrição)"
+                  placeholder="Ex.: Maria / 12345"
+                  size="small"
+                  InputProps={{
+                    ...params.InputProps,
+                    endAdornment: (
+                      <>
+                        {buscandoAluno ? <CircularProgress size={18} /> : null}
+                        {params.InputProps.endAdornment}
+                      </>
+                    ),
+                  }}
+                />
+              )}
             />
 
-            <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
-              <FormControl fullWidth size="small">
-                <InputLabel id="nova-sala-label">Sala</InputLabel>
-                <Select
-                  labelId="nova-sala-label"
-                  label="Sala"
-                  value={novaSessaoSalaId}
-                  onChange={(e) => setNovaSessaoSalaId(String(e.target.value))}
-                >
-                  <MenuItem value="">
-                    <em>Selecione</em>
-                  </MenuItem>
-                  {salas.map((s) => (
-                    <MenuItem key={s.id_sala} value={String(s.id_sala)}>
-                      {s.nome} ({s.tipo_sala})
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
+            {novaSessaoAluno ? (
+              <Paper
+                variant="outlined"
+                sx={{
+                  p: 1.5,
+                  borderRadius: 2,
+                  bgcolor: alpha(theme.palette.primary.main, theme.palette.mode === 'light' ? 0.05 : 0.08),
+                  borderColor: alpha(theme.palette.primary.main, theme.palette.mode === 'light' ? 0.22 : 0.3),
+                }}
+              >
+                <Stack spacing={1}>
+                  <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
+                    <Chip label={`Aluno: ${novaSessaoAluno.nome}`} variant="outlined" />
+                    {novaSessaoNumeroInscricao ? <Chip label={`Inscrição: ${novaSessaoNumeroInscricao}`} variant="outlined" /> : null}
+                    <Chip
+                      label={`Disciplinas abertas (matrícula): ${qtdeDisciplinasAbertas}`}
+                      color={qtdeDisciplinasAbertas >= LIMITE_DISCIPLINAS_ABERTAS_PARA_PROFESSOR ? 'warning' : 'default'}
+                      variant="outlined"
+                    />
+                    {!ehPrivilegiado ? <Chip label="Regra: professor abre até 3" size="small" variant="outlined" /> : <Chip label="Regra: privilégio (sem limite)" size="small" color="success" variant="outlined" />}
+                  </Stack>
 
+                  {carregandoAlunoContexto ? <LinearProgress /> : null}
+
+                  {!alunoTemFichaNaSala && !carregandoAlunoContexto ? (
+                    <Alert severity="warning">
+                      Este aluno <strong>não possui ficha aberta</strong> em nenhuma disciplina desta sala. Para atender, selecione uma disciplina abaixo e confirme a abertura da ficha.
+                    </Alert>
+                  ) : null}
+
+                  {!podeAbrirNovaDisciplina && !ehPrivilegiado ? (
+                    <Alert severity="warning">
+                      O aluno já possui <strong>{qtdeDisciplinasAbertas}</strong> disciplinas abertas nesta matrícula. Para abrir uma nova disciplina, somente <strong>ADMIN/DIRETOR/COORDENAÇÃO</strong>.
+                    </Alert>
+                  ) : null}
+                </Stack>
+              </Paper>
+            ) : null}
+
+            <Autocomplete
+              options={opcoesDisciplinaAnoDaSala}
+              value={novaSessaoDiscAno}
+              onChange={(_, v) => {
+                setNovaSessaoDiscAno(v)
+                setConfirmarAberturaFicha(false)
+              }}
+              getOptionLabel={(o) => o.label}
+              noOptionsText="Nenhuma disciplina configurada para esta sala"
+              renderOption={(props, option) => {
+                const key = `${option.id_disciplina}-${option.id_ano_escolar}`
+                const aberta = progressoPorDiscAno.has(key)
+                const bloquearAbrir = !aberta && !podeAbrirNovaDisciplina
+
+                return (
+                  <li {...props} key={`${option.id_config}-${option.id_disciplina}-${option.id_ano_escolar}`}>
+                    <Stack direction="row" spacing={1} alignItems="center" sx={{ width: '100%' }}>
+                      <SchoolIcon fontSize="small" />
+                      <Box sx={{ minWidth: 0, flex: 1 }}>
+                        <Typography sx={{ fontWeight: 900, lineHeight: 1.1 }}>
+                          {option.disciplina_nome} — {option.ano_nome}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          Protocolos: {option.quantidade_protocolos}
+                        </Typography>
+                      </Box>
+                      {aberta ? (
+                        <Chip size="small" label="Ficha aberta" color="success" variant="outlined" />
+                      ) : (
+                        <Chip
+                          size="small"
+                          label={bloquearAbrir ? 'Bloqueado' : 'Abrir ficha'}
+                          color={bloquearAbrir ? 'warning' : 'info'}
+                          variant="outlined"
+                        />
+                      )}
+                    </Stack>
+                  </li>
+                )
+              }}
+              renderInput={(params) => <TextField {...params} label="Disciplina / Ano (da sala)" size="small" />}
+              disabled={!novaSessaoSalaId || opcoesDisciplinaAnoDaSala.length === 0}
+            />
+
+            {novaSessaoDiscAno ? (
+              <>
+                {!disciplinaJaAberta ? (
+                  <Alert severity={podeAbrirNovaDisciplina ? 'info' : 'warning'}>
+                    Esta disciplina ainda não está aberta para o aluno. Ao criar a sessão, o sistema irá <strong>abrir a ficha</strong> (criar progresso) antes do atendimento.
+                  </Alert>
+                ) : (
+                  <Alert severity="success">Ficha já aberta para esta disciplina. Atendimento pode ser iniciado normalmente.</Alert>
+                )}
+
+                {!disciplinaJaAberta ? (
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={confirmarAberturaFicha}
+                        onChange={(e) => setConfirmarAberturaFicha(e.target.checked)}
+                        disabled={!podeAbrirNovaDisciplina}
+                      />
+                    }
+                    label="Confirmo abrir ficha para esta disciplina"
+                  />
+                ) : null}
+              </>
+            ) : null}
+
+            <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
               <TextField
                 fullWidth
                 size="small"
@@ -1271,38 +2045,39 @@ export default function ProfessorAtendimentosPage() {
                 onChange={(e) => setNovaSessaoEntrada(e.target.value)}
                 InputLabelProps={{ shrink: true }}
               />
+
+              <TextField
+                fullWidth
+                label="Resumo inicial (opcional)"
+                value={novaSessaoResumo}
+                onChange={(e) => setNovaSessaoResumo(e.target.value)}
+                minRows={2}
+                multiline
+              />
             </Stack>
-
-            <Autocomplete
-              options={opcoesDisciplinaAno}
-              value={novaSessaoDiscAno}
-              onChange={(_, v) => setNovaSessaoDiscAno(v)}
-              getOptionLabel={(o) => o.label}
-              renderInput={(params) => <TextField {...params} label="Disciplina / Ano escolar" size="small" />}
-              noOptionsText="Nenhuma configuração encontrada (config_disciplina_ano)"
-            />
-
-            <TextField
-              label="Resumo inicial (opcional)"
-              value={novaSessaoResumo}
-              onChange={(e) => setNovaSessaoResumo(e.target.value)}
-              minRows={2}
-              multiline
-            />
           </Stack>
         </DialogContent>
 
         <DialogActions>
-          <Button variant="outlined" onClick={() => setDlgNovaSessao(false)}>
+          <Button
+            variant="outlined"
+            onClick={() => {
+              setDlgNovaSessao(false)
+              resetarFormularioNovaSessao()
+            }}
+          >
             Cancelar
           </Button>
-          <Button variant="contained" onClick={() => void criarSessao()} disabled={salvandoNovaSessao}>
+
+          <Button variant="contained" onClick={() => void criarSessao()} disabled={salvandoNovaSessao || !podeCriarSessaoAgora}>
             {salvandoNovaSessao ? 'Salvando...' : 'Criar sessão'}
           </Button>
         </DialogActions>
       </Dialog>
 
-      {/* Dialog: Sessão */}
+      {/* ===========================
+          Dialog: Sessão
+         =========================== */}
       <Dialog open={dlgSessao} onClose={fecharSessaoDialog} fullWidth maxWidth="lg" fullScreen={isMobile}>
         <DialogTitle sx={{ fontWeight: 900 }}>
           Sessão de atendimento
@@ -1329,10 +2104,16 @@ export default function ProfessorAtendimentosPage() {
                     <Typography variant="h6" sx={{ fontWeight: 900 }}>
                       {sessaoAtual.aluno_nome}
                     </Typography>
-                    <Chip size="small" label={sessaoAtual.hora_saida ? 'Encerrada' : 'Aberta'} color={sessaoAtual.hora_saida ? 'success' : 'warning'} />
+                    <Chip
+                      size="small"
+                      label={sessaoAtual.hora_saida ? 'Encerrada' : 'Aberta'}
+                      color={sessaoAtual.hora_saida ? 'success' : 'warning'}
+                    />
                     <Chip size="small" label={sessaoAtual.sala_nome ?? '-'} variant="outlined" />
                     <Chip size="small" label={`${sessaoAtual.disciplina_nome ?? '-'} — ${sessaoAtual.ano_nome ?? '-'}`} variant="outlined" />
-                    {limiteProtocolosSessao != null ? <Chip size="small" label={`Protocolos: 1..${limiteProtocolosSessao}`} variant="outlined" /> : null}
+                    {limiteProtocolosSessao != null ? (
+                      <Chip size="small" label={`Protocolos: 1..${limiteProtocolosSessao}`} variant="outlined" />
+                    ) : null}
                   </Stack>
 
                   <Typography variant="body2" color="text.secondary">
@@ -1351,7 +2132,12 @@ export default function ProfessorAtendimentosPage() {
                     <Button variant="outlined" onClick={() => void salvarResumoSessao()} disabled={salvandoSessao}>
                       Salvar resumo
                     </Button>
-                    <Button variant="contained" color="warning" onClick={() => void encerrarSessaoAgora()} disabled={salvandoSessao || Boolean(sessaoAtual.hora_saida)}>
+                    <Button
+                      variant="contained"
+                      color="warning"
+                      onClick={() => void encerrarSessaoAgora()}
+                      disabled={salvandoSessao || Boolean(sessaoAtual.hora_saida)}
+                    >
                       Encerrar sessão
                     </Button>
                   </Stack>
@@ -1362,7 +2148,12 @@ export default function ProfessorAtendimentosPage() {
                 <Typography variant="subtitle1" sx={{ fontWeight: 900 }}>
                   Protocolos / Atividades
                 </Typography>
-                <Button variant="contained" startIcon={<AddIcon />} onClick={abrirDialogNovoRegistro} disabled={!sessaoAtual.id_progresso}>
+                <Button
+                  variant="contained"
+                  startIcon={<AddIcon />}
+                  onClick={abrirDialogNovoRegistro}
+                  disabled={!sessaoAtual.id_progresso}
+                >
                   Adicionar protocolo
                 </Button>
               </Stack>
@@ -1377,7 +2168,12 @@ export default function ProfessorAtendimentosPage() {
                     const chip = statusChipProps(r.status)
                     return (
                       <Paper key={r.id_atividade} variant="outlined" sx={{ p: 1.5, borderRadius: 2 }}>
-                        <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} alignItems={{ md: 'center' }} justifyContent="space-between">
+                        <Stack
+                          direction={{ xs: 'column', md: 'row' }}
+                          spacing={1}
+                          alignItems={{ md: 'center' }}
+                          justifyContent="space-between"
+                        >
                           <Box sx={{ minWidth: 0 }}>
                             <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
                               <Typography variant="subtitle2" sx={{ fontWeight: 900 }}>
@@ -1429,7 +2225,9 @@ export default function ProfessorAtendimentosPage() {
         </DialogActions>
       </Dialog>
 
-      {/* Dialog: Registro */}
+      {/* ===========================
+          Dialog: Registro
+         =========================== */}
       <Dialog open={dlgRegistro} onClose={fecharDialogRegistro} fullWidth maxWidth="md" fullScreen={isMobile}>
         <DialogTitle sx={{ fontWeight: 900 }}>
           {registroEditandoId ? 'Editar protocolo' : 'Adicionar protocolo'}
@@ -1450,18 +2248,18 @@ export default function ProfessorAtendimentosPage() {
               <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
                 <FormControl fullWidth size="small">
                   <InputLabel id="reg-numero-label">Nº do protocolo</InputLabel>
-                  <Select labelId="reg-numero-label" label="Nº do protocolo" value={regNumero} onChange={(e) => setRegNumero(String(e.target.value))}>
+                  <Select
+                    labelId="reg-numero-label"
+                    label="Nº do protocolo"
+                    value={regNumero}
+                    onChange={(e) => setRegNumero(String(e.target.value))}
+                  >
                     <MenuItem value="">
                       <em>Selecione</em>
                     </MenuItem>
-                    {(() => {
-                      const limite =
-                        limiteProtocolosSessao ??
-                        (sessaoAtual.id_disciplina && sessaoAtual.id_ano_escolar
-                          ? mapaConfigPorDiscAno.get(`${sessaoAtual.id_disciplina}-${sessaoAtual.id_ano_escolar}`)?.quantidade_protocolos
-                          : null) ??
-                        50
 
+                    {(() => {
+                      const limite = limiteProtocolosSessao ?? 50
                       const itens: number[] = []
                       for (let i = 1; i <= limite; i += 1) itens.push(i)
                       return itens.map((n) => (
@@ -1475,7 +2273,12 @@ export default function ProfessorAtendimentosPage() {
 
                 <FormControl fullWidth size="small">
                   <InputLabel id="reg-tipo-label">Tipo de protocolo</InputLabel>
-                  <Select labelId="reg-tipo-label" label="Tipo de protocolo" value={regTipoId} onChange={(e) => setRegTipoId(String(e.target.value))}>
+                  <Select
+                    labelId="reg-tipo-label"
+                    label="Tipo de protocolo"
+                    value={regTipoId}
+                    onChange={(e) => setRegTipoId(String(e.target.value))}
+                  >
                     <MenuItem value="">
                       <em>Selecione</em>
                     </MenuItem>
@@ -1491,17 +2294,32 @@ export default function ProfessorAtendimentosPage() {
               <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
                 <FormControl fullWidth size="small">
                   <InputLabel id="reg-status-label">Status</InputLabel>
-                  <Select labelId="reg-status-label" label="Status" value={regStatus} onChange={(e) => setRegStatus(String(e.target.value))}>
+                  <Select
+                    labelId="reg-status-label"
+                    label="Status"
+                    value={regStatus}
+                    onChange={(e) => setRegStatus(String(e.target.value))}
+                  >
                     <MenuItem value="A fazer">A fazer</MenuItem>
                     <MenuItem value="Em andamento">Em andamento</MenuItem>
                     <MenuItem value="Concluída">Concluída</MenuItem>
                   </Select>
                 </FormControl>
 
-                <TextField fullWidth size="small" label="Nota (opcional)" value={regNota} onChange={(e) => setRegNota(e.target.value)} placeholder="Ex.: 8.5" />
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Nota (opcional)"
+                  value={regNota}
+                  onChange={(e) => setRegNota(e.target.value)}
+                  placeholder="Ex.: 8.5"
+                />
               </Stack>
 
-              <FormControlLabel control={<Switch checked={regAdaptada} onChange={(e) => setRegAdaptada(e.target.checked)} />} label="Atividade adaptada" />
+              <FormControlLabel
+                control={<Switch checked={regAdaptada} onChange={(e) => setRegAdaptada(e.target.checked)} />}
+                label="Atividade adaptada"
+              />
 
               <TextField label="Síntese / Observação" value={regSintese} onChange={(e) => setRegSintese(e.target.value)} minRows={3} multiline />
 
@@ -1526,7 +2344,12 @@ export default function ProfessorAtendimentosPage() {
                 Cancelar
               </Button>
               {registroEditandoId ? (
-                <Button variant="outlined" color="error" onClick={() => setConfirmDeleteId(registroEditandoId)} startIcon={<DeleteOutlineIcon />}>
+                <Button
+                  variant="outlined"
+                  color="error"
+                  onClick={() => setConfirmDeleteId(registroEditandoId)}
+                  startIcon={<DeleteOutlineIcon />}
+                >
                   Excluir
                 </Button>
               ) : null}
