@@ -63,8 +63,6 @@ type DisciplinaRow = {
   nome_disciplina: string
 }
 
-
-
 type MatriculaRow = {
   id_matricula: number
   numero_inscricao: string
@@ -137,21 +135,50 @@ const normalizarTexto = (v: string) => {
 }
 
 const loadJsPdf = async (): Promise<any> => {
+  // Requer: npm i jspdf
   const mod = await import('jspdf')
   return (mod as any).jsPDF
 }
 
+/**
+ * Converte URL de imagem em DataURL apenas se o servidor realmente retornar uma imagem.
+ * Evita o erro: wrong PNG signature (quando URL retorna HTML/JSON/erro 403/404).
+ */
 const imageUrlToDataUrl = async (url: string): Promise<string | null> => {
   try {
     const res = await fetch(url, { mode: 'cors' })
     if (!res.ok) return null
+
+    const contentType = (res.headers.get('content-type') || '').toLowerCase()
+
+    const isImage =
+      contentType.startsWith('image/png') ||
+      contentType.startsWith('image/jpeg') ||
+      contentType.startsWith('image/jpg') ||
+      contentType.startsWith('image/webp')
+
+    if (!isImage) return null
+
     const blob = await res.blob()
+    if (!blob.type.startsWith('image/')) return null
+
     const reader = new FileReader()
     const dataUrl: string = await new Promise((resolve, reject) => {
       reader.onload = () => resolve(String(reader.result))
       reader.onerror = reject
       reader.readAsDataURL(blob)
     })
+
+    if (!dataUrl.startsWith('data:image/')) return null
+    // jsPDF é mais estável com PNG/JPEG; se vier webp, ainda pode falhar. Melhor bloquear.
+    if (
+      !dataUrl.startsWith('data:image/png') &&
+      !dataUrl.startsWith('data:image/jpeg') &&
+      !dataUrl.startsWith('data:image/jpg')
+    ) {
+      return null
+    }
+
     return dataUrl
   } catch {
     return null
@@ -159,7 +186,8 @@ const imageUrlToDataUrl = async (url: string): Promise<string | null> => {
 }
 
 const guessImageType = (dataUrl: string): 'PNG' | 'JPEG' => {
-  if (dataUrl.startsWith('data:image/jpeg')) return 'JPEG'
+  const lower = dataUrl.toLowerCase()
+  if (lower.startsWith('data:image/jpeg') || lower.startsWith('data:image/jpg')) return 'JPEG'
   return 'PNG'
 }
 
@@ -231,6 +259,7 @@ const gerarPdfFichaModelo = async (args: FichaPdfArgs) => {
     const logoBox = { x: margin, y: topY, w: 28, h: 28 }
     const rightBox = { x: pageW - margin - 62, y: topY, w: 62, h: 28 }
 
+    // Logo
     rect(doc, logoBox.x, logoBox.y, logoBox.w, logoBox.h)
     if (logoData) {
       const type = guessImageType(logoData)
@@ -249,6 +278,7 @@ const gerarPdfFichaModelo = async (args: FichaPdfArgs) => {
       })
     }
 
+    // Texto central
     doc.setFont('helvetica', 'bold')
     doc.setFontSize(14)
     doc.text('CEJA - Frei José Ademir de Almeida.', pageW / 2, topY + 8, {
@@ -276,6 +306,7 @@ const gerarPdfFichaModelo = async (args: FichaPdfArgs) => {
       align: 'center',
     })
 
+    // Bloco direita: inscrição + foto
     rect(doc, rightBox.x, rightBox.y, rightBox.w, rightBox.h)
 
     const insW = 34
@@ -467,7 +498,9 @@ const gerarPdfFichaModelo = async (args: FichaPdfArgs) => {
     doc.setFontSize(10)
     doc.text('SITUAÇÃO', x + cSit / 2, y + 6, { align: 'center' })
     doc.text('ETAPA / SÉRIE', x + cSit + cEtp / 2, y + 6, { align: 'center' })
-    doc.text('MÉDIA', x + cSit + cEtp + cGrid + cMedia / 2, y + 6, { align: 'center' })
+    doc.text('MÉDIA', x + cSit + cEtp + cGrid + cMedia / 2, y + 6, {
+      align: 'center',
+    })
 
     const nCols = 16
     const colW = cGrid / nCols
@@ -483,8 +516,18 @@ const gerarPdfFichaModelo = async (args: FichaPdfArgs) => {
     doc.setFont('helvetica', 'normal')
     doc.setFontSize(10)
 
-    const labelsLeft = ['( ) ORIENTAÇÃO', '( ) PROVEITAMENTO', '( ) PROGRESSÃO', '( ) CLASSIFICAÇÃO']
-    const labelsEtapa = ['Nº AVALIAÇÃO', 'NOTA ATIVIDADE', 'NOTA AVALIAÇÃO', 'MÉDIA']
+    const labelsLeft = [
+      '( ) ORIENTAÇÃO',
+      '( ) PROVEITAMENTO',
+      '( ) PROGRESSÃO',
+      '( ) CLASSIFICAÇÃO',
+    ]
+    const labelsEtapa = [
+      'Nº AVALIAÇÃO',
+      'NOTA ATIVIDADE',
+      'NOTA AVALIAÇÃO',
+      'MÉDIA',
+    ]
     for (let r = 0; r < 4; r++) {
       const yy = y + headH + rowH * r + rowH / 2 + 3
       doc.text(labelsLeft[r], x + 2, yy)
@@ -597,6 +640,7 @@ const gerarPdfFichaModelo = async (args: FichaPdfArgs) => {
     doc.line(x, startY + 12, x + w, startY + 12)
   }
 
+  // Página 1
   drawHeader()
 
   let y = 42
@@ -607,12 +651,14 @@ const gerarPdfFichaModelo = async (args: FichaPdfArgs) => {
   const firstTable = drawTabelaAtendimentos(y, args.linhas ?? [], { firstPage: true })
   let consumed = firstTable.used
 
+  // Página 2
   doc.addPage()
   const restante = (args.linhas ?? []).slice(consumed)
   const secondTable = drawTabelaAtendimentos(14, restante, { firstPage: false, withObservacoes: true })
   consumed += secondTable.used
   drawObservacoes(secondTable.bottomY + 10)
 
+  // Páginas extras
   let sobras = (args.linhas ?? []).slice(consumed)
   while (sobras.length > 0) {
     doc.addPage()
@@ -779,7 +825,6 @@ const SecretariaRelatoriosFichasPage: React.FC = () => {
     setDisciplinaId('')
   }
 
-  // ========= GERAR PDF (com fallback ficha em branco se não houver progresso) =========
   const gerarFichaPdf = async () => {
     if (!supabase) {
       erro('Supabase não configurado.', 'Configuração')
@@ -801,6 +846,7 @@ const SecretariaRelatoriosFichasPage: React.FC = () => {
       const statusAtivaId = await getStatusAtivaId()
       const { inicio, fim } = intervaloMesUTC(anoLetivo, mes)
 
+      // aluno + usuario
       const { data: alunoRow, error: eAluno } = await supabase
         .from('alunos')
         .select(
@@ -827,6 +873,7 @@ const SecretariaRelatoriosFichasPage: React.FC = () => {
       const alunoNome = String(uAluno?.name ?? alunoSelecionado.nome)
       const endereco = [uAluno?.logradouro, uAluno?.numero_endereco].filter(Boolean).join(', ')
 
+      // matrícula
       const qMat = supabase
         .from('matriculas')
         .select('id_matricula,numero_inscricao,data_matricula,niveis_ensino(nome)')
@@ -851,10 +898,11 @@ const SecretariaRelatoriosFichasPage: React.FC = () => {
       const nivel = String(matricula.niveis_ensino?.nome ?? '')
       const numeroInscricao = String(matricula.numero_inscricao ?? '')
 
+      // disciplina
       const disc = disciplinas.find(d => d.id_disciplina === Number(disciplinaId))
       const nomeDisciplina = disc?.nome_disciplina ?? `Disciplina #${disciplinaId}`
 
-      // procura progresso; se não existir, gera ficha em branco
+      // tenta progresso; se não existir, ficha em branco
       const idsMat = (mats ?? [])
         .map((m: any) => m.id_matricula)
         .filter((x: any) => Number.isFinite(Number(x)))
@@ -871,10 +919,7 @@ const SecretariaRelatoriosFichasPage: React.FC = () => {
       const idProgresso = (prog ?? [])[0]?.id_progresso
 
       if (!idProgresso) {
-        aviso(
-          'Sem progresso cadastrado para a disciplina no ano/matrícula. Gerando ficha em branco.',
-          'Ficha',
-        )
+        aviso('Sem progresso cadastrado para a disciplina. Gerando ficha em branco.', 'Ficha')
 
         await gerarPdfFichaModelo({
           aluno: {
@@ -902,6 +947,7 @@ const SecretariaRelatoriosFichasPage: React.FC = () => {
         return
       }
 
+      // registros do mês (se existirem)
       const { data: regs, error: eRegs } = await supabase
         .from('registros_atendimento')
         .select(
@@ -933,6 +979,7 @@ const SecretariaRelatoriosFichasPage: React.FC = () => {
 
       const registros = (regs ?? []) as any[]
 
+      // agrupa por sessão
       const mapSessao = new Map<
         number,
         { hora_entrada: string; hora_saida: string | null; prof: string; tipo: string; registro: string }
@@ -990,7 +1037,7 @@ const SecretariaRelatoriosFichasPage: React.FC = () => {
         },
         disciplina: { nome: nomeDisciplina },
         periodo: { ano: anoLetivo, mes },
-        linhas,
+        linhas, // se vazio, sai “em branco”
         logoUrlOpcional: '/ceja_logo.png',
       })
 
@@ -1187,7 +1234,7 @@ const SecretariaRelatoriosFichasPage: React.FC = () => {
         </Typography>
 
         <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.6 }}>
-          Logo: tenta carregar <b>/ceja_logo.png</b> do <b>/public</b>. Se não existir, aparece “LOGO”.
+          Logo: tenta carregar <b>/ceja_logo.png</b> do <b>/public</b>. Se não existir (ou não for imagem válida), aparece “LOGO”.
         </Typography>
       </Paper>
     </Box>
