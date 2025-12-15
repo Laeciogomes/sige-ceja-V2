@@ -1,3 +1,5 @@
+// src/paginas/painel-secretaria/SecretariaRelatoriosFichasPage.tsx
+
 import React, { useEffect, useRef, useState } from 'react'
 
 import {
@@ -300,9 +302,12 @@ const gerarPdfFichaModelo = async (args: FichaPdfArgs) => {
     })
 
     doc.setFontSize(28)
-    doc.text(String(args.matricula.numero_inscricao || '').padStart(2, '0'), rightBox.x + insW / 2, rightBox.y + 24, {
-      align: 'center',
-    })
+    doc.text(
+      String(args.matricula.numero_inscricao || '').padStart(2, '0'),
+      rightBox.x + insW / 2,
+      rightBox.y + 24,
+      { align: 'center' },
+    )
 
     doc.setLineWidth(0.6)
     doc.line(
@@ -605,15 +610,35 @@ const gerarPdfFichaModelo = async (args: FichaPdfArgs) => {
       doc.text(String(d), x + 2, rowY + 6.7)
       doc.text(String(ent), x + cData + 2, rowY + 6.7)
       doc.text(String(sai), x + cData + cEnt + 2, rowY + 6.7)
-      doc.text(String(tipo).slice(0, 22), x + cData + cEnt + cSai + 2, rowY + 6.7)
-      doc.text(String(prof).slice(0, 20), x + cData + cEnt + cSai + cTipo + 2, rowY + 6.7)
+      doc.text(
+        String(tipo).slice(0, 22),
+        x + cData + cEnt + cSai + 2,
+        rowY + 6.7,
+      )
+      doc.text(
+        String(prof).slice(0, 20),
+        x + cData + cEnt + cSai + cTipo + 2,
+        rowY + 6.7,
+      )
 
       const regLines = wrapText(doc, String(reg), cReg - 4)
       if (regLines.length <= 1) {
-        doc.text(regLines[0] ?? '', x + cData + cEnt + cSai + cTipo + cProf + 2, rowY + 6.7)
+        doc.text(
+          regLines[0] ?? '',
+          x + cData + cEnt + cSai + cTipo + cProf + 2,
+          rowY + 6.7,
+        )
       } else {
-        doc.text(regLines[0] ?? '', x + cData + cEnt + cSai + cTipo + cProf + 2, rowY + 5.0)
-        doc.text(regLines[1] ?? '', x + cData + cEnt + cSai + cTipo + cProf + 2, rowY + 8.2)
+        doc.text(
+          regLines[0] ?? '',
+          x + cData + cEnt + cSai + cTipo + cProf + 2,
+          rowY + 5.0,
+        )
+        doc.text(
+          regLines[1] ?? '',
+          x + cData + cEnt + cSai + cTipo + cProf + 2,
+          rowY + 8.2,
+        )
       }
     }
 
@@ -649,7 +674,10 @@ const gerarPdfFichaModelo = async (args: FichaPdfArgs) => {
   doc.addPage()
   const restante = linhas.slice(consumed)
   let y2 = 14
-  const secondTable = drawTabelaAtendimentos(y2, restante, { firstPage: false, withObservacoes: true })
+  const secondTable = drawTabelaAtendimentos(y2, restante, {
+    firstPage: false,
+    withObservacoes: true,
+  })
   consumed += secondTable.used
   drawObservacoes(secondTable.bottomY + 10)
 
@@ -659,7 +687,10 @@ const gerarPdfFichaModelo = async (args: FichaPdfArgs) => {
     doc.addPage()
     y2 = 14
     const lastWithObs = sobras.length <= 14
-    const tbl = drawTabelaAtendimentos(y2, sobras, { firstPage: false, withObservacoes: lastWithObs })
+    const tbl = drawTabelaAtendimentos(y2, sobras, {
+      firstPage: false,
+      withObservacoes: lastWithObs,
+    })
     consumed += tbl.used
     sobras = linhas.slice(consumed)
     if (lastWithObs) drawObservacoes(tbl.bottomY + 10)
@@ -690,7 +721,9 @@ const SecretariaRelatoriosFichasPage: React.FC = () => {
   const [anoLetivo, setAnoLetivo] = useState<number>(anoAtual)
   const [mes, setMes] = useState<number>(mesAtual)
 
-  const [alunoSelecionado, setAlunoSelecionado] = useState<AlunoOpcao | null>(null)
+  const [alunoSelecionado, setAlunoSelecionado] = useState<AlunoOpcao | null>(
+    null,
+  )
   const [buscaAluno, setBuscaAluno] = useState('')
   const [opcoesAluno, setOpcoesAluno] = useState<AlunoOpcao[]>([])
   const [buscandoAluno, setBuscandoAluno] = useState(false)
@@ -827,10 +860,12 @@ const SecretariaRelatoriosFichasPage: React.FC = () => {
     }
     if (!alunoSelecionado) {
       aviso('Selecione um aluno.', 'Ficha')
+      window.alert('Selecione um aluno antes de gerar o PDF.')
       return
     }
     if (!disciplinaId) {
       aviso('Selecione uma disciplina.', 'Ficha')
+      window.alert('Selecione uma disciplina antes de gerar o PDF.')
       return
     }
 
@@ -863,7 +898,9 @@ const SecretariaRelatoriosFichasPage: React.FC = () => {
 
       const uAluno = obterPrimeiro((alunoRow as AlunoJoin | null)?.usuarios)
       const alunoNome = String(uAluno?.name ?? alunoSelecionado.nome)
-      const endereco = [uAluno?.logradouro, uAluno?.numero_endereco].filter(Boolean).join(', ')
+      const endereco = [uAluno?.logradouro, uAluno?.numero_endereco]
+        .filter(Boolean)
+        .join(', ')
 
       const qMat = supabase
         .from('matriculas')
@@ -902,10 +939,7 @@ const SecretariaRelatoriosFichasPage: React.FC = () => {
       if (eProg) throw eProg
       const idProgresso = (prog ?? [])[0]?.id_progresso
       if (!idProgresso) {
-        aviso(
-          'Não há progresso cadastrado para esta disciplina no ano/matrícula do aluno.',
-          'Ficha',
-        )
+        aviso('Não há progresso cadastrado para esta disciplina no ano/matrícula do aluno.', 'Ficha')
         return
       }
 
@@ -916,9 +950,6 @@ const SecretariaRelatoriosFichasPage: React.FC = () => {
           id_atividade,
           id_sessao,
           sintese,
-          status,
-          numero_protocolo,
-          nota,
           tipos_protocolo(
             nome
           ),
@@ -1063,12 +1094,13 @@ const SecretariaRelatoriosFichasPage: React.FC = () => {
       })
 
       sucesso('Ficha (PDF) gerada com sucesso.', 'PDF')
-    } catch (e) {
-      console.error(e)
+    } catch (e: any) {
+      console.error('ERRO AO GERAR PDF:', e)
       erro(
-        'Falha ao gerar PDF. Verifique RLS (permissões de SELECT) e se “jspdf” está instalado.',
+        'Falha ao gerar PDF. Veja o console (F12) para detalhes. Verifique RLS e se “jspdf” está instalado.',
         'Erro',
       )
+      window.alert(`Falha ao gerar PDF:\n${e?.message ?? String(e)}`)
     } finally {
       setGerandoPdf(false)
     }
@@ -1187,13 +1219,19 @@ const SecretariaRelatoriosFichasPage: React.FC = () => {
               Ficha de Acompanhamento do Aluno (modelo oficial)
             </Typography>
             <Typography variant="body2" color="text.secondary">
-              Gera PDF com cabeçalho, pacto didático, grades e tabela (2 páginas).
+              Gera PDF com cabeçalho, pacto didático, grades e tabela (2+ páginas).
             </Typography>
           </Box>
 
           <Button
             variant="contained"
-            startIcon={gerandoPdf ? <CircularProgress size={18} color="inherit" /> : <PictureAsPdfIcon />}
+            startIcon={
+              gerandoPdf ? (
+                <CircularProgress size={18} color="inherit" />
+              ) : (
+                <PictureAsPdfIcon />
+              )
+            }
             onClick={() => void gerarFichaPdf()}
             disabled={!supabase || gerandoPdf}
             sx={{ textTransform: 'none', fontWeight: 900 }}
@@ -1215,7 +1253,11 @@ const SecretariaRelatoriosFichasPage: React.FC = () => {
             onInputChange={(_e, v) => setBuscaAluno(v)}
             getOptionLabel={opt => `${opt.nome} (ID: ${opt.id_aluno})`}
             isOptionEqualToValue={(o, v) => o.id_aluno === v.id_aluno}
-            noOptionsText={buscaAluno.trim().length < 2 ? 'Digite pelo menos 2 caracteres...' : 'Nenhum aluno encontrado'}
+            noOptionsText={
+              buscaAluno.trim().length < 2
+                ? 'Digite pelo menos 2 caracteres...'
+                : 'Nenhum aluno encontrado'
+            }
             renderInput={params => (
               <TextField
                 {...params}
