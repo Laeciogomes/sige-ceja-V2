@@ -63,17 +63,7 @@ type DisciplinaRow = {
   nome_disciplina: string
 }
 
-type ProfessorJoin = {
-  usuarios?: UsuarioJoin | UsuarioJoin[] | null
-}
 
-type SessaoAtendimentoRow = {
-  id_sessao: number
-  hora_entrada: string
-  hora_saida: string | null
-  professores?: ProfessorJoin | null
-  resumo_atividades?: string | null
-}
 
 type MatriculaRow = {
   id_matricula: number
@@ -147,7 +137,6 @@ const normalizarTexto = (v: string) => {
 }
 
 const loadJsPdf = async (): Promise<any> => {
-  // Requer: npm i jspdf
   const mod = await import('jspdf')
   return (mod as any).jsPDF
 }
@@ -478,9 +467,7 @@ const gerarPdfFichaModelo = async (args: FichaPdfArgs) => {
     doc.setFontSize(10)
     doc.text('SITUAÇÃO', x + cSit / 2, y + 6, { align: 'center' })
     doc.text('ETAPA / SÉRIE', x + cSit + cEtp / 2, y + 6, { align: 'center' })
-    doc.text('MÉDIA', x + cSit + cEtp + cGrid + cMedia / 2, y + 6, {
-      align: 'center',
-    })
+    doc.text('MÉDIA', x + cSit + cEtp + cGrid + cMedia / 2, y + 6, { align: 'center' })
 
     const nCols = 16
     const colW = cGrid / nCols
@@ -496,18 +483,8 @@ const gerarPdfFichaModelo = async (args: FichaPdfArgs) => {
     doc.setFont('helvetica', 'normal')
     doc.setFontSize(10)
 
-    const labelsLeft = [
-      '( ) ORIENTAÇÃO',
-      '( ) PROVEITAMENTO',
-      '( ) PROGRESSÃO',
-      '( ) CLASSIFICAÇÃO',
-    ]
-    const labelsEtapa = [
-      'Nº AVALIAÇÃO',
-      'NOTA ATIVIDADE',
-      'NOTA AVALIAÇÃO',
-      'MÉDIA',
-    ]
+    const labelsLeft = ['( ) ORIENTAÇÃO', '( ) PROVEITAMENTO', '( ) PROGRESSÃO', '( ) CLASSIFICAÇÃO']
+    const labelsEtapa = ['Nº AVALIAÇÃO', 'NOTA ATIVIDADE', 'NOTA AVALIAÇÃO', 'MÉDIA']
     for (let r = 0; r < 4; r++) {
       const yy = y + headH + rowH * r + rowH / 2 + 3
       doc.text(labelsLeft[r], x + 2, yy)
@@ -571,27 +548,10 @@ const gerarPdfFichaModelo = async (args: FichaPdfArgs) => {
     doc.setFontSize(10)
     doc.text('DATA', x + cData / 2, startY + 7, { align: 'center' })
     doc.text('ENTRADA', x + cData + cEnt / 2, startY + 7, { align: 'center' })
-    doc.text('SAÍDA', x + cData + cEnt + cSai / 2, startY + 7, {
-      align: 'center',
-    })
-    doc.text(
-      'TIPO DE\nATENDIMENTO',
-      x + cData + cEnt + cSai + cTipo / 2,
-      startY + 6,
-      { align: 'center' },
-    )
-    doc.text(
-      'PROFESSOR',
-      x + cData + cEnt + cSai + cTipo + cProf / 2,
-      startY + 7,
-      { align: 'center' },
-    )
-    doc.text(
-      'REGISTRO DE ATIVIDADE',
-      x + cData + cEnt + cSai + cTipo + cProf + cReg / 2,
-      startY + 7,
-      { align: 'center' },
-    )
+    doc.text('SAÍDA', x + cData + cEnt + cSai / 2, startY + 7, { align: 'center' })
+    doc.text('TIPO DE\nATENDIMENTO', x + cData + cEnt + cSai + cTipo / 2, startY + 6, { align: 'center' })
+    doc.text('PROFESSOR', x + cData + cEnt + cSai + cTipo + cProf / 2, startY + 7, { align: 'center' })
+    doc.text('REGISTRO DE ATIVIDADE', x + cData + cEnt + cSai + cTipo + cProf + cReg / 2, startY + 7, { align: 'center' })
 
     doc.setFont('helvetica', 'normal')
     doc.setFontSize(8.5)
@@ -610,35 +570,15 @@ const gerarPdfFichaModelo = async (args: FichaPdfArgs) => {
       doc.text(String(d), x + 2, rowY + 6.7)
       doc.text(String(ent), x + cData + 2, rowY + 6.7)
       doc.text(String(sai), x + cData + cEnt + 2, rowY + 6.7)
-      doc.text(
-        String(tipo).slice(0, 22),
-        x + cData + cEnt + cSai + 2,
-        rowY + 6.7,
-      )
-      doc.text(
-        String(prof).slice(0, 20),
-        x + cData + cEnt + cSai + cTipo + 2,
-        rowY + 6.7,
-      )
+      doc.text(String(tipo).slice(0, 22), x + cData + cEnt + cSai + 2, rowY + 6.7)
+      doc.text(String(prof).slice(0, 20), x + cData + cEnt + cSai + cTipo + 2, rowY + 6.7)
 
       const regLines = wrapText(doc, String(reg), cReg - 4)
       if (regLines.length <= 1) {
-        doc.text(
-          regLines[0] ?? '',
-          x + cData + cEnt + cSai + cTipo + cProf + 2,
-          rowY + 6.7,
-        )
+        doc.text(regLines[0] ?? '', x + cData + cEnt + cSai + cTipo + cProf + 2, rowY + 6.7)
       } else {
-        doc.text(
-          regLines[0] ?? '',
-          x + cData + cEnt + cSai + cTipo + cProf + 2,
-          rowY + 5.0,
-        )
-        doc.text(
-          regLines[1] ?? '',
-          x + cData + cEnt + cSai + cTipo + cProf + 2,
-          rowY + 8.2,
-        )
+        doc.text(regLines[0] ?? '', x + cData + cEnt + cSai + cTipo + cProf + 2, rowY + 5.0)
+        doc.text(regLines[1] ?? '', x + cData + cEnt + cSai + cTipo + cProf + 2, rowY + 8.2)
       }
     }
 
@@ -654,11 +594,9 @@ const gerarPdfFichaModelo = async (args: FichaPdfArgs) => {
     doc.setFont('helvetica', 'bold')
     doc.setFontSize(11)
     doc.text('OBSERVAÇÕES', pageW / 2, startY + 8, { align: 'center' })
-
     doc.line(x, startY + 12, x + w, startY + 12)
   }
 
-  // Render página 1
   drawHeader()
 
   let y = 42
@@ -666,33 +604,22 @@ const gerarPdfFichaModelo = async (args: FichaPdfArgs) => {
   y = drawPactoDidatico(y)
   y = drawGradeSituacao(y)
 
-  const linhas = args.linhas ?? []
-  const firstTable = drawTabelaAtendimentos(y, linhas, { firstPage: true })
+  const firstTable = drawTabelaAtendimentos(y, args.linhas ?? [], { firstPage: true })
   let consumed = firstTable.used
 
-  // Página 2
   doc.addPage()
-  const restante = linhas.slice(consumed)
-  let y2 = 14
-  const secondTable = drawTabelaAtendimentos(y2, restante, {
-    firstPage: false,
-    withObservacoes: true,
-  })
+  const restante = (args.linhas ?? []).slice(consumed)
+  const secondTable = drawTabelaAtendimentos(14, restante, { firstPage: false, withObservacoes: true })
   consumed += secondTable.used
   drawObservacoes(secondTable.bottomY + 10)
 
-  // Páginas extras (se necessário)
-  let sobras = linhas.slice(consumed)
+  let sobras = (args.linhas ?? []).slice(consumed)
   while (sobras.length > 0) {
     doc.addPage()
-    y2 = 14
     const lastWithObs = sobras.length <= 14
-    const tbl = drawTabelaAtendimentos(y2, sobras, {
-      firstPage: false,
-      withObservacoes: lastWithObs,
-    })
+    const tbl = drawTabelaAtendimentos(14, sobras, { firstPage: false, withObservacoes: lastWithObs })
     consumed += tbl.used
-    sobras = linhas.slice(consumed)
+    sobras = (args.linhas ?? []).slice(consumed)
     if (lastWithObs) drawObservacoes(tbl.bottomY + 10)
   }
 
@@ -704,8 +631,9 @@ const gerarPdfFichaModelo = async (args: FichaPdfArgs) => {
       .replace(/_+/g, '_')
       .slice(0, 60)
 
-  const nomeArquivo = `ficha_acompanhamento_${safe(args.aluno.nome)}_${safe(args.disciplina.nome)}_${args.periodo.ano}_${pad2(args.periodo.mes)}.pdf`
-  doc.save(nomeArquivo)
+  doc.save(
+    `ficha_acompanhamento_${safe(args.aluno.nome)}_${safe(args.disciplina.nome)}_${args.periodo.ano}_${pad2(args.periodo.mes)}.pdf`,
+  )
 }
 
 // ===================== Página =====================
@@ -721,9 +649,7 @@ const SecretariaRelatoriosFichasPage: React.FC = () => {
   const [anoLetivo, setAnoLetivo] = useState<number>(anoAtual)
   const [mes, setMes] = useState<number>(mesAtual)
 
-  const [alunoSelecionado, setAlunoSelecionado] = useState<AlunoOpcao | null>(
-    null,
-  )
+  const [alunoSelecionado, setAlunoSelecionado] = useState<AlunoOpcao | null>(null)
   const [buscaAluno, setBuscaAluno] = useState('')
   const [opcoesAluno, setOpcoesAluno] = useState<AlunoOpcao[]>([])
   const [buscandoAluno, setBuscandoAluno] = useState(false)
@@ -853,6 +779,7 @@ const SecretariaRelatoriosFichasPage: React.FC = () => {
     setDisciplinaId('')
   }
 
+  // ========= GERAR PDF (com fallback ficha em branco se não houver progresso) =========
   const gerarFichaPdf = async () => {
     if (!supabase) {
       erro('Supabase não configurado.', 'Configuração')
@@ -898,9 +825,7 @@ const SecretariaRelatoriosFichasPage: React.FC = () => {
 
       const uAluno = obterPrimeiro((alunoRow as AlunoJoin | null)?.usuarios)
       const alunoNome = String(uAluno?.name ?? alunoSelecionado.nome)
-      const endereco = [uAluno?.logradouro, uAluno?.numero_endereco]
-        .filter(Boolean)
-        .join(', ')
+      const endereco = [uAluno?.logradouro, uAluno?.numero_endereco].filter(Boolean).join(', ')
 
       const qMat = supabase
         .from('matriculas')
@@ -919,12 +844,17 @@ const SecretariaRelatoriosFichasPage: React.FC = () => {
       const matricula = (mats ?? [])[0] as MatriculaRow | undefined
       if (!matricula) {
         aviso('Aluno não possui matrícula ativa no ano selecionado.', 'Ficha')
+        window.alert('Aluno não possui matrícula ativa no ano selecionado.')
         return
       }
 
       const nivel = String(matricula.niveis_ensino?.nome ?? '')
       const numeroInscricao = String(matricula.numero_inscricao ?? '')
 
+      const disc = disciplinas.find(d => d.id_disciplina === Number(disciplinaId))
+      const nomeDisciplina = disc?.nome_disciplina ?? `Disciplina #${disciplinaId}`
+
+      // procura progresso; se não existir, gera ficha em branco
       const idsMat = (mats ?? [])
         .map((m: any) => m.id_matricula)
         .filter((x: any) => Number.isFinite(Number(x)))
@@ -937,9 +867,38 @@ const SecretariaRelatoriosFichasPage: React.FC = () => {
         .limit(5)
 
       if (eProg) throw eProg
+
       const idProgresso = (prog ?? [])[0]?.id_progresso
+
       if (!idProgresso) {
-        aviso('Não há progresso cadastrado para esta disciplina no ano/matrícula do aluno.', 'Ficha')
+        aviso(
+          'Sem progresso cadastrado para a disciplina no ano/matrícula. Gerando ficha em branco.',
+          'Ficha',
+        )
+
+        await gerarPdfFichaModelo({
+          aluno: {
+            id_aluno: alunoSelecionado.id_aluno,
+            nome: alunoNome,
+            foto_url: uAluno?.foto_url ?? alunoSelecionado.foto_url ?? null,
+            telefone: uAluno?.celular ?? null,
+            data_nasc: uAluno?.data_nascimento ?? null,
+            endereco: endereco || '',
+            bairro: String(uAluno?.bairro ?? ''),
+            municipio: String(uAluno?.municipio ?? ''),
+          },
+          matricula: {
+            numero_inscricao: numeroInscricao || '00',
+            nivel: nivel || '',
+            inicio: matricula.data_matricula,
+          },
+          disciplina: { nome: nomeDisciplina },
+          periodo: { ano: anoLetivo, mes },
+          linhas: [],
+          logoUrlOpcional: '/ceja_logo.png',
+        })
+
+        sucesso('Ficha (PDF) gerada em branco.', 'PDF')
         return
       }
 
@@ -947,7 +906,6 @@ const SecretariaRelatoriosFichasPage: React.FC = () => {
         .from('registros_atendimento')
         .select(
           `
-          id_atividade,
           id_sessao,
           sintese,
           tipos_protocolo(
@@ -975,36 +933,9 @@ const SecretariaRelatoriosFichasPage: React.FC = () => {
 
       const registros = (regs ?? []) as any[]
 
-      let sessoesBase: SessaoAtendimentoRow[] = []
-      if (!registros.length) {
-        const { data: sess, error: eSess } = await supabase
-          .from('sessoes_atendimento')
-          .select(
-            `
-            id_sessao,
-            hora_entrada,
-            hora_saida,
-            resumo_atividades,
-            professores(
-              usuarios(
-                name
-              )
-            )
-          `,
-          )
-          .eq('id_aluno', alunoSelecionado.id_aluno)
-          .gte('hora_entrada', inicio)
-          .lt('hora_entrada', fim)
-          .order('hora_entrada', { ascending: true })
-          .limit(2000)
-
-        if (eSess) throw eSess
-        sessoesBase = (sess ?? []) as any[]
-      }
-
       const mapSessao = new Map<
         number,
-        { sessao: SessaoAtendimentoRow; textos: string[]; tipos: string[]; prof: string }
+        { hora_entrada: string; hora_saida: string | null; prof: string; tipo: string; registro: string }
       >()
 
       for (const r of registros) {
@@ -1012,64 +943,34 @@ const SecretariaRelatoriosFichasPage: React.FC = () => {
         const idSessao = Number(r?.id_sessao ?? sess?.id_sessao)
         if (!Number.isFinite(idSessao)) continue
 
-        const prof = obterPrimeiro(sess?.professores?.usuarios)?.name ?? ''
-        const tipo = r?.tipos_protocolo?.nome ?? ''
-        const txt = r?.sintese ?? ''
+        const prof = obterPrimeiro(sess?.professores?.usuarios)?.name ?? '—'
+        const tipo = r?.tipos_protocolo?.nome ?? '—'
+        const txt = (r?.sintese ?? '') as string
 
         const atual = mapSessao.get(idSessao)
         if (!atual) {
           mapSessao.set(idSessao, {
-            sessao: {
-              id_sessao: idSessao,
-              hora_entrada: sess?.hora_entrada,
-              hora_saida: sess?.hora_saida ?? null,
-              professores: sess?.professores ?? null,
-              resumo_atividades: sess?.resumo_atividades ?? null,
-            },
-            textos: txt ? [String(txt)] : [],
-            tipos: tipo ? [String(tipo)] : [],
+            hora_entrada: sess?.hora_entrada,
+            hora_saida: sess?.hora_saida ?? null,
             prof: String(prof),
+            tipo: String(tipo),
+            registro: txt ? String(txt) : '',
           })
         } else {
-          if (txt) atual.textos.push(String(txt))
-          if (tipo) atual.tipos.push(String(tipo))
+          if (txt) atual.registro = atual.registro ? `${atual.registro} | ${txt}` : txt
         }
       }
 
-      if (!mapSessao.size && sessoesBase.length) {
-        for (const s of sessoesBase) {
-          const prof = obterPrimeiro((s as any)?.professores?.usuarios)?.name ?? ''
-          mapSessao.set(s.id_sessao, {
-            sessao: s,
-            textos: s.resumo_atividades ? [String(s.resumo_atividades)] : [],
-            tipos: [],
-            prof: String(prof),
-          })
-        }
-      }
-
-      const linhas = Array.from(mapSessao.values())
-        .sort(
-          (a, b) =>
-            new Date(a.sessao.hora_entrada).getTime() -
-            new Date(b.sessao.hora_entrada).getTime(),
-        )
-        .map(v => {
-          const s = v.sessao
-          const tipo = v.tipos.length ? v.tipos[0] : '—'
-          const registro = v.textos.length ? v.textos.join(' | ') : ''
-          return {
-            data: formatarData(s.hora_entrada),
-            entrada: formatarHora(s.hora_entrada),
-            saida: formatarHora(s.hora_saida),
-            tipo,
-            professor: v.prof || '—',
-            registro,
-          }
-        })
-
-      const disc = disciplinas.find(d => d.id_disciplina === Number(disciplinaId))
-      const nomeDisciplina = disc?.nome_disciplina ?? `Disciplina #${disciplinaId}`
+      const linhas: LinhaAtendimento[] = Array.from(mapSessao.values())
+        .sort((a, b) => new Date(a.hora_entrada).getTime() - new Date(b.hora_entrada).getTime())
+        .map(v => ({
+          data: formatarData(v.hora_entrada),
+          entrada: formatarHora(v.hora_entrada),
+          saida: formatarHora(v.hora_saida),
+          tipo: v.tipo,
+          professor: v.prof,
+          registro: v.registro,
+        }))
 
       await gerarPdfFichaModelo({
         aluno: {
@@ -1176,10 +1077,7 @@ const SecretariaRelatoriosFichasPage: React.FC = () => {
 
           <Tooltip title="Recarregar disciplinas">
             <span>
-              <IconButton
-                onClick={() => void carregarDisciplinas()}
-                disabled={!supabase || carregandoDisciplinas}
-              >
+              <IconButton onClick={() => void carregarDisciplinas()} disabled={!supabase || carregandoDisciplinas}>
                 <RefreshIcon />
               </IconButton>
             </span>
@@ -1225,13 +1123,7 @@ const SecretariaRelatoriosFichasPage: React.FC = () => {
 
           <Button
             variant="contained"
-            startIcon={
-              gerandoPdf ? (
-                <CircularProgress size={18} color="inherit" />
-              ) : (
-                <PictureAsPdfIcon />
-              )
-            }
+            startIcon={gerandoPdf ? <CircularProgress size={18} color="inherit" /> : <PictureAsPdfIcon />}
             onClick={() => void gerarFichaPdf()}
             disabled={!supabase || gerandoPdf}
             sx={{ textTransform: 'none', fontWeight: 900 }}
@@ -1253,11 +1145,7 @@ const SecretariaRelatoriosFichasPage: React.FC = () => {
             onInputChange={(_e, v) => setBuscaAluno(v)}
             getOptionLabel={opt => `${opt.nome} (ID: ${opt.id_aluno})`}
             isOptionEqualToValue={(o, v) => o.id_aluno === v.id_aluno}
-            noOptionsText={
-              buscaAluno.trim().length < 2
-                ? 'Digite pelo menos 2 caracteres...'
-                : 'Nenhum aluno encontrado'
-            }
+            noOptionsText={buscaAluno.trim().length < 2 ? 'Digite pelo menos 2 caracteres...' : 'Nenhum aluno encontrado'}
             renderInput={params => (
               <TextField
                 {...params}
@@ -1295,8 +1183,7 @@ const SecretariaRelatoriosFichasPage: React.FC = () => {
         </Stack>
 
         <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1.2 }}>
-          Campos <b>NOME SOCIAL</b> e <b>PONTO DE REF.</b> ficam em branco se não existirem no banco.
-          O campo <b>INÍCIO</b> usa <b>matriculas.data_matricula</b>.
+          Se não houver progresso cadastrado para a disciplina, o sistema gera a ficha <b>em branco</b>.
         </Typography>
 
         <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.6 }}>
