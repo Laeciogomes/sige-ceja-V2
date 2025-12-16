@@ -415,7 +415,8 @@ export default function ProfessorAtendimentosPage() {
 
   /**
    * ✅ Mapa de limite de protocolos por (SALA + DISCIPLINA)
-   * Como agora não dividimos por ano, usamos o MAIOR quantidade_protocolos que existir naquela sala p/ disciplina.
+    * Como agora não dividimos por ano, usamos o TOTAL (SOMA) de quantidade_protocolos por sala+disciplina.
+
    */
   const mapaLimitePorSalaDisciplina = useMemo(() => {
     const m = new Map<string, number>()
@@ -535,62 +536,78 @@ export default function ProfessorAtendimentosPage() {
        * ✅ Monta configs por sala, MAS agora "junta" por disciplina (não divide por ano).
        * Regra: para cada disciplina dentro da sala, pega a config com MAIOR quantidade_protocolos.
        */
-      const tmp: Record<number, Map<number, SalaDisciplinaAnoOption>> = {}
+      /**
+ * ✅ Monta configs por sala, "juntando" por disciplina (não divide por ano)
+ * Regra correta: para cada disciplina dentro da sala, SOMA quantidade_protocolos de todos os anos.
+ * Mantém id_ano_escolar como o MAIOR (mais recente) apenas para usar como "ano representativo" na criação de progresso.
+ */
+const tmp: Record<number, Map<number, SalaDisciplinaAnoOption>> = {}
 
-      ;(cfgSalaRes.data ?? []).forEach((row: any) => {
-        const salaId = Number(row.id_sala)
-        const cfg = first(row?.config_disciplina_ano) as any
-        if (!cfg?.id_config) return
+;(cfgSalaRes.data ?? []).forEach((row: any) => {
+  const salaId = Number(row.id_sala)
+  const cfg = first(row?.config_disciplina_ano) as any
+  if (!cfg?.id_config) return
 
-        const disc = first(cfg?.disciplinas) as any
-        const ano = first(cfg?.anos_escolares) as any
+  const disc = first(cfg?.disciplinas) as any
+  const ano = first(cfg?.anos_escolares) as any
 
-        const disciplinaNome = disc?.nome_disciplina ? String(disc.nome_disciplina) : `Disciplina #${cfg.id_disciplina}`
-        const anoNome = ano?.nome_ano ? String(ano.nome_ano) : `Ano #${cfg.id_ano_escolar}`
-        const qtd = Number(cfg.quantidade_protocolos ?? 0)
+  const disciplinaNome = disc?.nome_disciplina
+    ? String(disc.nome_disciplina)
+    : `Disciplina #${cfg.id_disciplina}`
 
-        const opt: SalaDisciplinaAnoOption = {
-          id_config: Number(cfg.id_config),
-          id_disciplina: Number(cfg.id_disciplina),
-          id_ano_escolar: Number(cfg.id_ano_escolar),
-          quantidade_protocolos: qtd,
-          disciplina_nome: disciplinaNome,
-          ano_nome: anoNome,
-          // label final será ajustado depois (sem ano)
-          label: `${disciplinaNome} (protocolos: ${qtd})`,
+  const anoNome = ano?.nome_ano ? String(ano.nome_ano) : `Ano #${cfg.id_ano_escolar}`
+  const qtd = Number(cfg.quantidade_protocolos ?? 0)
+
+  const opt: SalaDisciplinaAnoOption = {
+    id_config: Number(cfg.id_config),
+    id_disciplina: Number(cfg.id_disciplina),
+    id_ano_escolar: Number(cfg.id_ano_escolar),
+    quantidade_protocolos: qtd,
+    disciplina_nome: disciplinaNome,
+    ano_nome: anoNome,
+    label: '', // define depois
+  }
+
+  if (!tmp[salaId]) tmp[salaId] = new Map<number, SalaDisciplinaAnoOption>()
+
+  const atual = tmp[salaId].get(opt.id_disciplina)
+
+  if (!atual) {
+    tmp[salaId].set(opt.id_disciplina, opt)
+    return
+  }
+
+  const soma = Number(atual.quantidade_protocolos ?? 0) + Number(opt.quantidade_protocolos ?? 0)
+
+  // mantém um ano "representativo" (o maior), só para criação de progresso
+  const usarOptComoRepresentativo = opt.id_ano_escolar > atual.id_ano_escolar
+
+  tmp[salaId].set(opt.id_disciplina, {
+    ...atual,
+    quantidade_protocolos: soma,
+    ...(usarOptComoRepresentativo
+      ? {
+          id_ano_escolar: opt.id_ano_escolar,
+          ano_nome: opt.ano_nome,
+          id_config: opt.id_config,
         }
+      : {}),
+  })
+})
 
-        if (!tmp[salaId]) tmp[salaId] = new Map<number, SalaDisciplinaAnoOption>()
+const mapaFinal: Record<number, SalaDisciplinaAnoOption[]> = {}
+Object.entries(tmp).forEach(([salaIdStr, mapDisc]) => {
+  const salaId = Number(salaIdStr)
+  const lista = Array.from(mapDisc.values()).map((o) => ({
+    ...o,
+    label: `${o.disciplina_nome} (protocolos: ${o.quantidade_protocolos})`,
+  }))
+  lista.sort((a, b) => a.label.localeCompare(b.label))
+  mapaFinal[salaId] = lista
+})
 
-        const atual = tmp[salaId].get(opt.id_disciplina)
-        if (!atual) {
-          tmp[salaId].set(opt.id_disciplina, opt)
-          return
-        }
+setConfigsPorSala(mapaFinal)
 
-        // escolhe a melhor config para a disciplina na sala:
-        // 1) maior quantidade_protocolos
-        // 2) empate -> maior id_ano_escolar (só para consistência)
-        if (
-          opt.quantidade_protocolos > atual.quantidade_protocolos ||
-          (opt.quantidade_protocolos === atual.quantidade_protocolos && opt.id_ano_escolar > atual.id_ano_escolar)
-        ) {
-          tmp[salaId].set(opt.id_disciplina, opt)
-        }
-      })
-
-      const mapaFinal: Record<number, SalaDisciplinaAnoOption[]> = {}
-      Object.entries(tmp).forEach(([salaIdStr, mapDisc]) => {
-        const salaId = Number(salaIdStr)
-        const lista = Array.from(mapDisc.values()).map((o) => ({
-          ...o,
-          label: `${o.disciplina_nome} (protocolos: ${o.quantidade_protocolos})`,
-        }))
-        lista.sort((a, b) => a.label.localeCompare(b.label))
-        mapaFinal[salaId] = lista
-      })
-
-      setConfigsPorSala(mapaFinal)
     } catch (e: any) {
       console.error(e)
       erro('Falha ao carregar dados-base do atendimento.')
@@ -954,15 +971,28 @@ export default function ProfessorAtendimentosPage() {
 
       setBuscandoAlunos(true)
       try {
-        // ✅ RA: aceita números + separadores, e busca por "contém" (%termo%)
+        // ✅ RA (robusto): funciona se numero_inscricao for TEXT ou INTEGER/BIGINT
         if (isBuscaPorRA(t)) {
           const digitos = extrairDigitos(t)
-          if (digitos.length < 2) {
+          if (digitos.length < 1) {
             setOpcoesAluno([])
             return
           }
 
-          const { data, error: err } = await supabase
+          // Candidatos com zeros à esquerda (caso o RA esteja salvo como TEXT com padding)
+          const candidatosSet = new Set<string>()
+          candidatosSet.add(digitos)
+
+          // tenta alguns tamanhos comuns (ajuste se seu RA tiver tamanho fixo diferente)
+          const maxLen = Math.min(Math.max(digitos.length + 1, 12), 20)
+          for (let len = digitos.length + 1; len <= maxLen; len += 1) {
+            candidatosSet.add(digitos.padStart(len, '0'))
+          }
+
+          const candidatos = Array.from(candidatosSet)
+
+          // 1) tentativa principal: IN/eq (funciona para coluna numérica e texto)
+          const resEq = await supabase
             .from('matriculas')
             .select(
               `
@@ -977,14 +1007,42 @@ export default function ProfessorAtendimentosPage() {
               )
             `
             )
-            .ilike('numero_inscricao', `%${digitos}%`)
+            .in('numero_inscricao', candidatos)
             .order('ano_letivo', { ascending: false })
             .order('data_matricula', { ascending: false })
             .limit(25)
 
-          if (err) throw err
+          if (resEq.error) throw resEq.error
 
-          const opts: AlunoBuscaOption[] = (data ?? []).map((m: any) => {
+          let rows = resEq.data ?? []
+
+          // 2) fallback opcional: tenta prefixo/contém SOMENTE se a coluna for TEXT
+          // (se for numérica, isso retorna error; a gente IGNORA)
+          if (rows.length === 0) {
+            const resLike = await supabase
+              .from('matriculas')
+              .select(
+                `
+                id_matricula,
+                numero_inscricao,
+                id_aluno,
+                ano_letivo,
+                data_matricula,
+                alunos (
+                  id_aluno,
+                  usuarios ( name, email, foto_url )
+                )
+              `
+              )
+              .ilike('numero_inscricao', `%${digitos}%`)
+              .order('ano_letivo', { ascending: false })
+              .order('data_matricula', { ascending: false })
+              .limit(25)
+
+            if (!resLike.error) rows = resLike.data ?? []
+          }
+
+          const opts: AlunoBuscaOption[] = rows.map((m: any) => {
             const aluno = first(m?.alunos) as any
             const u = first(aluno?.usuarios) as any
 
@@ -1001,6 +1059,7 @@ export default function ProfessorAtendimentosPage() {
           setOpcoesAluno(opts)
           return
         }
+
 
         // Nome
         const { data, error: err } = await supabase
