@@ -961,126 +961,89 @@ setConfigsPorSala(mapaFinal)
 
   // ======= buscar aluno (nome ou RA) =======
   const buscarAlunos = useCallback(
-    async (termo: string) => {
-      if (!supabase) return
-      const t = termo.trim()
+  async (termo: string) => {
+    if (!supabase) return
 
-      if (t.length < 2) {
-        setOpcoesAluno([])
-        return
-      }
+    const t = termo.trim()
+    if (t.length < 2) {
+      setOpcoesAluno([])
+      return
+    }
 
-      setBuscandoAlunos(true)
-      try {
-        // ✅ Busca NUMÉRICA: serve tanto para RA (numero_inscricao) quanto para ID interno (id_matricula)
-        if (isBuscaPorRA(t)) {
-          const digitos = extrairDigitos(t)
-          if (digitos.length < 2) {
-            setOpcoesAluno([])
-            return
-          }
+    setBuscandoAlunos(true)
 
-          const selectSql = `
+    try {
+      const isRA = isBuscaPorRA(t)
+      const digitos = extrairDigitos(t)
+
+      let query = supabase
+        .from('alunos')
+        .select(
+          `
+          id_aluno,
+          usuarios!inner (
+            name,
+            email,
+            foto_url
+          ),
+          matriculas (
             id_matricula,
             numero_inscricao,
-            id_aluno,
             ano_letivo,
-            data_matricula,
-            alunos (
-              id_aluno,
-              usuarios ( name, email, foto_url )
-            )
-          `
+            data_matricula
+          )
+        `
+        )
+        .limit(25)
 
-          // 1) sempre tenta RA por "contém"
-          const orParts: string[] = [`numero_inscricao.ilike.%${digitos}%`]
+      if (isRA && digitos.length >= 2) {
+        // ✅ BUSCA POR RA (SEGURA COM RLS)
+        query = query.ilike('matriculas.numero_inscricao', `%${digitos}%`)
+      } else {
+        // ✅ BUSCA POR NOME
+        query = query.ilike('usuarios.name', `%${t}%`)
+      }
 
-          // 2) também tenta pelo id_matricula (PK) quando fizer sentido (evita overflow/bagunça)
-          const idMat = Number(digitos)
-          if (Number.isFinite(idMat) && idMat > 0 && idMat <= 2147483647) {
-            orParts.push(`id_matricula.eq.${idMat}`)
-          }
+      const { data, error } = await query
 
-          const { data, error: err } = await supabase
-            .from('matriculas')
-            .select(selectSql)
-            .or(orParts.join(','))
-            .order('ano_letivo', { ascending: false })
-            .order('data_matricula', { ascending: false })
-            .limit(25)
+      if (error) throw error
 
-          if (err) throw err
-
-          const opts: AlunoBuscaOption[] = (data ?? []).map((m: any) => {
-            const aluno = first(m?.alunos) as any
-            const u = first(aluno?.usuarios) as any
-
-            return {
-              id_aluno: Number(m.id_aluno),
-              nome: u?.name ?? `Aluno #${m.id_aluno}`,
-              email: u?.email ?? null,
-              foto_url: u?.foto_url ?? null,
-              id_matricula: Number(m.id_matricula),
-              numero_inscricao: m.numero_inscricao ? String(m.numero_inscricao) : null,
-            }
+      const opts: AlunoBuscaOption[] = (data ?? []).map((a: any) => {
+        const u = first(a?.usuarios)
+        const mats = (a?.matriculas ?? [])
+          .map((m: any) => ({
+            id_matricula: Number(m.id_matricula),
+            numero_inscricao: m.numero_inscricao ? String(m.numero_inscricao) : null,
+            ano_letivo: Number(m.ano_letivo ?? 0),
+            data_matricula: m.data_matricula ? String(m.data_matricula) : '1900-01-01',
+          }))
+          .sort((x: any, y: any) => {
+            if (y.ano_letivo !== x.ano_letivo) return y.ano_letivo - x.ano_letivo
+            return new Date(y.data_matricula).getTime() - new Date(x.data_matricula).getTime()
           })
 
-          setOpcoesAluno(opts)
-          return
+        const top = mats[0] ?? null
+
+        return {
+          id_aluno: Number(a.id_aluno),
+          nome: u?.name ?? `Aluno #${a.id_aluno}`,
+          email: u?.email ?? null,
+          foto_url: u?.foto_url ?? null,
+          id_matricula: top?.id_matricula ?? null,
+          numero_inscricao: top?.numero_inscricao ?? null,
         }
+      })
 
-        // Nome (mantém igual ao seu)
-        const { data, error: err } = await supabase
-          .from('alunos')
-          .select(
-            `
-              id_aluno,
-              usuarios!inner ( name, email, foto_url ),
-              matriculas ( id_matricula, numero_inscricao, ano_letivo, data_matricula, id_status_matricula )
-            `
-          )
-          .ilike('usuarios.name', `%${t}%`)
-          .order('id_aluno', { ascending: false })
-          .limit(25)
-
-        if (err) throw err
-
-        const opts: AlunoBuscaOption[] = (data ?? []).map((a: any) => {
-          const u = first(a?.usuarios) as any
-          const mats = (a?.matriculas ?? [])
-            .map((m: any) => ({
-              id_matricula: Number(m.id_matricula),
-              numero_inscricao: m.numero_inscricao ? String(m.numero_inscricao) : null,
-              ano_letivo: Number(m.ano_letivo ?? 0),
-              data_matricula: m.data_matricula ? String(m.data_matricula) : '1900-01-01',
-            }))
-            .sort((x: any, y: any) => {
-              if (y.ano_letivo !== x.ano_letivo) return y.ano_letivo - x.ano_letivo
-              return new Date(y.data_matricula).getTime() - new Date(x.data_matricula).getTime()
-            })
-
-          const top = mats[0] ?? null
-
-          return {
-            id_aluno: Number(a.id_aluno),
-            nome: u?.name ?? `Aluno #${a.id_aluno}`,
-            email: u?.email ?? null,
-            foto_url: u?.foto_url ?? null,
-            id_matricula: top?.id_matricula ?? null,
-            numero_inscricao: top?.numero_inscricao ?? null,
-          }
-        })
-
-        setOpcoesAluno(opts)
-      } catch (e: any) {
-        console.error(e)
-        erro('Falha ao buscar alunos.')
-      } finally {
-        if (mountedRef.current) setBuscandoAlunos(false)
-      }
-    },
-    [supabase, erro]
-  )
+      setOpcoesAluno(opts)
+    } catch (e) {
+      console.error(e)
+      erro('Falha ao buscar alunos.')
+    } finally {
+      if (mountedRef.current) setBuscandoAlunos(false)
+    }
+  },
+  [supabase, erro]
+)
 
 
   // ======= carregar fichas do aluno (progresso) =======
