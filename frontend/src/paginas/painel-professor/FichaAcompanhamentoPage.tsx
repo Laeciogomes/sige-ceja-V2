@@ -1,0 +1,1549 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
+
+import {
+  Accordion,
+  AccordionDetails,
+  AccordionSummary,
+  Alert,
+  Avatar,
+  Box,
+  Button,
+  Checkbox,
+  Chip,
+  CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogContentText,
+  DialogTitle,
+  Divider,
+  FormControl,
+  FormControlLabel,
+  IconButton,
+  InputLabel,
+  MenuItem,
+  Paper,
+  Select,
+  Stack,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  TextField,
+  Tooltip,
+  Typography,
+  useMediaQuery,
+  useTheme,
+} from '@mui/material'
+import { alpha } from '@mui/material/styles'
+
+import ArrowBackIcon from '@mui/icons-material/ArrowBack'
+import PersonIcon from '@mui/icons-material/Person'
+import EditIcon from '@mui/icons-material/Edit'
+import WarningAmberIcon from '@mui/icons-material/WarningAmber'
+import DeleteIcon from '@mui/icons-material/Delete'
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
+
+import { useSupabase } from '../../contextos/SupabaseContext'
+import { useNotificacaoContext } from '../../contextos/NotificacaoContext'
+import { useAuth } from '../../contextos/AuthContext'
+
+// ===================== Helpers =====================
+
+function first<T>(v: T | T[] | null | undefined): T | null {
+  if (!v) return null
+  return Array.isArray(v) ? v[0] ?? null : v
+}
+
+function formatDateBR(iso?: string | null): string {
+  if (!iso) return '-'
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return '-'
+  return d.toLocaleDateString('pt-BR')
+}
+
+function formatTimeBR(iso?: string | null): string {
+  if (!iso) return '-'
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return '-'
+  return d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+}
+
+function formatDateTimeBR(iso?: string | null): string {
+  if (!iso) return '-'
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return '-'
+  return d.toLocaleString('pt-BR', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
+function parseNota(v: unknown): number | null {
+  if (v === null || v === undefined) return null
+  const s = String(v).trim()
+  if (s === '') return null
+  const n = Number(s)
+  return Number.isFinite(n) ? n : null
+}
+
+const TIPOS = {
+  PESQUISA: 1,
+  COMPLEMENTAR: 2,
+  AVALIACAO: 3,
+  ASO: 4,
+  RECUPERACAO: 5,
+} as const
+
+type UsuarioJoin = {
+  id?: string
+  name?: string
+  email?: string
+  foto_url?: string | null
+}
+
+type AlunoJoin = {
+  id_aluno: number
+  possui_necessidade_especial: boolean
+  qual_necessidade_especial?: string | null
+  usuarios?: UsuarioJoin | UsuarioJoin[] | null
+}
+
+type MatriculaJoin = {
+  id_matricula: number
+  numero_inscricao: string
+  modalidade: string
+  ano_letivo: number
+  data_matricula: string
+  niveis_ensino?: { nome?: string | null } | { nome?: string | null }[] | null
+  alunos?: AlunoJoin | AlunoJoin[] | null
+}
+
+type DisciplinaJoin = {
+  id_disciplina: number
+  nome_disciplina: string
+}
+
+type AnoEscolarJoin = {
+  id_ano_escolar: number
+  nome_ano: string
+}
+
+type ProgressoJoin = {
+  id_progresso: number
+  id_matricula: number
+  id_disciplina: number
+  id_ano_escolar: number
+  nota_final: number | null
+  observacoes: string | null
+  disciplinas?: DisciplinaJoin | DisciplinaJoin[] | null
+  anos_escolares?: AnoEscolarJoin | AnoEscolarJoin[] | null
+  matriculas?: MatriculaJoin | MatriculaJoin[] | null
+}
+
+type RegistroAtividade = {
+  id_atividade: number
+  id_sessao: number
+  id_progresso: number
+  numero_protocolo: number
+  id_tipo_protocolo: number
+  status: string
+  nota: number | null
+  is_adaptada: boolean
+  sintese: string | null
+  created_at: string
+  updated_at: string
+  tipos_protocolo?: { nome?: string | null } | { nome?: string | null }[] | null
+}
+
+type SessaoHistorico = {
+  id_sessao: number
+  hora_entrada: string
+  hora_saida: string | null
+  resumo_atividades: string | null
+  professor_nome: string
+  atividades: RegistroAtividade[]
+}
+
+type GradeData = {
+  headers: { serie: string; colspan: number }[]
+  protocolos: number[]
+  body: { etapa: string; notas: (number | null)[] }[]
+  mediaFinal: number | null
+}
+
+type ProtocoloAtividadeState = {
+  id_tipo: number
+  registro: {
+    id_atividade?: number
+    id_sessao?: number
+    status?: string
+    nota?: number | string | null
+    is_adaptada?: boolean
+    sintese?: string | null
+  } | null
+}
+
+type ProtocoloState = {
+  numero: number
+  ano_escolar: string
+  atividades: {
+    pesquisa: ProtocoloAtividadeState
+    complementar: ProtocoloAtividadeState
+    avaliacao: ProtocoloAtividadeState
+    aso: ProtocoloAtividadeState
+    recuperacao: ProtocoloAtividadeState
+  }
+}
+
+// ===================== Subcomponentes =====================
+
+function FichaHeader(props: { progresso: ProgressoJoin; anosCursados?: string }) {
+  const { progresso, anosCursados } = props
+
+  const disc = first(progresso.disciplinas)
+  const mat = first(progresso.matriculas)
+  const aluno = first(mat?.alunos)
+  const user = first(aluno?.usuarios)
+  const nivel = first(mat?.niveis_ensino)?.nome ?? ''
+
+  const modalidade = String(mat?.modalidade ?? '')
+
+  return (
+    <Paper sx={{ p: 2, mb: 3, borderRadius: '12px' }}>
+      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems={{ sm: 'center' }}>
+        <Avatar
+          sx={{ width: 90, height: 90 }}
+          src={user?.foto_url ?? undefined}
+          variant="rounded"
+        >
+          <PersonIcon sx={{ fontSize: 60 }} />
+        </Avatar>
+
+        <Box sx={{ minWidth: 0 }}>
+          <Typography variant="h5" sx={{ fontWeight: 700, lineHeight: 1.1 }}>
+            {user?.name ?? 'Aluno'}
+          </Typography>
+
+          <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ mt: 1 }}>
+            <Chip label={`RA: ${mat?.numero_inscricao ?? '-'}`} size="small" />
+            <Chip label={disc?.nome_disciplina ?? '-'} color="primary" size="small" />
+          </Stack>
+
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+            Nível: {nivel || '-'}
+          </Typography>
+
+          <Typography variant="body2" color="text.secondary">
+            Modalidade: <strong>{modalidade || '-'}</strong>
+            {modalidade === 'Aproveitamento de Estudos' && anosCursados ? ` (${anosCursados})` : ''}
+          </Typography>
+
+          {aluno?.possui_necessidade_especial ? (
+            <Chip
+              icon={<WarningAmberIcon />}
+              label={aluno?.qual_necessidade_especial || 'Necessidade Especial Declarada'}
+              color="warning"
+              size="small"
+              sx={{
+                mt: 1,
+                height: 'auto',
+                '& .MuiChip-label': { py: '4px', whiteSpace: 'normal', lineHeight: 1.2 },
+              }}
+            />
+          ) : null}
+        </Box>
+      </Stack>
+    </Paper>
+  )
+}
+
+function GradeDeNotas(props: { gradeData: GradeData | null }) {
+  const { gradeData } = props
+
+  if (!gradeData || !gradeData.headers?.length) {
+    return <Alert severity="info" sx={{ mb: 2 }}>Nenhum protocolo definido para esta ficha.</Alert>
+  }
+
+  return (
+    <>
+      <Typography variant="h6" gutterBottom>
+        Grade de Notas
+      </Typography>
+
+      <TableContainer component={Paper} sx={{ borderRadius: '12px', mb: 3 }}>
+        <Table size="small" sx={{ borderCollapse: 'collapse' }}>
+          <TableHead sx={{ bgcolor: 'action.hover' }}>
+            <TableRow>
+              <TableCell sx={{ fontWeight: 900, border: '1px solid #ddd' }} rowSpan={2}>
+                ETAPA/SÉRIE
+              </TableCell>
+
+              {gradeData.headers.map((h) => (
+                <TableCell
+                  key={h.serie}
+                  align="center"
+                  colSpan={h.colspan}
+                  sx={{ fontWeight: 900, border: '1px solid #ddd' }}
+                >
+                  {h.serie}
+                </TableCell>
+              ))}
+
+              <TableCell sx={{ fontWeight: 900, border: '1px solid #ddd' }} rowSpan={2}>
+                MÉDIA
+              </TableCell>
+            </TableRow>
+
+            <TableRow>
+              {gradeData.protocolos.map((p) => (
+                <TableCell key={p} align="center" sx={{ fontWeight: 900, border: '1px solid #ddd' }}>
+                  {p}ª
+                </TableCell>
+              ))}
+            </TableRow>
+          </TableHead>
+
+          <TableBody>
+            {gradeData.body.map((row, idx) => (
+              <TableRow key={row.etapa}>
+                <TableCell sx={{ fontWeight: 900, border: '1px solid #ddd' }}>
+                  {row.etapa}
+                </TableCell>
+
+                {row.notas.map((nota, i) => (
+                  <TableCell key={i} align="center" sx={{ border: '1px solid #ddd' }}>
+                    {nota !== null ? String(nota).replace('.', ',') : '-'}
+                  </TableCell>
+                ))}
+
+                {idx === 0 ? (
+                  <TableCell
+                    align="center"
+                    rowSpan={gradeData.body.length}
+                    sx={{ fontWeight: 900, fontSize: '1.1rem', verticalAlign: 'middle', border: '1px solid #ddd' }}
+                  >
+                    {gradeData.mediaFinal !== null ? String(gradeData.mediaFinal).replace('.', ',') : '-'}
+                  </TableCell>
+                ) : null}
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </TableContainer>
+    </>
+  )
+}
+
+function HistoricoAtendimentos(props: {
+  sessoes: SessaoHistorico[]
+  onEdit: (s: SessaoHistorico) => void
+  onDelete: (s: SessaoHistorico) => void
+}) {
+  const { sessoes, onEdit, onDelete } = props
+
+  const hasActivityType = (sessao: SessaoHistorico, type: 'AT' | 'AV' | 'RE') => {
+    const typeMap: Record<'AT' | 'AV' | 'RE', number[]> = {
+      AT: [1, 2],
+      AV: [3, 4],
+      RE: [5],
+    }
+    return (sessao.atividades || []).some((a) => typeMap[type].includes(Number(a.id_tipo_protocolo)))
+  }
+
+  return (
+    <>
+      <Typography variant="h6" gutterBottom sx={{ mt: 4 }}>
+        Histórico de Atendimentos Detalhado
+      </Typography>
+
+      <TableContainer component={Paper} sx={{ borderRadius: '12px' }}>
+        <Table>
+          <TableHead sx={{ bgcolor: 'action.hover' }}>
+            <TableRow>
+              <TableCell>Data</TableCell>
+              <TableCell>Horário</TableCell>
+              <TableCell align="center">OR</TableCell>
+              <TableCell align="center">AT</TableCell>
+              <TableCell align="center">AV</TableCell>
+              <TableCell align="center">RE</TableCell>
+              <TableCell>Professor(a)</TableCell>
+              <TableCell sx={{ width: '45%' }}>Registro da Atividade</TableCell>
+              <TableCell>Ações</TableCell>
+            </TableRow>
+          </TableHead>
+
+          <TableBody>
+            {sessoes.length > 0 ? (
+              sessoes.map((sessao) => {
+                const registroTexto = (sessao.atividades || [])
+                  .map((at) => {
+                    const tipoNome = first(at.tipos_protocolo)?.nome ?? 'Atividade'
+                    const status = at.status || 'N/D'
+                    const nota = at.nota !== null && at.nota !== undefined ? ` - Nota: ${Number(at.nota).toFixed(1)}` : ''
+                    return `${tipoNome} (${status})${nota}`
+                  })
+                  .join('; ')
+
+                return (
+                  <TableRow key={sessao.id_sessao}>
+                    <TableCell>{formatDateBR(sessao.hora_entrada)}</TableCell>
+                    <TableCell>
+                      {`${formatTimeBR(sessao.hora_entrada)} - ${sessao.hora_saida ? formatTimeBR(sessao.hora_saida) : '...'}`}
+                    </TableCell>
+                    <TableCell align="center">X</TableCell>
+                    <TableCell align="center">{hasActivityType(sessao, 'AT') ? 'X' : ''}</TableCell>
+                    <TableCell align="center">{hasActivityType(sessao, 'AV') ? 'X' : ''}</TableCell>
+                    <TableCell align="center">{hasActivityType(sessao, 'RE') ? 'X' : ''}</TableCell>
+                    <TableCell>{sessao.professor_nome || 'N/A'}</TableCell>
+                    <TableCell>
+                      <Typography variant="body2">{registroTexto || '-'}</Typography>
+                      {sessao.resumo_atividades ? (
+                        <Typography variant="body2" sx={{ fontStyle: 'italic', mt: 1 }}>
+                          {sessao.resumo_atividades}
+                        </Typography>
+                      ) : null}
+                    </TableCell>
+                    <TableCell>
+                      <Tooltip title="Editar Atividades da Sessão">
+                        <IconButton size="small" onClick={() => onEdit(sessao)}>
+                          <EditIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                      <Tooltip title="Excluir Sessão Inteira">
+                        <IconButton size="small" onClick={() => onDelete(sessao)}>
+                          <DeleteIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                    </TableCell>
+                  </TableRow>
+                )
+              })
+            ) : (
+              <TableRow>
+                <TableCell colSpan={9} align="center">
+                  Nenhum histórico de atendimento para esta disciplina.
+                </TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </TableContainer>
+    </>
+  )
+}
+
+function EditHistoricoModal(props: {
+  open: boolean
+  onClose: () => void
+  sessao: SessaoHistorico | null
+  onSave: (atividadesEditadas: RegistroAtividade[]) => Promise<void>
+}) {
+  const { open, onClose, sessao, onSave } = props
+  const theme = useTheme()
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'))
+
+  const [atividades, setAtividades] = useState<RegistroAtividade[]>([])
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    if (sessao?.atividades) {
+      // deep clone
+      setAtividades(JSON.parse(JSON.stringify(sessao.atividades)) as RegistroAtividade[])
+    } else {
+      setAtividades([])
+    }
+  }, [sessao])
+
+  const handleAtividadeChange = (index: number, field: keyof RegistroAtividade, value: any) => {
+    setAtividades((old) => {
+      const next = [...old]
+      const obj = { ...next[index] } as any
+      obj[field] = value
+      next[index] = obj
+      return next
+    })
+  }
+
+  const handleSave = async () => {
+    setSaving(true)
+    try {
+      await onSave(atividades)
+    } finally {
+      setSaving(false)
+      onClose()
+    }
+  }
+
+  const renderAtividade = (atividade: RegistroAtividade, index: number) => {
+    const tipoNome = String(first(atividade.tipos_protocolo)?.nome ?? '')
+    const showNota = !['Atividade de Pesquisa', 'ASO'].includes(tipoNome)
+
+    return (
+      <Paper
+        key={atividade.id_atividade}
+        variant="outlined"
+        sx={{ p: 2, borderRadius: 2, mb: 1 }}
+      >
+        <Stack spacing={1}>
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ sm: 'center' }} justifyContent="space-between">
+            <Box sx={{ minWidth: 0 }}>
+              <Typography variant="body1" sx={{ fontWeight: 800 }}>
+                {tipoNome || 'Atividade'}
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                Protocolo {atividade.numero_protocolo}
+              </Typography>
+            </Box>
+
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={!!atividade.is_adaptada}
+                  onChange={(e) => handleAtividadeChange(index, 'is_adaptada', e.target.checked)}
+                />
+              }
+              label="Adaptada"
+            />
+          </Stack>
+
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
+            <FormControl fullWidth size="small">
+              <InputLabel>Status</InputLabel>
+              <Select
+                label="Status"
+                value={atividade.status || 'A fazer'}
+                onChange={(e) => handleAtividadeChange(index, 'status', String(e.target.value))}
+              >
+                <MenuItem value="A fazer">A fazer</MenuItem>
+                <MenuItem value="Em andamento">Em andamento</MenuItem>
+                <MenuItem value="Concluída">Concluída</MenuItem>
+              </Select>
+            </FormControl>
+
+            {showNota ? (
+              <TextField
+                fullWidth
+                size="small"
+                label="Nota"
+                type="number"
+                value={atividade.nota ?? ''}
+                onChange={(e) => handleAtividadeChange(index, 'nota', e.target.value)}
+              />
+            ) : null}
+          </Stack>
+        </Stack>
+      </Paper>
+    )
+  }
+
+  return (
+    <Dialog open={open} onClose={onClose} fullWidth maxWidth="md" fullScreen={isMobile}>
+      <DialogTitle sx={{ fontWeight: 900 }}>
+        Editar atendimento {sessao ? `(${formatDateBR(sessao.hora_entrada)})` : ''}
+      </DialogTitle>
+
+      <DialogContent dividers>
+        {atividades.length > 0 ? (
+          atividades.map(renderAtividade)
+        ) : (
+          <Alert severity="info" sx={{ mt: 2 }}>
+            Nenhuma atividade registrada para esta sessão.
+          </Alert>
+        )}
+      </DialogContent>
+
+      <DialogActions>
+        <Button onClick={onClose}>Cancelar</Button>
+        <Button onClick={() => void handleSave()} disabled={saving} variant="contained">
+          {saving ? <CircularProgress size={22} color="inherit" /> : 'Salvar Alterações'}
+        </Button>
+      </DialogActions>
+    </Dialog>
+  )
+}
+
+function ProtocolosDeEstudo(props: {
+  protocolos: ProtocoloState[]
+  idProgresso: number
+  onSaveAtividade: (payload: {
+    id_atividade?: number
+    id_progresso: number
+    numero_protocolo: number
+    id_tipo_protocolo: number
+    status: string
+    nota: number | null
+    is_adaptada: boolean
+    sintese: string | null
+  }) => Promise<void>
+  onDataChange: () => Promise<void>
+}) {
+  const { protocolos: initialProtocols, idProgresso, onSaveAtividade, onDataChange } = props
+
+  const [protocolos, setProtocolos] = useState<ProtocoloState[]>(initialProtocols || [])
+  const [savingStatus, setSavingStatus] = useState<Record<number, boolean>>({})
+  const [expanded, setExpanded] = useState<number | false>(false)
+
+  useEffect(() => {
+    setProtocolos(initialProtocols || [])
+  }, [initialProtocols])
+
+  const handleAccordionChange =
+    (panel: number) =>
+    (_event: any, isExpanded: boolean) => {
+      setExpanded(isExpanded ? panel : false)
+    }
+
+  const handleAtividadeChange = (protocoloIndex: number, atividadeKey: keyof ProtocoloState['atividades'], field: string, value: any) => {
+    setProtocolos((old) => {
+      const next = JSON.parse(JSON.stringify(old)) as ProtocoloState[]
+      const reg = next[protocoloIndex].atividades[atividadeKey].registro || {}
+      ;(reg as any)[field] = value
+      next[protocoloIndex].atividades[atividadeKey].registro = reg
+      return next
+    })
+  }
+
+  const getProtocoloStatus = (atividades: ProtocoloState['atividades']) => {
+    const pesquisaOk = atividades.pesquisa?.registro?.status === 'Concluída'
+    const complementarOk = atividades.complementar?.registro?.status === 'Concluída'
+
+    const avaliacaoStatus = atividades.avaliacao?.registro?.status
+    const avaliacaoNota = parseNota(atividades.avaliacao?.registro?.nota)
+
+    const recuperacaoStatus = atividades.recuperacao?.registro?.status
+    const recuperacaoNota = parseNota(atividades.recuperacao?.registro?.nota)
+
+    if (pesquisaOk && complementarOk && avaliacaoStatus === 'Concluída') {
+      if (avaliacaoNota !== null && avaliacaoNota >= 6) return { label: 'Protocolo Concluído', color: 'success' as const }
+      if (avaliacaoNota !== null && avaliacaoNota < 6 && recuperacaoStatus === 'Concluída' && recuperacaoNota !== null && recuperacaoNota >= 6) {
+        return { label: 'Protocolo Concluído', color: 'success' as const }
+      }
+    }
+
+    const isEmAndamento = Object.values(atividades).some((ativ) => ativ?.registro && (ativ.registro.status ?? 'A fazer') !== 'A fazer')
+    if (isEmAndamento) return { label: 'Em Andamento', color: 'info' as const }
+
+    return { label: 'A Fazer', color: 'default' as const }
+  }
+
+  const getNotaFinalProtocolo = (atividades: ProtocoloState['atividades']) => {
+    const notaComp = parseNota(atividades.complementar?.registro?.nota)
+    const notaAval = parseNota(atividades.avaliacao?.registro?.nota)
+    const notaRec = parseNota(atividades.recuperacao?.registro?.nota)
+
+    if (notaComp !== null) {
+      if (notaAval !== null && notaAval >= 6) return ((notaComp + notaAval) / 2).toFixed(2)
+      if (notaAval !== null && notaAval < 6 && notaRec !== null) return ((notaComp + notaRec) / 2).toFixed(2)
+    }
+    return '-'
+  }
+
+  const renderAtividade = (protoIndex: number, ativKey: keyof ProtocoloState['atividades'], label: string) => {
+    const atividade = protocolos[protoIndex].atividades[ativKey]
+    const registro = atividade.registro || {}
+    const showNota = !['pesquisa', 'aso'].includes(String(ativKey))
+
+    return (
+      <Paper variant="outlined" sx={{ p: 1.25, borderRadius: 2, mb: 1 }}>
+        <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} alignItems={{ md: 'center' }}>
+          <Box sx={{ flex: 1, minWidth: 0 }}>
+            <Typography variant="body2" sx={{ fontWeight: 800 }}>
+              {label}
+            </Typography>
+          </Box>
+
+          <FormControl size="small" sx={{ minWidth: { xs: '100%', md: 200 } }}>
+            <InputLabel>Status</InputLabel>
+            <Select
+              label="Status"
+              value={String(registro.status || 'A fazer')}
+              onChange={(e) => handleAtividadeChange(protoIndex, ativKey, 'status', String(e.target.value))}
+            >
+              <MenuItem value="A fazer">A fazer</MenuItem>
+              <MenuItem value="Em andamento">Em andamento</MenuItem>
+              <MenuItem value="Concluída">Concluída</MenuItem>
+            </Select>
+          </FormControl>
+
+          {showNota ? (
+            <TextField
+              size="small"
+              label="Nota"
+              type="number"
+              value={registro.nota ?? ''}
+              onChange={(e) => handleAtividadeChange(protoIndex, ativKey, 'nota', e.target.value)}
+              sx={{ minWidth: { xs: '100%', md: 140 } }}
+            />
+          ) : null}
+
+          <FormControlLabel
+            control={
+              <Checkbox
+                checked={!!registro.is_adaptada}
+                onChange={(e) => handleAtividadeChange(protoIndex, ativKey, 'is_adaptada', e.target.checked)}
+              />
+            }
+            label="Adaptada"
+          />
+        </Stack>
+      </Paper>
+    )
+  }
+
+  const handleSalvarProtocolo = async (protocoloIndex: number) => {
+    const prot = protocolos[protocoloIndex]
+    const atividades = prot.atividades
+
+    const notaAval = parseNota(atividades.avaliacao?.registro?.nota)
+    const precisaRec = notaAval !== null && notaAval < 6
+
+    setSavingStatus((prev) => ({ ...prev, [protocoloIndex]: true }))
+    try {
+      const keys: (keyof ProtocoloState['atividades'])[] = ['pesquisa', 'complementar', 'avaliacao', 'aso', 'recuperacao']
+
+      for (const k of keys) {
+        const a = atividades[k]
+        if (!a) continue
+
+        // Só salva ASO/Recuperação quando necessário OU quando já existe registro (pra não criar lixo).
+        const jaExiste = !!a.registro?.id_atividade
+        if ((k === 'aso' || k === 'recuperacao') && !precisaRec && !jaExiste) continue
+
+        const payload = {
+          id_atividade: a.registro?.id_atividade,
+          id_progresso: idProgresso,
+          numero_protocolo: prot.numero,
+          id_tipo_protocolo: a.id_tipo,
+          status: String(a.registro?.status || 'A fazer'),
+          nota: parseNota(a.registro?.nota),
+          is_adaptada: Boolean(a.registro?.is_adaptada),
+          sintese: (a.registro?.sintese ?? null) as string | null,
+        }
+
+        await onSaveAtividade(payload)
+      }
+
+      await onDataChange()
+    } finally {
+      setSavingStatus((prev) => ({ ...prev, [protocoloIndex]: false }))
+    }
+  }
+
+  return (
+    <>
+      <Typography variant="h6" gutterBottom sx={{ mt: 4 }}>
+        Registro de Atividades
+      </Typography>
+
+      <Paper sx={{ p: 2, borderRadius: '12px' }}>
+        {protocolos.map((protocolo, protoIndex) => {
+          const atividades = protocolo.atividades
+          const notaAvaliacao = parseNota(atividades.avaliacao?.registro?.nota)
+          const showRecuperacao = notaAvaliacao !== null && notaAvaliacao < 6
+          const statusInfo = getProtocoloStatus(atividades)
+
+          return (
+            <Accordion
+              key={protocolo.numero}
+              expanded={expanded === protocolo.numero}
+              onChange={handleAccordionChange(protocolo.numero)}
+              disableGutters
+              elevation={0}
+              sx={{
+                border: '1px solid #ddd',
+                borderRadius: 2,
+                mb: 1,
+                overflow: 'hidden',
+              }}
+            >
+              <AccordionSummary expandIcon={<ExpandMoreIcon />} sx={{ bgcolor: 'action.hover' }}>
+                <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} alignItems={{ md: 'center' }} sx={{ width: '100%' }}>
+                  <Typography sx={{ fontWeight: 800 }}>
+                    Protocolo {protocolo.numero} ({protocolo.ano_escolar})
+                  </Typography>
+
+                  <Box sx={{ flex: 1 }} />
+
+                  <Stack direction="row" spacing={1} flexWrap="wrap">
+                    <Chip label={`Nota: ${getNotaFinalProtocolo(atividades)}`} color="primary" size="small" variant="outlined" />
+                    <Chip label={statusInfo.label} color={statusInfo.color} size="small" />
+                  </Stack>
+                </Stack>
+              </AccordionSummary>
+
+              <AccordionDetails sx={{ p: 1.5 }}>
+                {renderAtividade(protoIndex, 'pesquisa', 'Atividade de Pesquisa')}
+                {renderAtividade(protoIndex, 'complementar', 'Atividade Complementar')}
+                {renderAtividade(protoIndex, 'avaliacao', 'Avaliação')}
+                {showRecuperacao ? renderAtividade(protoIndex, 'aso', 'ASO') : null}
+                {showRecuperacao ? renderAtividade(protoIndex, 'recuperacao', 'Recuperação') : null}
+
+                <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 2 }}>
+                  <Button
+                    variant="contained"
+                    color="secondary"
+                    onClick={() => void handleSalvarProtocolo(protoIndex)}
+                    disabled={!!savingStatus[protoIndex]}
+                  >
+                    {savingStatus[protoIndex] ? <CircularProgress size={22} color="inherit" /> : 'Salvar Protocolo'}
+                  </Button>
+                </Box>
+              </AccordionDetails>
+            </Accordion>
+          )
+        })}
+      </Paper>
+    </>
+  )
+}
+
+function ObservacoesEditaveis(props: {
+  initialText: string
+  progressoId: number
+  onSave: (progressoId: number, texto: string) => Promise<void>
+}) {
+  const { initialText, progressoId, onSave } = props
+
+  const [editMode, setEditMode] = useState(false)
+  const [observacoes, setObservacoes] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    setObservacoes(initialText || '')
+  }, [initialText])
+
+  const handleSave = async () => {
+    setSaving(true)
+    try {
+      await onSave(progressoId, observacoes)
+      setEditMode(false)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleCancel = () => {
+    setObservacoes(initialText || '')
+    setEditMode(false)
+  }
+
+  return (
+    <Paper sx={{ p: 2, borderRadius: '12px', mt: 4 }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+        <Typography variant="h6">Observações Gerais da Disciplina</Typography>
+        {!editMode ? (
+          <Button startIcon={<EditIcon />} onClick={() => setEditMode(true)}>
+            Editar
+          </Button>
+        ) : null}
+      </Box>
+
+      <Divider />
+
+      {!editMode ? (
+        <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', minHeight: 50, mt: 2, p: 1 }}>
+          {observacoes || 'Nenhuma observação cadastrada.'}
+        </Typography>
+      ) : (
+        <>
+          <TextField
+            fullWidth
+            multiline
+            rows={5}
+            value={observacoes}
+            onChange={(e) => setObservacoes(e.target.value)}
+            variant="outlined"
+            autoFocus
+            sx={{ mt: 2 }}
+          />
+          <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 2, gap: 1 }}>
+            <Button onClick={handleCancel}>Cancelar</Button>
+            <Button onClick={() => void handleSave()} variant="contained" disabled={saving}>
+              {saving ? 'Salvando...' : 'Salvar Observações'}
+            </Button>
+          </Box>
+        </>
+      )}
+    </Paper>
+  )
+}
+
+// ===================== Página =====================
+
+export default function FichaAcompanhamentoPage() {
+  const theme = useTheme()
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'))
+
+  const { supabase } = useSupabase()
+  const { usuario } = useAuth()
+  const { sucesso, erro, aviso } = useNotificacaoContext()
+
+  const params = useParams()
+  const navigate = useNavigate()
+
+  const idProgressoParam = String((params as any)?.id_progresso ?? '')
+  const idProgresso = Number(idProgressoParam)
+
+  const mountedRef = useRef(true)
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+    }
+  }, [])
+
+  const [loading, setLoading] = useState(true)
+  const [progresso, setProgresso] = useState<ProgressoJoin | null>(null)
+  const [gradeData, setGradeData] = useState<GradeData | null>(null)
+  const [protocolos, setProtocolos] = useState<ProtocoloState[]>([])
+  const [sessoes, setSessoes] = useState<SessaoHistorico[]>([])
+  const [observacoes, setObservacoes] = useState<string>('')
+
+  const [idProfessor, setIdProfessor] = useState<number | null>(null)
+  const sessaoAutoRef = useRef<number | null>(null)
+
+  const [historicoModalOpen, setHistoricoModalOpen] = useState(false)
+  const [sessaoParaEditar, setSessaoParaEditar] = useState<SessaoHistorico | null>(null)
+
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+  const [sessaoParaExcluir, setSessaoParaExcluir] = useState<SessaoHistorico | null>(null)
+  const [isDeleting, setIsDeleting] = useState(false)
+
+  const carregarIdProfessor = useCallback(async () => {
+    if (!supabase) return
+    if (!usuario?.id) return
+
+    const { data, error: e } = await supabase
+      .from('professores')
+      .select('id_professor')
+      .eq('user_id', usuario.id)
+      .maybeSingle()
+
+    if (e) {
+      console.error(e)
+      return
+    }
+    if (data?.id_professor) setIdProfessor(Number(data.id_professor))
+  }, [supabase, usuario?.id])
+
+  const montarProtocolos = useCallback((args: {
+    quantidade: number
+    anoNome: string
+    registros: RegistroAtividade[]
+  }): ProtocoloState[] => {
+    const { quantidade, anoNome, registros } = args
+
+    // Escolhe o registro mais recente por (numero_protocolo, id_tipo_protocolo)
+    const map = new Map<string, RegistroAtividade>()
+    for (const r of registros) {
+      const key = `${r.numero_protocolo}-${r.id_tipo_protocolo}`
+      const prev = map.get(key)
+      if (!prev) {
+        map.set(key, r)
+      } else {
+        const tPrev = new Date(prev.updated_at || prev.created_at).getTime()
+        const tNow = new Date(r.updated_at || r.created_at).getTime()
+        if (tNow >= tPrev) map.set(key, r)
+      }
+    }
+
+    const buildAtiv = (numero: number, id_tipo: number): ProtocoloAtividadeState => {
+      const r = map.get(`${numero}-${id_tipo}`)
+      return {
+        id_tipo,
+        registro: r
+          ? {
+              id_atividade: r.id_atividade,
+              id_sessao: r.id_sessao,
+              status: r.status,
+              nota: r.nota,
+              is_adaptada: r.is_adaptada,
+              sintese: r.sintese ?? null,
+            }
+          : null,
+      }
+    }
+
+    const lista: ProtocoloState[] = []
+    for (let n = 1; n <= quantidade; n += 1) {
+      lista.push({
+        numero: n,
+        ano_escolar: anoNome,
+        atividades: {
+          pesquisa: buildAtiv(n, TIPOS.PESQUISA),
+          complementar: buildAtiv(n, TIPOS.COMPLEMENTAR),
+          avaliacao: buildAtiv(n, TIPOS.AVALIACAO),
+          aso: buildAtiv(n, TIPOS.ASO),
+          recuperacao: buildAtiv(n, TIPOS.RECUPERACAO),
+        },
+      })
+    }
+    return lista
+  }, [])
+
+  const montarGrade = useCallback((args: {
+    anoNome: string
+    quantidade: number
+    protocolos: ProtocoloState[]
+    mediaFinalBanco: number | null
+  }): GradeData => {
+    const { anoNome, quantidade, protocolos: protos, mediaFinalBanco } = args
+
+    const nums = Array.from({ length: quantidade }, (_, i) => i + 1)
+
+    const notaAtividade = nums.map((n) => {
+      const p = protos.find((x) => x.numero === n)
+      return p ? parseNota(p.atividades.complementar?.registro?.nota) : null
+    })
+
+    const notaAvaliacaoEfetiva = nums.map((n) => {
+      const p = protos.find((x) => x.numero === n)
+      if (!p) return null
+      const aval = parseNota(p.atividades.avaliacao?.registro?.nota)
+      const rec = parseNota(p.atividades.recuperacao?.registro?.nota)
+      if (aval !== null && aval >= 6) return aval
+      if (aval !== null && aval < 6 && rec !== null) return rec
+      return aval
+    })
+
+    const mediaPorProtocolo = nums.map((_n, idx) => {
+
+      const a = notaAtividade[idx]
+      const b = notaAvaliacaoEfetiva[idx]
+      if (a === null || b === null) return null
+      return Number(((a + b) / 2).toFixed(2))
+    })
+
+    let mediaFinal = mediaFinalBanco
+    if (mediaFinal === null) {
+      const vals = mediaPorProtocolo.filter((x) => x !== null) as number[]
+      if (vals.length) {
+        const m = vals.reduce((acc, v) => acc + v, 0) / vals.length
+        mediaFinal = Number(m.toFixed(2))
+      }
+    }
+
+    return {
+      headers: [{ serie: anoNome, colspan: quantidade }],
+      protocolos: nums,
+      body: [
+        { etapa: 'NOTA ATIVIDADE', notas: notaAtividade },
+        { etapa: 'NOTA AVALIAÇÃO', notas: notaAvaliacaoEfetiva },
+        { etapa: 'MÉDIA', notas: mediaPorProtocolo },
+      ],
+      mediaFinal,
+    }
+  }, [])
+
+  const fetchData = useCallback(async () => {
+    if (!supabase) return
+    if (!Number.isFinite(idProgresso)) {
+      aviso('ID da ficha inválido.')
+      return
+    }
+
+    setLoading(true)
+    try {
+      // 1) Progresso + joins
+      const { data: prog, error: eProg } = await supabase
+        .from('progresso_aluno')
+        .select(
+          `
+          id_progresso,
+          id_matricula,
+          id_disciplina,
+          id_ano_escolar,
+          nota_final,
+          observacoes,
+          disciplinas(id_disciplina,nome_disciplina),
+          anos_escolares(id_ano_escolar,nome_ano),
+          matriculas(
+            id_matricula,
+            numero_inscricao,
+            modalidade,
+            ano_letivo,
+            data_matricula,
+            niveis_ensino(nome),
+            alunos(
+              id_aluno,
+              possui_necessidade_especial,
+              qual_necessidade_especial,
+              usuarios(name,email,foto_url)
+            )
+          )
+        `
+        )
+        .eq('id_progresso', idProgresso)
+        .maybeSingle()
+
+      if (eProg) throw eProg
+      if (!prog) throw new Error('Progresso não encontrado.')
+
+      const progRow = prog as any as ProgressoJoin
+      setProgresso(progRow)
+
+      // Observações
+      setObservacoes(String(progRow.observacoes ?? ''))
+
+      const anoNome = first(progRow.anos_escolares)?.nome_ano ?? '-'
+
+      // 2) Config: quantidade protocolos
+      const { data: cfg, error: eCfg } = await supabase
+        .from('config_disciplina_ano')
+        .select('quantidade_protocolos')
+        .eq('id_disciplina', Number(progRow.id_disciplina))
+        .eq('id_ano_escolar', Number(progRow.id_ano_escolar))
+        .maybeSingle()
+
+      if (eCfg) throw eCfg
+      const quantidade = Number(cfg?.quantidade_protocolos ?? 0)
+
+      // 3) Registros do progresso (para montar protocolos/grade)
+      const { data: regs, error: eRegs } = await supabase
+        .from('registros_atendimento')
+        .select(
+          `
+          id_atividade,
+          id_sessao,
+          id_progresso,
+          numero_protocolo,
+          id_tipo_protocolo,
+          status,
+          nota,
+          is_adaptada,
+          sintese,
+          created_at,
+          updated_at,
+          tipos_protocolo(nome)
+        `
+        )
+        .eq('id_progresso', idProgresso)
+        .order('numero_protocolo', { ascending: true })
+        .order('id_tipo_protocolo', { ascending: true })
+        .limit(20000)
+
+      if (eRegs) throw eRegs
+      const registros = (regs ?? []) as any as RegistroAtividade[]
+
+      // 4) Sessões (histórico)
+      const { data: sess, error: eSess } = await supabase
+        .from('sessoes_atendimento')
+        .select(
+          `
+          id_sessao,
+          hora_entrada,
+          hora_saida,
+          resumo_atividades,
+          professores(
+            usuarios(name)
+          ),
+          registros_atendimento(
+            id_atividade,
+            id_sessao,
+            id_progresso,
+            numero_protocolo,
+            id_tipo_protocolo,
+            status,
+            nota,
+            is_adaptada,
+            sintese,
+            created_at,
+            updated_at,
+            tipos_protocolo(nome)
+          )
+        `
+        )
+        .eq('id_progresso', idProgresso)
+        .order('hora_entrada', { ascending: false })
+        .limit(5000)
+
+      if (eSess) throw eSess
+
+      const sessoesMontadas: SessaoHistorico[] = (sess ?? []).map((s: any) => {
+        const profNome = first(first(s?.professores)?.usuarios)?.name ?? ''
+        const atvs = (s?.registros_atendimento ?? []) as any[]
+        const ordenadas = [...atvs].sort((a, b) => {
+          const na = Number(a.numero_protocolo) - Number(b.numero_protocolo)
+          if (na !== 0) return na
+          return Number(a.id_tipo_protocolo) - Number(b.id_tipo_protocolo)
+        })
+
+        return {
+          id_sessao: Number(s.id_sessao),
+          hora_entrada: String(s.hora_entrada),
+          hora_saida: s.hora_saida ? String(s.hora_saida) : null,
+          resumo_atividades: s.resumo_atividades ?? null,
+          professor_nome: String(profNome),
+          atividades: ordenadas as RegistroAtividade[],
+        }
+      })
+
+      setSessoes(sessoesMontadas)
+
+      // 5) Protocolos + Grade
+      const protos = montarProtocolos({ quantidade, anoNome, registros })
+      setProtocolos(protos)
+
+      const grade = montarGrade({
+        anoNome,
+        quantidade,
+        protocolos: protos,
+        mediaFinalBanco: progRow.nota_final,
+      })
+      setGradeData(grade)
+
+      // reset cache da sessão auto quando recarrega (pra evitar usar id antigo sem necessidade)
+      sessaoAutoRef.current = null
+    } catch (e: any) {
+      console.error(e)
+      erro(e?.message || 'Falha ao carregar dados da ficha.')
+    } finally {
+      if (mountedRef.current) setLoading(false)
+    }
+  }, [supabase, idProgresso, montarProtocolos, montarGrade, aviso, erro])
+
+  const getOrCreateSessaoParaInserir = useCallback(async (): Promise<number | null> => {
+    if (!supabase) return null
+    if (!progresso) return null
+
+    if (sessaoAutoRef.current) return sessaoAutoRef.current
+
+    // Se já existem sessões, usa a mais recente como “âncora” para novos inserts (igual backend do ZIP).
+    if (sessoes.length > 0) {
+      sessaoAutoRef.current = sessoes[0].id_sessao
+      return sessaoAutoRef.current
+    }
+
+    // Se não existe sessão, cria uma sessão “instantânea” (entrada=saída=agora) para permitir registros.
+    if (!usuario?.id) {
+      aviso('Usuário não identificado. Faça login novamente.')
+      return null
+    }
+
+    let profId = idProfessor
+    if (!profId) {
+      const { data, error: eProf } = await supabase
+        .from('professores')
+        .select('id_professor')
+        .eq('user_id', usuario.id)
+        .maybeSingle()
+      if (eProf) {
+        console.error(eProf)
+        aviso('Não foi possível identificar o professor para criar sessão automática.')
+        return null
+      }
+      profId = data?.id_professor ? Number(data.id_professor) : null
+      setIdProfessor(profId)
+    }
+
+    if (!profId) {
+      aviso('Seu usuário não está vinculado a um Professor.')
+      return null
+    }
+
+    const mat = first(progresso.matriculas) as any
+    const aluno = first(mat?.alunos) as any
+    const alunoId = Number(aluno?.id_aluno)
+    if (!Number.isFinite(alunoId)) {
+      aviso('Aluno não identificado para criar sessão automática.')
+      return null
+    }
+
+    const now = new Date().toISOString()
+    const { data: created, error: eIns } = await supabase
+      .from('sessoes_atendimento')
+      .insert({
+        id_aluno: alunoId,
+        id_professor: profId,
+        id_progresso: progresso.id_progresso,
+        hora_entrada: now,
+        hora_saida: now,
+        resumo_atividades: null,
+      })
+      .select('id_sessao')
+      .single()
+
+    if (eIns) {
+      console.error(eIns)
+      aviso('Falha ao criar sessão automática para registrar atividades.')
+      return null
+    }
+
+    const idSessao = Number(created?.id_sessao)
+    if (!Number.isFinite(idSessao)) return null
+
+    sessaoAutoRef.current = idSessao
+    return idSessao
+  }, [supabase, progresso, sessoes, usuario?.id, idProfessor, aviso])
+
+  const salvarAtividade = useCallback(
+    async (payload: {
+      id_atividade?: number
+      id_progresso: number
+      numero_protocolo: number
+      id_tipo_protocolo: number
+      status: string
+      nota: number | null
+      is_adaptada: boolean
+      sintese: string | null
+    }) => {
+      if (!supabase) return
+
+      try {
+        if (payload.id_atividade) {
+          const { error: eUp } = await supabase
+            .from('registros_atendimento')
+            .update({
+              status: payload.status,
+              nota: payload.nota,
+              is_adaptada: payload.is_adaptada,
+              sintese: payload.sintese,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id_atividade', payload.id_atividade)
+
+          if (eUp) throw eUp
+        } else {
+          const idSessao = await getOrCreateSessaoParaInserir()
+          if (!idSessao) throw new Error('Sem sessão para inserir atividade.')
+
+          const { error: eIns } = await supabase.from('registros_atendimento').insert({
+            id_sessao: idSessao,
+            id_progresso: payload.id_progresso,
+            numero_protocolo: payload.numero_protocolo,
+            id_tipo_protocolo: payload.id_tipo_protocolo,
+            status: payload.status,
+            nota: payload.nota,
+            is_adaptada: payload.is_adaptada,
+            sintese: payload.sintese,
+          })
+
+          if (eIns) throw eIns
+        }
+
+        sucesso('Atividade salva com sucesso!')
+      } catch (e: any) {
+        console.error(e)
+        erro(e?.message || 'Erro ao salvar atividade.')
+      }
+    },
+    [supabase, sucesso, erro, getOrCreateSessaoParaInserir]
+  )
+
+  const handleOpenHistoricoModal = (s: SessaoHistorico) => {
+    setSessaoParaEditar(s)
+    setHistoricoModalOpen(true)
+  }
+
+  const handleCloseHistoricoModal = () => {
+    setSessaoParaEditar(null)
+    setHistoricoModalOpen(false)
+  }
+
+  const handleSaveHistorico = useCallback(
+    async (atividadesEditadas: RegistroAtividade[]) => {
+      if (!supabase) return
+      try {
+        for (const a of atividadesEditadas) {
+          const { error: eUp } = await supabase
+            .from('registros_atendimento')
+            .update({
+              status: String(a.status || 'A fazer'),
+              nota: parseNota(a.nota),
+              is_adaptada: Boolean(a.is_adaptada),
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id_atividade', a.id_atividade)
+
+          if (eUp) throw eUp
+        }
+
+        sucesso('Atendimento do histórico atualizado com sucesso!')
+        await fetchData()
+      } catch (e: any) {
+        console.error(e)
+        erro('Ocorreu um erro ao salvar as alterações do histórico.')
+      }
+    },
+    [supabase, sucesso, erro, fetchData]
+  )
+
+  const handleOpenDeleteDialog = (s: SessaoHistorico) => {
+    setSessaoParaExcluir(s)
+    setDeleteDialogOpen(true)
+  }
+
+  const handleConfirmDelete = useCallback(async () => {
+    if (!supabase) return
+    if (!sessaoParaExcluir) return
+
+    setIsDeleting(true)
+    try {
+      // 1) Apaga atividades da sessão (FK impede deletar sessão direto)
+      const { error: eDelRegs } = await supabase
+        .from('registros_atendimento')
+        .delete()
+        .eq('id_sessao', sessaoParaExcluir.id_sessao)
+
+      if (eDelRegs) throw eDelRegs
+
+      // 2) Apaga sessão
+      const { error: eDelSess } = await supabase
+        .from('sessoes_atendimento')
+        .delete()
+        .eq('id_sessao', sessaoParaExcluir.id_sessao)
+
+      if (eDelSess) throw eDelSess
+
+      sucesso('Registro de atendimento excluído com sucesso.')
+      setDeleteDialogOpen(false)
+      setSessaoParaExcluir(null)
+      await fetchData()
+    } catch (e: any) {
+      console.error(e)
+      erro('Erro ao excluir registro.')
+    } finally {
+      if (mountedRef.current) setIsDeleting(false)
+    }
+  }, [supabase, sessaoParaExcluir, sucesso, erro, fetchData])
+
+  const handleSaveObservacoes = useCallback(
+    async (progressoId: number, novasObs: string) => {
+      if (!supabase) return
+      try {
+        const { error: eUp } = await supabase
+          .from('progresso_aluno')
+          .update({ observacoes: novasObs })
+          .eq('id_progresso', progressoId)
+
+        if (eUp) throw eUp
+
+        sucesso('Observações salvas com sucesso!')
+        await fetchData()
+      } catch (e: any) {
+        console.error(e)
+        erro(e?.message || 'Erro ao salvar observações.')
+      }
+    },
+    [supabase, sucesso, erro, fetchData]
+  )
+
+  useEffect(() => {
+    void carregarIdProfessor()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [supabase, usuario?.id])
+
+  useEffect(() => {
+    void fetchData()
+  }, [fetchData])
+
+  const anosCursados = useMemo(() => {
+    // No seu banco não existe um campo direto pra isso.
+    // Mantido aqui para ficar “igual ao ZIP” no cabeçalho.
+    return ''
+  }, [])
+
+  if (!supabase) {
+    return (
+      <Alert severity="warning" sx={{ m: 2 }}>
+        Supabase não configurado.
+      </Alert>
+    )
+  }
+
+  if (loading) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '80vh' }}>
+        <CircularProgress />
+      </Box>
+    )
+  }
+
+  if (!progresso) {
+    return (
+      <Alert severity="error" sx={{ m: 2 }}>
+        Dados insuficientes para carregar a ficha.
+      </Alert>
+    )
+  }
+
+  return (
+    <Box sx={{ maxWidth: 1400, mx: 'auto', p: 2 }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+        <IconButton onClick={() => navigate(-1)}>
+          <ArrowBackIcon />
+        </IconButton>
+        <Typography variant="h4" sx={{ fontWeight: 900, ml: 1 }}>
+          Ficha de Acompanhamento
+        </Typography>
+      </Box>
+
+      <Paper
+        variant="outlined"
+        sx={{
+          p: 1.5,
+          mb: 2,
+          borderRadius: 2,
+          borderColor: alpha(theme.palette.primary.main, theme.palette.mode === 'light' ? 0.2 : 0.35),
+        }}
+      >
+        <Typography variant="caption" color="text.secondary">
+          ID Progresso: <b>{progresso.id_progresso}</b> • Atualizado: <b>{formatDateTimeBR(new Date().toISOString())}</b>
+        </Typography>
+      </Paper>
+
+      <FichaHeader progresso={progresso} anosCursados={anosCursados} />
+
+      <GradeDeNotas gradeData={gradeData} />
+
+      <ProtocolosDeEstudo
+        protocolos={protocolos}
+        idProgresso={progresso.id_progresso}
+        onSaveAtividade={salvarAtividade}
+        onDataChange={fetchData}
+      />
+
+      <HistoricoAtendimentos
+        sessoes={sessoes}
+        onEdit={handleOpenHistoricoModal}
+        onDelete={handleOpenDeleteDialog}
+      />
+
+      <ObservacoesEditaveis
+        initialText={observacoes}
+        progressoId={progresso.id_progresso}
+        onSave={handleSaveObservacoes}
+      />
+
+      <EditHistoricoModal
+        open={historicoModalOpen}
+        onClose={handleCloseHistoricoModal}
+        sessao={sessaoParaEditar}
+        onSave={handleSaveHistorico}
+      />
+
+      <Dialog open={deleteDialogOpen} onClose={() => setDeleteDialogOpen(false)} fullScreen={isMobile}>
+        <DialogTitle sx={{ fontWeight: 900 }}>Confirmar Exclusão</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            Tem certeza que deseja excluir o registro de atendimento do dia{' '}
+            <b>{sessaoParaExcluir ? formatDateBR(sessaoParaExcluir.hora_entrada) : ''}</b>? Esta ação não pode ser desfeita.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeleteDialogOpen(false)}>Cancelar</Button>
+          <Button onClick={() => void handleConfirmDelete()} color="error" disabled={isDeleting}>
+            {isDeleting ? 'Excluindo...' : 'Excluir'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </Box>
+  )
+}

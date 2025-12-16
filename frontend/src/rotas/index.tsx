@@ -27,8 +27,11 @@ import SecretariaTurmaAlunosPage from '../paginas/painel-secretaria/SecretariaTu
 import SecretariaRelatoriosFichasPage from '../paginas/painel-secretaria/SecretariaRelatoriosFichasPage'
 import SecretariaImportarMatriculasPage from '../paginas/painel-secretaria/SecretariaImportarMatriculasPage'
 
-// NOVO: Página real de Atendimentos do Professor
+// Professor
 import ProfessorAtendimentosPage from '../paginas/painel-professor/ProfessorAtendimentosPage'
+
+// ✅ NOVO: Ficha (rota igual ao ZIP: /fichas/:id_progresso)
+import FichaAcompanhamentoPage from '../paginas/painel-professor/FichaAcompanhamentoPage'
 
 export const AppRoutes: React.FC = () => {
   // Inclui "carregando" para evitar redirecionar enquanto a sessão está sendo restaurada
@@ -39,8 +42,6 @@ export const AppRoutes: React.FC = () => {
 
   const autenticado = !!usuario
 
-  // Enquanto a autenticação estiver carregando, não monta as rotas protegidas
-  // Isso evita que um F5 em /perfil ou /config volte para "/"
   if (carregando) {
     return <PaginaSimples titulo="Carregando sessão, aguarde..." />
   }
@@ -56,17 +57,17 @@ export const AppRoutes: React.FC = () => {
       {/* ROTA PÚBLICA PARA REDEFINIÇÃO DE SENHA (link do e-mail do Supabase) */}
       <Route path="/nova-senha" element={<NovaSenhaPage />} />
 
-      {/* ROTAS PROTEGIDAS (PRECISAM DE USUÁRIO AUTENTICADO) */}
+      {/* ROTAS PROTEGIDAS */}
       <Route
         path="/"
         element={
           autenticado ? <RootLayout /> : <Navigate to="/login" replace />
         }
       >
-        {/* Dashboard geral (pode futuramente renderizar dashboards diferentes por papel) */}
+        {/* Dashboard geral */}
         <Route index element={<DashboardPage />} />
 
-        {/* SECRETARIA – Secretaria, Coordenação, Direção e Admin têm acesso */}
+        {/* SECRETARIA */}
         <Route
           path="secretaria"
           element={
@@ -82,12 +83,9 @@ export const AppRoutes: React.FC = () => {
             </RotaPorPapel>
           }
         >
-          {/* Por enquanto, mantém Matrículas como página padrão */}
           <Route index element={<Navigate to="matriculas" replace />} />
-
           <Route path="usuarios" element={<SecretariaUsuariosPage />} />
           <Route path="turmas" element={<SecretariaTurmasPage />} />
-          {/* NOVA ROTA: alunos da turma */}
           <Route
             path="turmas/:turmaId/alunos"
             element={<SecretariaTurmaAlunosPage />}
@@ -100,7 +98,6 @@ export const AppRoutes: React.FC = () => {
           <Route path="disciplinas" element={<SecretariaDisciplinasPage />} />
           <Route path="protocolos" element={<SecretariaProtocolosPage />} />
           <Route path="matriculas" element={<SecretariaMatriculasPage />} />
-          {/* ROTA TEMPORÁRIA: importar matrículas em lote (2025) */}
           <Route
             path="matriculas/importar"
             element={<SecretariaImportarMatriculasPage />}
@@ -115,7 +112,7 @@ export const AppRoutes: React.FC = () => {
           />
         </Route>
 
-        {/* PROFESSORES – painel do professor */}
+        {/* PROFESSORES */}
         <Route
           path="professores"
           element={
@@ -125,7 +122,6 @@ export const AppRoutes: React.FC = () => {
           }
         />
 
-        {/* ✅ TROCA AQUI: antes era <PaginaSimples titulo="Atendimentos" /> */}
         <Route
           path="professores/atendimentos"
           element={
@@ -144,7 +140,24 @@ export const AppRoutes: React.FC = () => {
           }
         />
 
-        {/* COORDENAÇÃO – tudo da secretaria + SASP e acompanhamento */}
+        {/* ✅ NOVO: FICHA (igual ZIP) */}
+        <Route
+          path="fichas/:id_progresso"
+          element={
+            <RotaPorPapel
+              papeisPermitidos={[
+                'PROFESSOR',
+                'ADMIN',
+                'COORDENACAO',
+                'DIRETOR',
+              ]}
+            >
+              <FichaAcompanhamentoPage />
+            </RotaPorPapel>
+          }
+        />
+
+        {/* COORDENAÇÃO */}
         <Route
           path="coordenacao"
           element={
@@ -170,7 +183,7 @@ export const AppRoutes: React.FC = () => {
           }
         />
 
-        {/* DIREÇÃO – visão macro + SASP e acompanhamento */}
+        {/* DIREÇÃO */}
         <Route
           path="direcao"
           element={
@@ -196,7 +209,7 @@ export const AppRoutes: React.FC = () => {
           }
         />
 
-        {/* ALUNOS – painel do aluno */}
+        {/* ALUNOS */}
         <Route
           path="alunos"
           element={
@@ -222,15 +235,15 @@ export const AppRoutes: React.FC = () => {
           }
         />
 
-        {/* PERFIL E CONFIGURAÇÕES (acesso para qualquer usuário logado) */}
+        {/* PERFIL E CONFIG */}
         <Route path="perfil" element={<PerfilPage />} />
         <Route path="config" element={<ConfiguracoesPage />} />
 
-        {/* ROTA CORINGA DENTRO DO LAYOUT – se chegar aqui, vai para Dashboard */}
+        {/* CORINGA */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
 
-      {/* ROTA CORINGA FORA DO LAYOUT – se não autenticado, joga para login */}
+      {/* CORINGA FORA */}
       <Route
         path="*"
         element={
