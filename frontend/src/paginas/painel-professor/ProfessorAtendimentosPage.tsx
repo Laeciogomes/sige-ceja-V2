@@ -964,6 +964,7 @@ setConfigsPorSala(mapaFinal)
     async (termo: string) => {
       if (!supabase) return
       const t = termo.trim()
+
       if (t.length < 2) {
         setOpcoesAluno([])
         return
@@ -971,78 +972,46 @@ setConfigsPorSala(mapaFinal)
 
       setBuscandoAlunos(true)
       try {
-        // ✅ RA (robusto): funciona se numero_inscricao for TEXT ou INTEGER/BIGINT
+        // ✅ Busca NUMÉRICA: serve tanto para RA (numero_inscricao) quanto para ID interno (id_matricula)
         if (isBuscaPorRA(t)) {
           const digitos = extrairDigitos(t)
-          if (digitos.length < 1) {
+          if (digitos.length < 2) {
             setOpcoesAluno([])
             return
           }
 
-          // Candidatos com zeros à esquerda (caso o RA esteja salvo como TEXT com padding)
-          const candidatosSet = new Set<string>()
-          candidatosSet.add(digitos)
+          const selectSql = `
+            id_matricula,
+            numero_inscricao,
+            id_aluno,
+            ano_letivo,
+            data_matricula,
+            alunos (
+              id_aluno,
+              usuarios ( name, email, foto_url )
+            )
+          `
 
-          // tenta alguns tamanhos comuns (ajuste se seu RA tiver tamanho fixo diferente)
-          const maxLen = Math.min(Math.max(digitos.length + 1, 12), 20)
-          for (let len = digitos.length + 1; len <= maxLen; len += 1) {
-            candidatosSet.add(digitos.padStart(len, '0'))
+          // 1) sempre tenta RA por "contém"
+          const orParts: string[] = [`numero_inscricao.ilike.%${digitos}%`]
+
+          // 2) também tenta pelo id_matricula (PK) quando fizer sentido (evita overflow/bagunça)
+          const idMat = Number(digitos)
+          if (Number.isFinite(idMat) && idMat > 0 && idMat <= 2147483647) {
+            orParts.push(`id_matricula.eq.${idMat}`)
           }
 
-          const candidatos = Array.from(candidatosSet)
-
-          // 1) tentativa principal: IN/eq (funciona para coluna numérica e texto)
-          const resEq = await supabase
+          const { data, error: err } = await supabase
             .from('matriculas')
-            .select(
-              `
-              id_matricula,
-              numero_inscricao,
-              id_aluno,
-              ano_letivo,
-              data_matricula,
-              alunos (
-                id_aluno,
-                usuarios ( name, email, foto_url )
-              )
-            `
-            )
-            .in('numero_inscricao', candidatos)
+            .select(selectSql)
+            .or(orParts.join(','))
             .order('ano_letivo', { ascending: false })
             .order('data_matricula', { ascending: false })
             .limit(25)
 
-          if (resEq.error) throw resEq.error
+          if (err) throw err
 
-          let rows = resEq.data ?? []
-
-          // 2) fallback opcional: tenta prefixo/contém SOMENTE se a coluna for TEXT
-          // (se for numérica, isso retorna error; a gente IGNORA)
-          if (rows.length === 0) {
-            const resLike = await supabase
-              .from('matriculas')
-              .select(
-                `
-                id_matricula,
-                numero_inscricao,
-                id_aluno,
-                ano_letivo,
-                data_matricula,
-                alunos (
-                  id_aluno,
-                  usuarios ( name, email, foto_url )
-                )
-              `
-              )
-              .ilike('numero_inscricao', `%${digitos}%`)
-              .order('ano_letivo', { ascending: false })
-              .order('data_matricula', { ascending: false })
-              .limit(25)
-
-            if (!resLike.error) rows = resLike.data ?? []
-          }
-
-          const opts: AlunoBuscaOption[] = rows.map((m: any) => {
+          const opts: AlunoBuscaOption[] = (data ?? []).map((m: any) => {
             const aluno = first(m?.alunos) as any
             const u = first(aluno?.usuarios) as any
 
@@ -1060,8 +1029,7 @@ setConfigsPorSala(mapaFinal)
           return
         }
 
-
-        // Nome
+        // Nome (mantém igual ao seu)
         const { data, error: err } = await supabase
           .from('alunos')
           .select(
@@ -1113,6 +1081,7 @@ setConfigsPorSala(mapaFinal)
     },
     [supabase, erro]
   )
+
 
   // ======= carregar fichas do aluno (progresso) =======
   const carregarFichasDoAlunoNaSala = useCallback(
