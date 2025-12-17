@@ -228,6 +228,13 @@ function renderNumeroInscricao(option: { numero_inscricao?: string | null }): st
   return ra ? `RA: ${ra}` : 'RA: -'
 }
 
+/**
+ * ✅ Detecta se o usuário está digitando algo "numérico" (RA/CPF)
+ */
+function isBuscaNumerica(input: string): boolean {
+  const t = input.trim()
+  return t.length > 0 && /^[\d.\-\s]+$/.test(t)
+}
 
 function extrairDigitos(input: string): string {
   return input.replace(/\D/g, '')
@@ -1122,7 +1129,9 @@ export default function ProfessorAtendimentosPage() {
 
       try {
         const digitos = extrairDigitos(t)
-        const temLetras = /[A-Za-zÀ-ÿ]/.test(t)
+        const numerico = isBuscaNumerica(t)
+        const temLetras = !numerico
+
 
         // helper: pega matrícula “mais recente”
         const pickMatriculaTop = (mats: any[]) => {
