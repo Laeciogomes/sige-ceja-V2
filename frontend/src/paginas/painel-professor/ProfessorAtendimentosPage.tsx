@@ -46,6 +46,7 @@ import WarningAmberIcon from '@mui/icons-material/WarningAmber'
 import SchoolIcon from '@mui/icons-material/School'
 import MeetingRoomIcon from '@mui/icons-material/MeetingRoom'
 import DescriptionIcon from '@mui/icons-material/Description'
+import SwapHorizIcon from '@mui/icons-material/SwapHoriz'
 
 // Contextos
 import { useSupabase } from '../../contextos/SupabaseContext'
@@ -143,6 +144,12 @@ type RegistroView = {
   tipo_nome?: string
 }
 
+type ProfessorDestinoOption = {
+  id_professor: number
+  nome: string
+  foto_url?: string | null
+}
+
 // helpers
 function first<T>(v: T | T[] | null | undefined): T | null {
   if (!v) return null
@@ -222,10 +229,9 @@ function renderNumeroInscricao(option: { numero_inscricao?: string | null }): st
 }
 
 /**
- * ✅ Detecta se o usuário está tentando buscar por RA
- * (permite digitar só números, ou com pontos/traços/espaços)
+ * ✅ Detecta se o usuário está digitando algo "numérico" (RA/CPF)
  */
-function isBuscaPorRA(input: string): boolean {
+function isBuscaNumerica(input: string): boolean {
   const t = input.trim()
   return t.length > 0 && /^[\d.\-\s]+$/.test(t)
 }
@@ -237,7 +243,7 @@ function extrairDigitos(input: string): string {
 /**
  * ✅ Escolhe um progresso "melhor" para uma disciplina, ignorando ano na escolha:
  * - prioriza progresso ABERTO
- * - depois prioriza maior id_ano_escolar
+ * - depois maior id_ano_escolar
  * - depois maior id_progresso
  */
 function escolherProgressoPorDisciplina(lista: ProgressoOption[], idDisciplina: number): ProgressoOption | null {
@@ -295,6 +301,11 @@ export default function ProfessorAtendimentosPage() {
     }
   }, [])
 
+  const nomeProfessorAtual = useMemo(() => {
+    const n = (usuario as any)?.name || (usuario as any)?.nome || (usuario as any)?.email
+    return n ? String(n) : 'Professor'
+  }, [usuario])
+
   // ======= abrir ficha =======
   const abrirFichaAcompanhamento = useCallback(
     (idProgresso: number | null | undefined) => {
@@ -329,6 +340,9 @@ export default function ProfessorAtendimentosPage() {
   const [filtroDataFim, setFiltroDataFim] = useState<string>(hojeISODateLocal())
   const [filtroTexto, setFiltroTexto] = useState<string>('')
   const [filtroSalaId, setFiltroSalaId] = useState<number | 'todas'>('todas')
+
+  // ✅ 1) Histórico oculto por padrão (só mostra se marcar ou ao filtrar período != hoje)
+  const [mostrarHistorico, setMostrarHistorico] = useState<boolean>(false)
 
   const [sessoes, setSessoes] = useState<SessaoView[]>([])
   const [resumoPorSessao, setResumoPorSessao] = useState<Record<number, string>>({})
@@ -402,6 +416,156 @@ export default function ProfessorAtendimentosPage() {
   const [registros, setRegistros] = useState<RegistroView[]>([])
   const [salvandoSessao, setSalvandoSessao] = useState(false)
 
+  // ======= 3) Transferência =======
+  const [dlgTransferir, setDlgTransferir] = useState(false)
+  const [carregandoProfSala, setCarregandoProfSala] = useState(false)
+  const [professoresSala, setProfessoresSala] = useState<ProfessorDestinoOption[]>([])
+  const [professorDestino, setProfessorDestino] = useState<ProfessorDestinoOption | null>(null)
+  const [transferindo, setTransferindo] = useState(false)
+
+  const abrirDialogTransferencia = useCallback(async () => {
+    if (!supabase) return
+    if (!idProfessor) return
+    if (!sessaoAtual?.id_sala) {
+      aviso('Esta sessão não tem sala vinculada.')
+      return
+    }
+
+    setDlgTransferir(true)
+    setCarregandoProfSala(true)
+    setProfessorDestino(null)
+    setProfessoresSala([])
+
+    try {
+      const { data, error } = await supabase
+        .from('professores_salas')
+        .select(
+          `
+          id_professor,
+          ativo,
+          professores (
+            id_professor,
+            user_id,
+            usuarios ( name, foto_url )
+          )
+        `
+        )
+        .eq('id_sala', sessaoAtual.id_sala)
+        .eq('ativo', true)
+
+      if (error) throw error
+
+      const lista: ProfessorDestinoOption[] = (data ?? [])
+        .map((r: any) => {
+          const p = first(r?.professores) as any
+          const u = first(p?.usuarios) as any
+          return {
+            id_professor: Number(r.id_professor),
+            nome: u?.name ? String(u.name) : `Professor #${r.id_professor}`,
+            foto_url: u?.foto_url ?? null,
+          }
+        })
+        .filter((p: ProfessorDestinoOption) => p.id_professor !== idProfessor)
+        .sort((a, b) => a.nome.localeCompare(b.nome))
+
+      setProfessoresSala(lista)
+
+      if (lista.length === 0) {
+        aviso('Não há outro professor ativo nesta sala para transferir.')
+      }
+    } catch (e) {
+      console.error(e)
+      erro('Falha ao carregar professores da sala.')
+    } finally {
+      if (mountedRef.current) setCarregandoProfSala(false)
+    }
+  }, [supabase, idProfessor, sessaoAtual?.id_sala, aviso, erro])
+
+  const confirmarTransferencia = useCallback(async () => {
+    if (!supabase) return
+    if (!idProfessor) return
+    if (!sessaoAtual) return
+    if (sessaoAtual.hora_saida) {
+      info('Esta sessão já está encerrada.')
+      return
+    }
+    if (!sessaoAtual.id_sala) {
+      aviso('Sessão sem sala vinculada.')
+      return
+    }
+    if (!professorDestino?.id_professor) {
+      aviso('Selecione o professor de destino.')
+      return
+    }
+
+    setTransferindo(true)
+    try {
+      const agoraISO = new Date().toISOString()
+      const agoraBR = formatarDataHoraBR(agoraISO)
+
+      const linhaFechamento = `[TRANSFERÊNCIA] Encerrado por transferência para ${professorDestino.nome} em ${agoraBR}.`
+      const resumoFechamento = [sessaoAtual.resumo_atividades?.trim(), linhaFechamento].filter(Boolean).join('\n')
+
+      // 1) encerra a sessão atual (professor que transferiu)
+      const { error: errUp } = await supabase
+        .from('sessoes_atendimento')
+        .update({
+          hora_saida: agoraISO,
+          resumo_atividades: resumoFechamento,
+        })
+        .eq('id_sessao', sessaoAtual.id_sessao)
+
+      if (errUp) throw errUp
+
+      // 2) cria nova sessão para o professor de destino
+      const linhaAbertura = `[TRANSFERÊNCIA] Recebido por transferência de ${nomeProfessorAtual} em ${agoraBR}.`
+      const { error: errIns } = await supabase.from('sessoes_atendimento').insert({
+        id_aluno: sessaoAtual.id_aluno,
+        id_professor: professorDestino.id_professor,
+        id_sala: sessaoAtual.id_sala,
+        id_progresso: sessaoAtual.id_progresso,
+        hora_entrada: agoraISO,
+        hora_saida: null,
+        resumo_atividades: linhaAbertura,
+      })
+
+      if (errIns) throw errIns
+
+      sucesso('Atendimento transferido com sucesso.')
+
+      // ✅ mostra histórico automaticamente após transferência (para ver o encerrado)
+      setMostrarHistorico(true)
+
+      // fecha dialogs
+      setDlgTransferir(false)
+      setDlgSessao(false)
+      setSessaoAtual(null)
+      setRegistros([])
+
+      // recarrega lista do professor atual (ele verá como "encerrado")
+      if (idProfessor) {
+        await carregarSessoes(idProfessor, filtroDataInicio, filtroDataFim)
+      }
+    } catch (e: any) {
+      console.error(e)
+      erro(`Falha ao transferir: ${e?.message || 'erro desconhecido'}`)
+    } finally {
+      if (mountedRef.current) setTransferindo(false)
+    }
+  }, [
+    supabase,
+    idProfessor,
+    sessaoAtual,
+    professorDestino,
+    nomeProfessorAtual,
+    aviso,
+    info,
+    sucesso,
+    erro,
+    filtroDataInicio,
+    filtroDataFim,
+  ])
+
   const [dlgRegistro, setDlgRegistro] = useState(false)
   const [registroEditandoId, setRegistroEditandoId] = useState<number | null>(null)
   const [regNumero, setRegNumero] = useState<string>('')
@@ -415,8 +579,7 @@ export default function ProfessorAtendimentosPage() {
 
   /**
    * ✅ Mapa de limite de protocolos por (SALA + DISCIPLINA)
-    * Como agora não dividimos por ano, usamos o TOTAL (SOMA) de quantidade_protocolos por sala+disciplina.
-
+   * Como agora não dividimos por ano, usamos o TOTAL (SOMA) de quantidade_protocolos por sala+disciplina.
    */
   const mapaLimitePorSalaDisciplina = useMemo(() => {
     const m = new Map<string, number>()
@@ -533,81 +696,71 @@ export default function ProfessorAtendimentosPage() {
       setStatusDisciplinas((statusDiscRes.data ?? []) as StatusDisciplinaAluno[])
 
       /**
-       * ✅ Monta configs por sala, MAS agora "junta" por disciplina (não divide por ano).
-       * Regra: para cada disciplina dentro da sala, pega a config com MAIOR quantidade_protocolos.
+       * ✅ Monta configs por sala, "juntando" por disciplina (não divide por ano)
+       * Regra correta: para cada disciplina dentro da sala, SOMA quantidade_protocolos de todos os anos.
+       * Mantém id_ano_escolar como o MAIOR (mais recente) apenas para usar como "ano representativo" na criação de progresso.
        */
-      /**
- * ✅ Monta configs por sala, "juntando" por disciplina (não divide por ano)
- * Regra correta: para cada disciplina dentro da sala, SOMA quantidade_protocolos de todos os anos.
- * Mantém id_ano_escolar como o MAIOR (mais recente) apenas para usar como "ano representativo" na criação de progresso.
- */
-const tmp: Record<number, Map<number, SalaDisciplinaAnoOption>> = {}
+      const tmp: Record<number, Map<number, SalaDisciplinaAnoOption>> = {}
 
-;(cfgSalaRes.data ?? []).forEach((row: any) => {
-  const salaId = Number(row.id_sala)
-  const cfg = first(row?.config_disciplina_ano) as any
-  if (!cfg?.id_config) return
+      ;(cfgSalaRes.data ?? []).forEach((row: any) => {
+        const salaId = Number(row.id_sala)
+        const cfg = first(row?.config_disciplina_ano) as any
+        if (!cfg?.id_config) return
 
-  const disc = first(cfg?.disciplinas) as any
-  const ano = first(cfg?.anos_escolares) as any
+        const disc = first(cfg?.disciplinas) as any
+        const ano = first(cfg?.anos_escolares) as any
 
-  const disciplinaNome = disc?.nome_disciplina
-    ? String(disc.nome_disciplina)
-    : `Disciplina #${cfg.id_disciplina}`
+        const disciplinaNome = disc?.nome_disciplina ? String(disc.nome_disciplina) : `Disciplina #${cfg.id_disciplina}`
+        const anoNome = ano?.nome_ano ? String(ano.nome_ano) : `Ano #${cfg.id_ano_escolar}`
+        const qtd = Number(cfg.quantidade_protocolos ?? 0)
 
-  const anoNome = ano?.nome_ano ? String(ano.nome_ano) : `Ano #${cfg.id_ano_escolar}`
-  const qtd = Number(cfg.quantidade_protocolos ?? 0)
-
-  const opt: SalaDisciplinaAnoOption = {
-    id_config: Number(cfg.id_config),
-    id_disciplina: Number(cfg.id_disciplina),
-    id_ano_escolar: Number(cfg.id_ano_escolar),
-    quantidade_protocolos: qtd,
-    disciplina_nome: disciplinaNome,
-    ano_nome: anoNome,
-    label: '', // define depois
-  }
-
-  if (!tmp[salaId]) tmp[salaId] = new Map<number, SalaDisciplinaAnoOption>()
-
-  const atual = tmp[salaId].get(opt.id_disciplina)
-
-  if (!atual) {
-    tmp[salaId].set(opt.id_disciplina, opt)
-    return
-  }
-
-  const soma = Number(atual.quantidade_protocolos ?? 0) + Number(opt.quantidade_protocolos ?? 0)
-
-  // mantém um ano "representativo" (o maior), só para criação de progresso
-  const usarOptComoRepresentativo = opt.id_ano_escolar > atual.id_ano_escolar
-
-  tmp[salaId].set(opt.id_disciplina, {
-    ...atual,
-    quantidade_protocolos: soma,
-    ...(usarOptComoRepresentativo
-      ? {
-          id_ano_escolar: opt.id_ano_escolar,
-          ano_nome: opt.ano_nome,
-          id_config: opt.id_config,
+        const opt: SalaDisciplinaAnoOption = {
+          id_config: Number(cfg.id_config),
+          id_disciplina: Number(cfg.id_disciplina),
+          id_ano_escolar: Number(cfg.id_ano_escolar),
+          quantidade_protocolos: qtd,
+          disciplina_nome: disciplinaNome,
+          ano_nome: anoNome,
+          label: '',
         }
-      : {}),
-  })
-})
 
-const mapaFinal: Record<number, SalaDisciplinaAnoOption[]> = {}
-Object.entries(tmp).forEach(([salaIdStr, mapDisc]) => {
-  const salaId = Number(salaIdStr)
-  const lista = Array.from(mapDisc.values()).map((o) => ({
-    ...o,
-    label: `${o.disciplina_nome} (protocolos: ${o.quantidade_protocolos})`,
-  }))
-  lista.sort((a, b) => a.label.localeCompare(b.label))
-  mapaFinal[salaId] = lista
-})
+        if (!tmp[salaId]) tmp[salaId] = new Map<number, SalaDisciplinaAnoOption>()
 
-setConfigsPorSala(mapaFinal)
+        const atual = tmp[salaId].get(opt.id_disciplina)
 
+        if (!atual) {
+          tmp[salaId].set(opt.id_disciplina, opt)
+          return
+        }
+
+        const soma = Number(atual.quantidade_protocolos ?? 0) + Number(opt.quantidade_protocolos ?? 0)
+        const usarOptComoRepresentativo = opt.id_ano_escolar > atual.id_ano_escolar
+
+        tmp[salaId].set(opt.id_disciplina, {
+          ...atual,
+          quantidade_protocolos: soma,
+          ...(usarOptComoRepresentativo
+            ? {
+                id_ano_escolar: opt.id_ano_escolar,
+                ano_nome: opt.ano_nome,
+                id_config: opt.id_config,
+              }
+            : {}),
+        })
+      })
+
+      const mapaFinal: Record<number, SalaDisciplinaAnoOption[]> = {}
+      Object.entries(tmp).forEach(([salaIdStr, mapDisc]) => {
+        const salaId = Number(salaIdStr)
+        const lista = Array.from(mapDisc.values()).map((o) => ({
+          ...o,
+          label: `${o.disciplina_nome} (protocolos: ${o.quantidade_protocolos})`,
+        }))
+        lista.sort((a, b) => a.label.localeCompare(b.label))
+        mapaFinal[salaId] = lista
+      })
+
+      setConfigsPorSala(mapaFinal)
     } catch (e: any) {
       console.error(e)
       erro('Falha ao carregar dados-base do atendimento.')
@@ -736,6 +889,7 @@ setConfigsPorSala(mapaFinal)
         if (errUp) throw errUp
 
         sucesso('Atendimento finalizado.')
+        setMostrarHistorico(true) // ajuda a visualizar encerrados, sem “sumir”
         await carregarSessoes(idProfessor, filtroDataInicio, filtroDataFim)
       } catch (e: any) {
         console.error(e)
@@ -865,6 +1019,7 @@ setConfigsPorSala(mapaFinal)
       if (errUp) throw errUp
 
       sucesso('Sessão encerrada com sucesso.')
+      setMostrarHistorico(true)
       setSessaoAtual((old) => (old ? { ...old, hora_saida: agora } : old))
     } catch (e: any) {
       console.error(e)
@@ -897,7 +1052,7 @@ setConfigsPorSala(mapaFinal)
       const ativaId = obterIdStatusMatriculaAtiva()
       const { data, error: err } = await supabase
         .from('matriculas')
-        .select('id_matricula,id_status_matricula,ano_letivo,data_matricula')
+        .select('id_matricula,id_status_matricula,ano_letivo,data_matricula,numero_inscricao')
         .eq('id_aluno', alunoId)
         .order('ano_letivo', { ascending: false })
         .order('data_matricula', { ascending: false })
@@ -959,32 +1114,33 @@ setConfigsPorSala(mapaFinal)
     [supabase, obterIdStatusDisciplinaDefault]
   )
 
-  // ======= buscar aluno (nome ou RA) =======
+  // ======= 2) buscar aluno (nome / RA / CPF) =======
   const buscarAlunos = useCallback(
-  async (termo: string) => {
-    if (!supabase) return
+    async (termo: string) => {
+      if (!supabase) return
 
-    const t = termo.trim()
-    if (t.length < 2) {
-      setOpcoesAluno([])
-      return
-    }
+      const t = termo.trim()
+      if (t.length < 2) {
+        setOpcoesAluno([])
+        return
+      }
 
-    setBuscandoAlunos(true)
+      setBuscandoAlunos(true)
 
-    try {
-      const isRA = isBuscaPorRA(t)
-      const digitos = extrairDigitos(t)
+      try {
+        const numerico = isBuscaNumerica(t)
+        const digitos = extrairDigitos(t)
 
-      let query = supabase
-        .from('alunos')
-        .select(
-          `
+        let query = supabase
+          .from('alunos')
+          .select(
+            `
           id_aluno,
           usuarios!inner (
             name,
             email,
-            foto_url
+            foto_url,
+            cpf
           ),
           matriculas (
             id_matricula,
@@ -993,58 +1149,67 @@ setConfigsPorSala(mapaFinal)
             data_matricula
           )
         `
-        )
-        .limit(25)
+          )
+          .limit(25)
 
-      if (isRA && digitos.length >= 2) {
-        // ✅ BUSCA POR RA (SEGURA COM RLS)
-        query = query.ilike('matriculas.numero_inscricao', `%${digitos}%`)
-      } else {
-        // ✅ BUSCA POR NOME
-        query = query.ilike('usuarios.name', `%${t}%`)
-      }
+        if (numerico) {
+          // ✅ Se digitou números: tenta RA ou CPF (e aceita com máscara ou só dígitos)
+          // - RA: matriculas.numero_inscricao
+          // - CPF: usuarios.cpf
+          // OBS: como no banco o CPF pode estar com máscara, fazemos OR com input original e com dígitos
+          const orParts: string[] = []
+          if (digitos.length >= 2) {
+            orParts.push(`matriculas.numero_inscricao.ilike.%${digitos}%`)
+            orParts.push(`usuarios.cpf.ilike.%${digitos}%`)
+          }
+          orParts.push(`usuarios.cpf.ilike.%${t}%`)
 
-      const { data, error } = await query
-
-      if (error) throw error
-
-      const opts: AlunoBuscaOption[] = (data ?? []).map((a: any) => {
-        const u = first(a?.usuarios)
-        const mats = (a?.matriculas ?? [])
-          .map((m: any) => ({
-            id_matricula: Number(m.id_matricula),
-            numero_inscricao: m.numero_inscricao ? String(m.numero_inscricao) : null,
-            ano_letivo: Number(m.ano_letivo ?? 0),
-            data_matricula: m.data_matricula ? String(m.data_matricula) : '1900-01-01',
-          }))
-          .sort((x: any, y: any) => {
-            if (y.ano_letivo !== x.ano_letivo) return y.ano_letivo - x.ano_letivo
-            return new Date(y.data_matricula).getTime() - new Date(x.data_matricula).getTime()
-          })
-
-        const top = mats[0] ?? null
-
-        return {
-          id_aluno: Number(a.id_aluno),
-          nome: u?.name ?? `Aluno #${a.id_aluno}`,
-          email: u?.email ?? null,
-          foto_url: u?.foto_url ?? null,
-          id_matricula: top?.id_matricula ?? null,
-          numero_inscricao: top?.numero_inscricao ?? null,
+          query = query.or(orParts.join(','))
+        } else {
+          // ✅ Nome
+          query = query.ilike('usuarios.name', `%${t}%`)
         }
-      })
 
-      setOpcoesAluno(opts)
-    } catch (e) {
-      console.error(e)
-      erro('Falha ao buscar alunos.')
-    } finally {
-      if (mountedRef.current) setBuscandoAlunos(false)
-    }
-  },
-  [supabase, erro]
-)
+        const { data, error } = await query
 
+        if (error) throw error
+
+        const opts: AlunoBuscaOption[] = (data ?? []).map((a: any) => {
+          const u = first(a?.usuarios)
+          const mats = (a?.matriculas ?? [])
+            .map((m: any) => ({
+              id_matricula: Number(m.id_matricula),
+              numero_inscricao: m.numero_inscricao ? String(m.numero_inscricao) : null,
+              ano_letivo: Number(m.ano_letivo ?? 0),
+              data_matricula: m.data_matricula ? String(m.data_matricula) : '1900-01-01',
+            }))
+            .sort((x: any, y: any) => {
+              if (y.ano_letivo !== x.ano_letivo) return y.ano_letivo - x.ano_letivo
+              return new Date(y.data_matricula).getTime() - new Date(x.data_matricula).getTime()
+            })
+
+          const top = mats[0] ?? null
+
+          return {
+            id_aluno: Number(a.id_aluno),
+            nome: (u as any)?.name ?? `Aluno #${a.id_aluno}`,
+            email: (u as any)?.email ?? null,
+            foto_url: (u as any)?.foto_url ?? null,
+            id_matricula: top?.id_matricula ?? null,
+            numero_inscricao: top?.numero_inscricao ?? null,
+          }
+        })
+
+        setOpcoesAluno(opts)
+      } catch (e) {
+        console.error(e)
+        erro('Falha ao buscar alunos.')
+      } finally {
+        if (mountedRef.current) setBuscandoAlunos(false)
+      }
+    },
+    [supabase, erro]
+  )
 
   // ======= carregar fichas do aluno (progresso) =======
   const carregarFichasDoAlunoNaSala = useCallback(
@@ -1098,7 +1263,6 @@ setConfigsPorSala(mapaFinal)
             disciplina_nome: disciplinaNome,
             ano_nome: anoNome,
             status_nome: statusNome,
-            // ✅ não precisa dividir por ano na lista (mantém o ano no objeto, mas o label fica simples)
             label: `${disciplinaNome}${statusNome ? ` • ${statusNome}` : ''}`,
           }
         })
@@ -1107,14 +1271,11 @@ setConfigsPorSala(mapaFinal)
 
         const abertasRaw = todos.filter((p) => isStatusDisciplinaAberta(p.status_nome ?? ''))
 
-        // ✅ conta disciplinas abertas (únicas), não “anos”
         const qtdAbertasDisc = new Set(abertasRaw.map((p) => p.id_disciplina)).size
         setQtdDisciplinasAbertas(qtdAbertasDisc)
 
-        // ✅ filtro das disciplinas que existem na sala (sem dividir por ano)
         const setDisciplinasSala = new Set((configsPorSala[salaId] ?? []).map((c) => c.id_disciplina))
 
-        // ✅ junta abertas por disciplina e mantém 1 por disciplina
         const abertasPorDisc = agruparAbertasPorDisciplina(abertasRaw)
         const abertasNaSala = abertasPorDisc.filter((p) => setDisciplinasSala.has(p.id_disciplina))
         setFichasAbertasNaSala(abertasNaSala)
@@ -1149,7 +1310,6 @@ setConfigsPorSala(mapaFinal)
       return
     }
 
-    // reset
     setAlunoInput('')
     setOpcoesAluno([])
     setAlunoSelecionado(null)
@@ -1243,10 +1403,8 @@ setConfigsPorSala(mapaFinal)
             return
           }
 
-          // ✅ como agora não divide por ano, procura qualquer progresso daquela disciplina
           const existente = escolherProgressoPorDisciplina(progressosAlunoTodos, configSelecionada.id_disciplina)
 
-          // ✅ Se NÃO existe progresso => precisa confirmar “abrir ficha”
           if (!existente && !opts?.confirmarCriacaoFicha) {
             if (!podeAbrirNovaDisciplina) {
               erro('Este aluno já possui 3 ou mais disciplinas abertas. Apenas ADMIN/DIRETOR/COORDENAÇÃO pode abrir nova disciplina.')
@@ -1263,7 +1421,6 @@ setConfigsPorSala(mapaFinal)
             }
           }
 
-          // cria (ou reaproveita) com o ano representativo da config “melhor” da disciplina na sala
           idProgresso = existente
             ? existente.id_progresso
             : await garantirProgresso(idMatricula, configSelecionada.id_disciplina, configSelecionada.id_ano_escolar)
@@ -1376,12 +1533,18 @@ setConfigsPorSala(mapaFinal)
     ]
   )
 
-  // ======= filtros =======
+  // ======= 1) filtros =======
   const aplicarFiltros = useCallback(async () => {
     if (!idProfessor) {
       aviso('Professor não identificado.')
       return
     }
+
+    // ✅ se período não for “hoje”, ativa histórico automaticamente
+    const hoje = hojeISODateLocal()
+    const isHoje = filtroDataInicio === hoje && filtroDataFim === hoje
+    if (!isHoje) setMostrarHistorico(true)
+
     await carregarSessoes(idProfessor, filtroDataInicio, filtroDataFim)
   }, [idProfessor, filtroDataInicio, filtroDataFim, carregarSessoes, aviso])
 
@@ -1391,6 +1554,10 @@ setConfigsPorSala(mapaFinal)
     setFiltroDataFim(hoje)
     setFiltroTexto('')
     setFiltroSalaId('todas')
+
+    // ✅ ao clicar Hoje, esconde histórico de novo
+    setMostrarHistorico(false)
+
     if (idProfessor) await carregarSessoes(idProfessor, hoje, hoje)
   }, [idProfessor, carregarSessoes])
 
@@ -1589,7 +1756,7 @@ setConfigsPorSala(mapaFinal)
             Atendimentos
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            Inicie atendimentos por sala e lance protocolos (estilo SIGE‑CEJA V2).
+            Inicie atendimentos por sala e lance protocolos (estilo SIGE-CEJA V2).
           </Typography>
         </Box>
 
@@ -1684,10 +1851,26 @@ setConfigsPorSala(mapaFinal)
             <Button variant="outlined" onClick={resetarParaHoje} startIcon={<WarningAmberIcon />}>
               Hoje
             </Button>
-            <Button variant="contained" onClick={aplicarFiltros} startIcon={<CheckCircleOutlineIcon />} disabled={!idProfessor}>
+            <Button
+              variant="contained"
+              onClick={aplicarFiltros}
+              startIcon={<CheckCircleOutlineIcon />}
+              disabled={!idProfessor}
+            >
               Aplicar
             </Button>
           </Stack>
+        </Stack>
+
+        {/* ✅ controle do histórico */}
+        <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems="center" sx={{ mt: 1 }}>
+          <FormControlLabel
+            control={<Switch checked={mostrarHistorico} onChange={(e) => setMostrarHistorico(e.target.checked)} />}
+            label="Mostrar histórico"
+          />
+          <Typography variant="caption" color="text.secondary">
+            Por padrão, a tela mostra apenas atendimentos em andamento. O histórico aparece somente quando você quiser.
+          </Typography>
         </Stack>
 
         {carregandoSessoes && <LinearProgress sx={{ mt: 2 }} />}
@@ -1741,8 +1924,13 @@ setConfigsPorSala(mapaFinal)
                             borderColor: 'primary.main',
                           }}
                         />
-                        <Box sx={{ minWidth: 0 }}>
-                          <Typography variant="h6" noWrap sx={{ fontWeight: 700 }} title={s.aluno_nome}>
+                        <Box sx={{ minWidth: 0, flex: 1 }}>
+                          {/* ✅ 4) sem cortar */}
+                          <Typography
+                            variant="h6"
+                            sx={{ fontWeight: 700, overflowWrap: 'anywhere', lineHeight: 1.2 }}
+                            title={s.aluno_nome}
+                          >
                             {s.aluno_nome}
                           </Typography>
                           <Typography variant="body2" color="text.secondary">
@@ -1831,107 +2019,114 @@ setConfigsPorSala(mapaFinal)
             )}
           </Paper>
 
-          {/* Histórico */}
-          <Paper variant="outlined" sx={{ p: 2, borderRadius: 2, flex: 1 }}>
-            <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1}>
-              <Typography variant="h6" sx={{ fontWeight: 900 }}>
-                Histórico ({sessoesHistorico.length})
-              </Typography>
-              <Chip size="small" label="Encerrados" color="success" />
-            </Stack>
+          {/* ✅ 1) Histórico só aparece se mostrarHistorico = true */}
+          {mostrarHistorico ? (
+            <Paper variant="outlined" sx={{ p: 2, borderRadius: 2, flex: 1 }}>
+              <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1}>
+                <Typography variant="h6" sx={{ fontWeight: 900 }}>
+                  Histórico ({sessoesHistorico.length})
+                </Typography>
+                <Chip size="small" label="Encerrados" color="success" />
+              </Stack>
 
-            <Divider sx={{ my: 1.5 }} />
+              <Divider sx={{ my: 1.5 }} />
 
-            {carregandoBase ? (
-              <Box sx={{ py: 4, display: 'flex', justifyContent: 'center' }}>
-                <CircularProgress />
-              </Box>
-            ) : sessoesHistorico.length === 0 ? (
-              <Alert severity="info">Nenhum atendimento encerrado no filtro atual.</Alert>
-            ) : (
-              <Box sx={cardGridSx}>
-                {sessoesHistorico.map((s) => (
-                  <Card
-                    key={s.id_sessao}
-                    elevation={1}
-                    onClick={() => void abrirSessao(s)}
-                    sx={{
-                      display: 'flex',
-                      flexDirection: 'column',
-                      height: '100%',
-                      borderRadius: 2,
-                      cursor: 'pointer',
-                      transition: 'transform 0.2s, box-shadow 0.2s',
-                      '&:hover': { transform: 'translateY(-4px)', boxShadow: 4 },
-                    }}
-                  >
-                    <CardContent sx={{ flexGrow: 1 }}>
-                      <Stack direction="row" spacing={2} alignItems="center" sx={{ mb: 1.5 }}>
-                        <Avatar src={s.aluno_foto_url ?? undefined} alt={s.aluno_nome} sx={{ width: 52, height: 52 }} />
-                        <Box sx={{ minWidth: 0 }}>
-                          <Typography variant="subtitle1" noWrap sx={{ fontWeight: 800 }} title={s.aluno_nome}>
-                            {s.aluno_nome}
-                          </Typography>
-                          <Typography variant="body2" color="text.secondary">
-                            {renderNumeroInscricao({ numero_inscricao: s.numero_inscricao })}
-                          </Typography>
-                        </Box>
-                      </Stack>
+              {carregandoBase ? (
+                <Box sx={{ py: 4, display: 'flex', justifyContent: 'center' }}>
+                  <CircularProgress />
+                </Box>
+              ) : sessoesHistorico.length === 0 ? (
+                <Alert severity="info">Nenhum atendimento encerrado no filtro atual.</Alert>
+              ) : (
+                <Box sx={cardGridSx}>
+                  {sessoesHistorico.map((s) => (
+                    <Card
+                      key={s.id_sessao}
+                      elevation={1}
+                      onClick={() => void abrirSessao(s)}
+                      sx={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        height: '100%',
+                        borderRadius: 2,
+                        cursor: 'pointer',
+                        transition: 'transform 0.2s, box-shadow 0.2s',
+                        '&:hover': { transform: 'translateY(-4px)', boxShadow: 4 },
+                      }}
+                    >
+                      <CardContent sx={{ flexGrow: 1 }}>
+                        <Stack direction="row" spacing={2} alignItems="center" sx={{ mb: 1.5 }}>
+                          <Avatar src={s.aluno_foto_url ?? undefined} alt={s.aluno_nome} sx={{ width: 52, height: 52 }} />
+                          <Box sx={{ minWidth: 0, flex: 1 }}>
+                            {/* ✅ 4) sem cortar */}
+                            <Typography
+                              variant="subtitle1"
+                              sx={{ fontWeight: 800, overflowWrap: 'anywhere', lineHeight: 1.2 }}
+                              title={s.aluno_nome}
+                            >
+                              {s.aluno_nome}
+                            </Typography>
+                            <Typography variant="body2" color="text.secondary">
+                              {renderNumeroInscricao({ numero_inscricao: s.numero_inscricao })}
+                            </Typography>
+                          </Box>
+                        </Stack>
 
-                      <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ mb: 1 }}>
-                        <Chip label={s.disciplina_nome ?? '-'} color="primary" variant="outlined" size="small" />
-                        <Chip label={s.ano_nome ?? '-'} variant="outlined" size="small" />
-                        <Chip label={s.sala_nome ?? '-'} variant="outlined" size="small" icon={<MeetingRoomIcon />} />
-                      </Stack>
+                        <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ mb: 1 }}>
+                          <Chip label={s.disciplina_nome ?? '-'} color="primary" variant="outlined" size="small" />
+                          <Chip label={s.ano_nome ?? '-'} variant="outlined" size="small" />
+                          <Chip label={s.sala_nome ?? '-'} variant="outlined" size="small" icon={<MeetingRoomIcon />} />
+                        </Stack>
 
-                      <Typography variant="caption" color="text.secondary" display="block">
-                        {formatarDataHoraBR(s.hora_entrada)} → {formatarDataHoraBR(s.hora_saida)}
-                      </Typography>
-
-                      {s.resumo_atividades ? (
-                        <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                          {s.resumo_atividades}
+                        <Typography variant="caption" color="text.secondary" display="block">
+                          {formatarDataHoraBR(s.hora_entrada)} → {formatarDataHoraBR(s.hora_saida)}
                         </Typography>
-                      ) : null}
-                    </CardContent>
 
-                    <Divider />
+                        {s.resumo_atividades ? (
+                          <Typography variant="body2" color="text.secondary" sx={{ mt: 1, whiteSpace: 'pre-wrap' }}>
+                            {s.resumo_atividades}
+                          </Typography>
+                        ) : null}
+                      </CardContent>
 
-                    <CardActions sx={{ p: 1.2 }}>
-                      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ width: '100%' }}>
-                        <Button
-                          size="small"
-                          variant="outlined"
-                          startIcon={<VisibilityIcon />}
-                          sx={{ flex: 1 }}
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            void abrirSessao(s)
-                          }}
-                        >
-                          Abrir
-                        </Button>
+                      <Divider />
 
-                        <Button
-                          size="small"
-                          variant="outlined"
-                          startIcon={<DescriptionIcon />}
-                          sx={{ flex: 1 }}
-                          disabled={!s.id_progresso}
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            abrirFichaAcompanhamento(s.id_progresso)
-                          }}
-                        >
-                          Abrir Ficha
-                        </Button>
-                      </Stack>
-                    </CardActions>
-                  </Card>
-                ))}
-              </Box>
-            )}
-          </Paper>
+                      <CardActions sx={{ p: 1.2 }}>
+                        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ width: '100%' }}>
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            startIcon={<VisibilityIcon />}
+                            sx={{ flex: 1 }}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              void abrirSessao(s)
+                            }}
+                          >
+                            Abrir
+                          </Button>
+
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            startIcon={<DescriptionIcon />}
+                            sx={{ flex: 1 }}
+                            disabled={!s.id_progresso}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              abrirFichaAcompanhamento(s.id_progresso)
+                            }}
+                          >
+                            Abrir Ficha
+                          </Button>
+                        </Stack>
+                      </CardActions>
+                    </Card>
+                  ))}
+                </Box>
+              )}
+            </Paper>
+          ) : null}
         </Stack>
       </Paper>
 
@@ -1969,7 +2164,7 @@ setConfigsPorSala(mapaFinal)
                       <MeetingRoomIcon />
                     </Avatar>
                     <Box sx={{ minWidth: 0 }}>
-                      <Typography variant="subtitle1" sx={{ fontWeight: 900 }} noWrap title={s.nome}>
+                      <Typography variant="subtitle1" sx={{ fontWeight: 900, overflowWrap: 'anywhere' }} title={s.nome}>
                         {s.nome}
                       </Typography>
                       <Typography variant="body2" color="text.secondary">
@@ -2002,7 +2197,7 @@ setConfigsPorSala(mapaFinal)
         <DialogContent dividers>
           <Stack spacing={2}>
             <Alert severity="info">
-              Busque o aluno por <strong>nome</strong> ou <strong>RA</strong>. A sala e as disciplinas vêm da sua lotação.
+              Busque o aluno por <strong>nome</strong>, <strong>RA</strong> ou <strong>CPF</strong>. A sala e as disciplinas vêm da sua lotação.
             </Alert>
 
             <Paper
@@ -2056,7 +2251,7 @@ setConfigsPorSala(mapaFinal)
                   <Stack direction="row" spacing={1.5} alignItems="center" sx={{ width: '100%' }}>
                     <Avatar src={option.foto_url ?? undefined} alt={option.nome} sx={{ width: 36, height: 36 }} />
                     <Box sx={{ minWidth: 0, flex: 1 }}>
-                      <Typography noWrap sx={{ fontWeight: 800 }}>
+                      <Typography sx={{ fontWeight: 800, overflowWrap: 'anywhere' }}>
                         {option.nome}
                       </Typography>
                       <Typography variant="caption" color="text.secondary">
@@ -2069,8 +2264,8 @@ setConfigsPorSala(mapaFinal)
               renderInput={(params) => (
                 <TextField
                   {...params}
-                  label="Aluno (nome) ou Matrícula (RA)"
-                  placeholder="Ex.: Maria / 202500123 / 6089"
+                  label="Aluno (nome) / Matrícula (RA) / CPF"
+                  placeholder="Ex.: Maria / 202500123 / 123.456.789-00"
                   InputProps={{
                     ...params.InputProps,
                     endAdornment: (
@@ -2216,7 +2411,7 @@ setConfigsPorSala(mapaFinal)
         </DialogActions>
       </Dialog>
 
-      {/* ✅ Confirmar abertura de ficha (quando vai criar progresso novo) */}
+      {/* ✅ Confirmar abertura de ficha */}
       <Dialog open={dlgConfirmAbrirFicha} onClose={() => setDlgConfirmAbrirFicha(false)} fullWidth maxWidth="sm" fullScreen={isMobile}>
         <DialogTitle sx={{ fontWeight: 900 }}>
           Confirmar abertura de ficha
@@ -2291,7 +2486,7 @@ setConfigsPorSala(mapaFinal)
               >
                 <Stack spacing={1}>
                   <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
-                    <Typography variant="h6" sx={{ fontWeight: 900 }}>
+                    <Typography variant="h6" sx={{ fontWeight: 900, overflowWrap: 'anywhere' }}>
                       {sessaoAtual.aluno_nome}
                     </Typography>
                     <Chip
@@ -2300,8 +2495,14 @@ setConfigsPorSala(mapaFinal)
                       color={sessaoAtual.hora_saida ? 'success' : 'warning'}
                     />
                     <Chip size="small" label={sessaoAtual.sala_nome ?? '-'} variant="outlined" />
-                    <Chip size="small" label={`${sessaoAtual.disciplina_nome ?? '-'} — ${sessaoAtual.ano_nome ?? '-'}`} variant="outlined" />
-                    {limiteProtocolosSessao != null ? <Chip size="small" label={`Protocolos: 1..${limiteProtocolosSessao}`} variant="outlined" /> : null}
+                    <Chip
+                      size="small"
+                      label={`${sessaoAtual.disciplina_nome ?? '-'} — ${sessaoAtual.ano_nome ?? '-'}`}
+                      variant="outlined"
+                    />
+                    {limiteProtocolosSessao != null ? (
+                      <Chip size="small" label={`Protocolos: 1..${limiteProtocolosSessao}`} variant="outlined" />
+                    ) : null}
                   </Stack>
 
                   <Typography variant="body2" color="text.secondary">
@@ -2317,7 +2518,23 @@ setConfigsPorSala(mapaFinal)
                   />
 
                   <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} justifyContent="flex-end">
-                    <Button variant="outlined" startIcon={<DescriptionIcon />} disabled={!sessaoAtual.id_progresso} onClick={() => abrirFichaAcompanhamento(sessaoAtual.id_progresso)}>
+                    {/* ✅ 3) Transferir só aparece se houver sala e sessão aberta */}
+                    {sessaoAtual.id_sala && !sessaoAtual.hora_saida ? (
+                      <Button
+                        variant="outlined"
+                        startIcon={<SwapHorizIcon />}
+                        onClick={() => void abrirDialogTransferencia()}
+                      >
+                        Transferir
+                      </Button>
+                    ) : null}
+
+                    <Button
+                      variant="outlined"
+                      startIcon={<DescriptionIcon />}
+                      disabled={!sessaoAtual.id_progresso}
+                      onClick={() => abrirFichaAcompanhamento(sessaoAtual.id_progresso)}
+                    >
                       Abrir Ficha
                     </Button>
 
@@ -2325,7 +2542,12 @@ setConfigsPorSala(mapaFinal)
                       Salvar resumo
                     </Button>
 
-                    <Button variant="contained" color="warning" onClick={() => void encerrarSessaoAgora()} disabled={salvandoSessao || Boolean(sessaoAtual.hora_saida)}>
+                    <Button
+                      variant="contained"
+                      color="warning"
+                      onClick={() => void encerrarSessaoAgora()}
+                      disabled={salvandoSessao || Boolean(sessaoAtual.hora_saida)}
+                    >
                       Encerrar sessão
                     </Button>
                   </Stack>
@@ -2336,7 +2558,12 @@ setConfigsPorSala(mapaFinal)
                 <Typography variant="subtitle1" sx={{ fontWeight: 900 }}>
                   Protocolos / Atividades
                 </Typography>
-                <Button variant="contained" startIcon={<AddIcon />} onClick={abrirDialogNovoRegistro} disabled={!sessaoAtual.id_progresso}>
+                <Button
+                  variant="contained"
+                  startIcon={<AddIcon />}
+                  onClick={abrirDialogNovoRegistro}
+                  disabled={!sessaoAtual.id_progresso}
+                >
                   Adicionar protocolo
                 </Button>
               </Stack>
@@ -2351,7 +2578,12 @@ setConfigsPorSala(mapaFinal)
                     const chip = statusChipProps(r.status)
                     return (
                       <Paper key={r.id_atividade} variant="outlined" sx={{ p: 1.5, borderRadius: 2 }}>
-                        <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} alignItems={{ md: 'center' }} justifyContent="space-between">
+                        <Stack
+                          direction={{ xs: 'column', md: 'row' }}
+                          spacing={1}
+                          alignItems={{ md: 'center' }}
+                          justifyContent="space-between"
+                        >
                           <Box sx={{ minWidth: 0 }}>
                             <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
                               <Typography variant="subtitle2" sx={{ fontWeight: 900 }}>
@@ -2364,7 +2596,7 @@ setConfigsPorSala(mapaFinal)
                             </Stack>
 
                             {r.sintese ? (
-                              <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                              <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, whiteSpace: 'pre-wrap' }}>
                                 {r.sintese}
                               </Typography>
                             ) : null}
@@ -2403,6 +2635,64 @@ setConfigsPorSala(mapaFinal)
         </DialogActions>
       </Dialog>
 
+      {/* ✅ 3) Dialog: Transferir atendimento */}
+      <Dialog open={dlgTransferir} onClose={() => setDlgTransferir(false)} fullWidth maxWidth="sm" fullScreen={isMobile}>
+        <DialogTitle sx={{ fontWeight: 900 }}>
+          Transferir atendimento
+          <IconButton onClick={() => setDlgTransferir(false)} sx={{ position: 'absolute', right: 8, top: 8 }}>
+            <CloseIcon />
+          </IconButton>
+        </DialogTitle>
+
+        <DialogContent dividers>
+          {!sessaoAtual ? (
+            <Alert severity="warning">Sessão não selecionada.</Alert>
+          ) : (
+            <Stack spacing={2}>
+              <Alert severity="info">
+                Ao transferir, o sistema <strong>encerra esta sessão</strong> para você e <strong>abre uma nova</strong> para o professor escolhido,
+                com nova hora de entrada. Tudo fica registrado no <code>resumo_atividades</code>.
+              </Alert>
+
+              {carregandoProfSala ? <LinearProgress /> : null}
+
+              <Autocomplete
+                options={professoresSala}
+                value={professorDestino}
+                onChange={(_, v) => setProfessorDestino(v)}
+                getOptionLabel={(o) => o?.nome ?? ''}
+                noOptionsText={carregandoProfSala ? 'Carregando...' : 'Nenhum professor disponível na sala'}
+                renderOption={(props, option) => (
+                  <Box component="li" {...props} key={option.id_professor}>
+                    <Stack direction="row" spacing={1.5} alignItems="center" sx={{ width: '100%' }}>
+                      <Avatar src={option.foto_url ?? undefined} alt={option.nome} sx={{ width: 34, height: 34 }} />
+                      <Typography sx={{ fontWeight: 800, overflowWrap: 'anywhere' }}>{option.nome}</Typography>
+                    </Stack>
+                  </Box>
+                )}
+                renderInput={(params) => <TextField {...params} label="Professor destino (mesma sala)" />}
+              />
+
+              <Typography variant="body2" color="text.secondary">
+                <strong>Aluno:</strong> {sessaoAtual.aluno_nome} • {renderNumeroInscricao({ numero_inscricao: sessaoAtual.numero_inscricao })}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                <strong>Sala:</strong> {sessaoAtual.sala_nome ?? '-'} • <strong>Disciplina:</strong> {sessaoAtual.disciplina_nome ?? '-'}
+              </Typography>
+            </Stack>
+          )}
+        </DialogContent>
+
+        <DialogActions>
+          <Button variant="outlined" onClick={() => setDlgTransferir(false)} disabled={transferindo}>
+            Cancelar
+          </Button>
+          <Button variant="contained" onClick={() => void confirmarTransferencia()} disabled={transferindo || !professorDestino}>
+            {transferindo ? 'Transferindo...' : 'Confirmar transferência'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
       {/* Dialog: Registro */}
       <Dialog open={dlgRegistro} onClose={fecharDialogRegistro} fullWidth maxWidth="md" fullScreen={isMobile}>
         <DialogTitle sx={{ fontWeight: 900 }}>
@@ -2424,7 +2714,12 @@ setConfigsPorSala(mapaFinal)
               <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
                 <FormControl fullWidth size="small">
                   <InputLabel id="reg-numero-label">Nº do protocolo</InputLabel>
-                  <Select labelId="reg-numero-label" label="Nº do protocolo" value={regNumero} onChange={(e) => setRegNumero(String(e.target.value))}>
+                  <Select
+                    labelId="reg-numero-label"
+                    label="Nº do protocolo"
+                    value={regNumero}
+                    onChange={(e) => setRegNumero(String(e.target.value))}
+                  >
                     <MenuItem value="">
                       <em>Selecione</em>
                     </MenuItem>
@@ -2443,7 +2738,12 @@ setConfigsPorSala(mapaFinal)
 
                 <FormControl fullWidth size="small">
                   <InputLabel id="reg-tipo-label">Tipo de protocolo</InputLabel>
-                  <Select labelId="reg-tipo-label" label="Tipo de protocolo" value={regTipoId} onChange={(e) => setRegTipoId(String(e.target.value))}>
+                  <Select
+                    labelId="reg-tipo-label"
+                    label="Tipo de protocolo"
+                    value={regTipoId}
+                    onChange={(e) => setRegTipoId(String(e.target.value))}
+                  >
                     <MenuItem value="">
                       <em>Selecione</em>
                     </MenuItem>
@@ -2459,19 +2759,40 @@ setConfigsPorSala(mapaFinal)
               <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
                 <FormControl fullWidth size="small">
                   <InputLabel id="reg-status-label">Status</InputLabel>
-                  <Select labelId="reg-status-label" label="Status" value={regStatus} onChange={(e) => setRegStatus(String(e.target.value))}>
+                  <Select
+                    labelId="reg-status-label"
+                    label="Status"
+                    value={regStatus}
+                    onChange={(e) => setRegStatus(String(e.target.value))}
+                  >
                     <MenuItem value="A fazer">A fazer</MenuItem>
                     <MenuItem value="Em andamento">Em andamento</MenuItem>
                     <MenuItem value="Concluída">Concluída</MenuItem>
                   </Select>
                 </FormControl>
 
-                <TextField fullWidth size="small" label="Nota (opcional)" value={regNota} onChange={(e) => setRegNota(e.target.value)} placeholder="Ex.: 8.5" />
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Nota (opcional)"
+                  value={regNota}
+                  onChange={(e) => setRegNota(e.target.value)}
+                  placeholder="Ex.: 8.5"
+                />
               </Stack>
 
-              <FormControlLabel control={<Switch checked={regAdaptada} onChange={(e) => setRegAdaptada(e.target.checked)} />} label="Atividade adaptada" />
+              <FormControlLabel
+                control={<Switch checked={regAdaptada} onChange={(e) => setRegAdaptada(e.target.checked)} />}
+                label="Atividade adaptada"
+              />
 
-              <TextField label="Síntese / Observação" value={regSintese} onChange={(e) => setRegSintese(e.target.value)} minRows={3} multiline />
+              <TextField
+                label="Síntese / Observação"
+                value={regSintese}
+                onChange={(e) => setRegSintese(e.target.value)}
+                minRows={3}
+                multiline
+              />
 
               {confirmDeleteId ? <Alert severity="warning">Confirma excluir o registro #{confirmDeleteId}?</Alert> : null}
             </Stack>
@@ -2484,7 +2805,12 @@ setConfigsPorSala(mapaFinal)
               <Button variant="outlined" onClick={cancelarExcluirRegistro}>
                 Cancelar
               </Button>
-              <Button variant="contained" color="error" onClick={() => void confirmarExcluirRegistro()} disabled={salvandoRegistro}>
+              <Button
+                variant="contained"
+                color="error"
+                onClick={() => void confirmarExcluirRegistro()}
+                disabled={salvandoRegistro}
+              >
                 {salvandoRegistro ? 'Excluindo...' : 'Excluir'}
               </Button>
             </>
@@ -2494,7 +2820,12 @@ setConfigsPorSala(mapaFinal)
                 Cancelar
               </Button>
               {registroEditandoId ? (
-                <Button variant="outlined" color="error" onClick={() => setConfirmDeleteId(registroEditandoId)} startIcon={<DeleteOutlineIcon />}>
+                <Button
+                  variant="outlined"
+                  color="error"
+                  onClick={() => setConfirmDeleteId(registroEditandoId)}
+                  startIcon={<DeleteOutlineIcon />}
+                >
                   Excluir
                 </Button>
               ) : null}
