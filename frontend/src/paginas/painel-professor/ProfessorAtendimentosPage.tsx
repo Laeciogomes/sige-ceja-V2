@@ -228,13 +228,6 @@ function renderNumeroInscricao(option: { numero_inscricao?: string | null }): st
   return ra ? `RA: ${ra}` : 'RA: -'
 }
 
-/**
- * ✅ Detecta se o usuário está digitando algo "numérico" (RA/CPF)
- */
-function isBuscaNumerica(input: string): boolean {
-  const t = input.trim()
-  return t.length > 0 && /^[\d.\-\s]+$/.test(t)
-}
 
 function extrairDigitos(input: string): string {
   return input.replace(/\D/g, '')
@@ -1114,7 +1107,7 @@ export default function ProfessorAtendimentosPage() {
     [supabase, obterIdStatusDisciplinaDefault]
   )
 
-  // ======= 2) buscar aluno (nome / RA / CPF) =======
+  // ======= 2) buscar aluno (nome / RA / CPF) — SOLUÇÃO DEFINITIVA =======
   const buscarAlunos = useCallback(
     async (termo: string) => {
       if (!supabase) return
@@ -1128,79 +1121,166 @@ export default function ProfessorAtendimentosPage() {
       setBuscandoAlunos(true)
 
       try {
-        const numerico = isBuscaNumerica(t)
         const digitos = extrairDigitos(t)
+        const temLetras = /[A-Za-zÀ-ÿ]/.test(t)
 
-        let query = supabase
-          .from('alunos')
-          .select(
-            `
-          id_aluno,
-          usuarios!inner (
-            name,
-            email,
-            foto_url,
-            cpf
-          ),
-          matriculas (
-            id_matricula,
-            numero_inscricao,
-            ano_letivo,
-            data_matricula
-          )
-        `
-          )
-          .limit(25)
-
-        if (numerico) {
-          // ✅ Se digitou números: tenta RA ou CPF (e aceita com máscara ou só dígitos)
-          // - RA: matriculas.numero_inscricao
-          // - CPF: usuarios.cpf
-          // OBS: como no banco o CPF pode estar com máscara, fazemos OR com input original e com dígitos
-          const orParts: string[] = []
-          if (digitos.length >= 2) {
-            orParts.push(`matriculas.numero_inscricao.ilike.%${digitos}%`)
-            orParts.push(`usuarios.cpf.ilike.%${digitos}%`)
-          }
-          orParts.push(`usuarios.cpf.ilike.%${t}%`)
-
-          query = query.or(orParts.join(','))
-        } else {
-          // ✅ Nome
-          query = query.ilike('usuarios.name', `%${t}%`)
-        }
-
-        const { data, error } = await query
-
-        if (error) throw error
-
-        const opts: AlunoBuscaOption[] = (data ?? []).map((a: any) => {
-          const u = first(a?.usuarios)
-          const mats = (a?.matriculas ?? [])
+        // helper: pega matrícula “mais recente”
+        const pickMatriculaTop = (mats: any[]) => {
+          const lista = (mats ?? [])
             .map((m: any) => ({
               id_matricula: Number(m.id_matricula),
               numero_inscricao: m.numero_inscricao ? String(m.numero_inscricao) : null,
               ano_letivo: Number(m.ano_letivo ?? 0),
               data_matricula: m.data_matricula ? String(m.data_matricula) : '1900-01-01',
             }))
-            .sort((x: any, y: any) => {
-              if (y.ano_letivo !== x.ano_letivo) return y.ano_letivo - x.ano_letivo
-              return new Date(y.data_matricula).getTime() - new Date(x.data_matricula).getTime()
+            .sort((a, b) => {
+              if (b.ano_letivo !== a.ano_letivo) return b.ano_letivo - a.ano_letivo
+              return new Date(b.data_matricula).getTime() - new Date(a.data_matricula).getTime()
             })
 
-          const top = mats[0] ?? null
+          return lista[0] ?? null
+        }
+
+        // helper: mapeia resultado vindo de "alunos"
+        const mapFromAlunos = (data: any[]): AlunoBuscaOption[] => {
+          return (data ?? []).map((a: any) => {
+            const u = first(a?.usuarios) as any
+            const top = pickMatriculaTop(a?.matriculas ?? [])
+
+            return {
+              id_aluno: Number(a.id_aluno),
+              nome: u?.name ?? `Aluno #${a.id_aluno}`,
+              email: u?.email ?? null,
+              foto_url: u?.foto_url ?? null,
+              id_matricula: top?.id_matricula ?? null,
+              numero_inscricao: top?.numero_inscricao ?? null,
+            }
+          })
+        }
+
+        // helper: remove duplicados por aluno (mantém o primeiro)
+        const dedupeByAluno = (items: AlunoBuscaOption[]) => {
+          const m = new Map<number, AlunoBuscaOption>()
+          items.forEach((it) => {
+            if (!m.has(it.id_aluno)) m.set(it.id_aluno, it)
+          })
+          return Array.from(m.values())
+        }
+
+        // ========= 1) BUSCA POR NOME =========
+        if (temLetras) {
+          const { data, error } = await supabase
+            .from('alunos')
+            .select(
+              `
+              id_aluno,
+              usuarios!inner ( name, email, foto_url, cpf ),
+              matriculas ( id_matricula, numero_inscricao, ano_letivo, data_matricula )
+            `
+            )
+            .ilike('usuarios.name', `%${t}%`)
+            .limit(25)
+
+          if (error) throw error
+
+          setOpcoesAluno(dedupeByAluno(mapFromAlunos(data ?? [])))
+          return
+        }
+
+        // ========= 2) BUSCA NUMÉRICA (RA / CPF) =========
+        if (digitos.length < 2) {
+          setOpcoesAluno([])
+          return
+        }
+
+        // ✅ (A) RA: busca DEFINITIVA direto em matriculas.numero_inscricao
+        const { data: mats, error: errMats } = await supabase
+          .from('matriculas')
+          .select(
+            `
+            id_matricula,
+            id_aluno,
+            numero_inscricao,
+            ano_letivo,
+            data_matricula,
+            alunos!inner (
+              id_aluno,
+              usuarios!inner ( name, email, foto_url, cpf )
+            )
+          `
+          )
+          .ilike('numero_inscricao', `%${digitos}%`)
+          .order('ano_letivo', { ascending: false })
+          .order('data_matricula', { ascending: false })
+          .limit(25)
+
+        if (errMats) throw errMats
+
+        const optsRA: AlunoBuscaOption[] = (mats ?? []).map((m: any) => {
+          const aluno = first(m?.alunos) as any
+          const u = first(aluno?.usuarios) as any
 
           return {
-            id_aluno: Number(a.id_aluno),
-            nome: (u as any)?.name ?? `Aluno #${a.id_aluno}`,
-            email: (u as any)?.email ?? null,
-            foto_url: (u as any)?.foto_url ?? null,
-            id_matricula: top?.id_matricula ?? null,
-            numero_inscricao: top?.numero_inscricao ?? null,
+            id_aluno: Number(m.id_aluno ?? aluno?.id_aluno),
+            nome: u?.name ?? `Aluno #${m.id_aluno ?? aluno?.id_aluno}`,
+            email: u?.email ?? null,
+            foto_url: u?.foto_url ?? null,
+            id_matricula: Number(m.id_matricula),
+            numero_inscricao: m.numero_inscricao ? String(m.numero_inscricao) : null,
           }
         })
 
-        setOpcoesAluno(opts)
+        // ✅ (B) CPF: só tenta se o usuário digitou bastante dígito (evita sujeira)
+        let optsCPF: AlunoBuscaOption[] = []
+        if (digitos.length >= 6) {
+          const { data: cpfData1, error: errCpf1 } = await supabase
+            .from('alunos')
+            .select(
+              `
+              id_aluno,
+              usuarios!inner ( name, email, foto_url, cpf ),
+              matriculas ( id_matricula, numero_inscricao, ano_letivo, data_matricula )
+            `
+            )
+            .ilike('usuarios.cpf', `%${t}%`)
+            .limit(25)
+
+          if (errCpf1) throw errCpf1
+
+          const { data: cpfData2, error: errCpf2 } =
+            t !== digitos
+              ? await supabase
+                  .from('alunos')
+                  .select(
+                    `
+                    id_aluno,
+                    usuarios!inner ( name, email, foto_url, cpf ),
+                    matriculas ( id_matricula, numero_inscricao, ano_letivo, data_matricula )
+                  `
+                  )
+                  .ilike('usuarios.cpf', `%${digitos}%`)
+                  .limit(25)
+              : { data: [], error: null as any }
+
+          if (errCpf2) throw errCpf2
+
+          optsCPF = dedupeByAluno([...mapFromAlunos(cpfData1 ?? []), ...mapFromAlunos(cpfData2 ?? [])])
+        }
+
+        // merge + ranking (RA exato primeiro)
+        const merged = dedupeByAluno([...optsRA, ...optsCPF])
+
+        const rankRA = (o: AlunoBuscaOption) => {
+          const ra = extrairDigitos(o.numero_inscricao ?? '')
+          if (ra === digitos) return 0
+          if (ra.startsWith(digitos) || ra.endsWith(digitos)) return 1
+          if (ra.includes(digitos)) return 2
+          return 3
+        }
+
+        merged.sort((a, b) => rankRA(a) - rankRA(b) || a.nome.localeCompare(b.nome))
+
+        setOpcoesAluno(merged)
       } catch (e) {
         console.error(e)
         erro('Falha ao buscar alunos.')
@@ -1210,6 +1290,7 @@ export default function ProfessorAtendimentosPage() {
     },
     [supabase, erro]
   )
+
 
   // ======= carregar fichas do aluno (progresso) =======
   const carregarFichasDoAlunoNaSala = useCallback(
