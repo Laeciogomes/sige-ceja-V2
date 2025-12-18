@@ -31,6 +31,9 @@ import SecretariaImportarMatriculasPage from '../paginas/painel-secretaria/Secre
 import ProfessorAtendimentosPage from '../paginas/painel-professor/ProfessorAtendimentosPage'
 import AcompanhamentoPage from '../paginas/painel-professor/AcompanhamentoPage'
 
+// SASP (Coordenação/Direção)
+import SaspPage from '../paginas/painel-coordenacao/SaspPage'
+
 // ✅ Ficha (rota igual ao ZIP: /fichas/:id_progresso)
 import FichaAcompanhamentoPage from '../paginas/painel-professor/FichaAcompanhamentoPage'
 
@@ -169,7 +172,7 @@ export const AppRoutes: React.FC = () => {
           path="coordenacao/sasp"
           element={
             <RotaPorPapel papeisPermitidos={['COORDENACAO', 'DIRETOR', 'ADMIN']}>
-              <PaginaSimples titulo="SASP" />
+              <SaspPage />
             </RotaPorPapel>
           }
         />
@@ -195,7 +198,7 @@ export const AppRoutes: React.FC = () => {
           path="direcao/sasp"
           element={
             <RotaPorPapel papeisPermitidos={['DIRETOR', 'ADMIN']}>
-              <PaginaSimples titulo="SASP" />
+              <SaspPage />
             </RotaPorPapel>
           }
         />
