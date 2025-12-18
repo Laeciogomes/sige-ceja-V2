@@ -119,7 +119,7 @@ function first<T>(v: T | T[] | null | undefined): T | null {
 }
 
 function normalizarTexto(valor: string): string {
-  return valor
+  return (valor ?? '')
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
@@ -170,7 +170,9 @@ function montarLinkWhatsApp(celular: string | null | undefined): string | null {
 }
 
 function formatarEndereco(item: AusenteItem): string {
-  const partes = [item.logradouro, item.numero_endereco, item.bairro, item.municipio].map((x) => (x ?? '').trim()).filter(Boolean)
+  const partes = [item.logradouro, item.numero_endereco, item.bairro, item.municipio]
+    .map((x) => (x ?? '').trim())
+    .filter(Boolean)
   const base = partes.join(', ')
   const pr = (item.ponto_referencia ?? '').trim()
   return pr ? `${base} • Ref.: ${pr}` : base
@@ -209,16 +211,16 @@ export default function AcompanhamentoPage() {
   const [carregandoBase, setCarregandoBase] = useState(true)
   const [salas, setSalas] = useState<SalaOption[]>([])
   const [disciplinas, setDisciplinas] = useState<DisciplinaOption[]>([])
-
-  
   const [salasPermitidasIds, setSalasPermitidasIds] = useState<Set<number>>(new Set())
 
   // ======= lista ausentes =======
   const [carregandoAusentes, setCarregandoAusentes] = useState(false)
   const [ausentes, setAusentes] = useState<AusenteItem[]>([])
 
+  // ✅ filtro final (corrigido)
   const listaFiltrada = useMemo(() => {
     const q = normalizarTexto(filtroTexto)
+
     const lista = ausentes.filter((a) => {
       const matchTexto =
         q === '' ||
@@ -227,20 +229,43 @@ export default function AcompanhamentoPage() {
         normalizarTexto(a.ultima_sala_nome ?? '').includes(q) ||
         normalizarTexto(a.ultima_disciplina_nome ?? '').includes(q)
 
-      const matchPeDeMeia = !somentePeDeMeia || isElegivelPeDeMeia({ id_nivel_ensino: a.id_nivel_ensino, nis: a.nis, possui_beneficio_governo: a.possui_beneficio_governo })
+      const matchPeDeMeia =
+        !somentePeDeMeia ||
+        isElegivelPeDeMeia({
+          id_nivel_ensino: a.id_nivel_ensino,
+          nis: a.nis,
+          possui_beneficio_governo: a.possui_beneficio_governo,
+        })
 
       const matchSala = filtroSalaId === 'todas' || a.ultima_sala_id === filtroSalaId
       const matchDisc = filtroDisciplinaId === 'todas' || a.ultima_disciplina_id === filtroDisciplinaId
 
-      // se for professor e estiver em "todas", limita às minhas salas
-      const matchMinhasSalas =
-        !isProfessor || filtroSalaId !== 'todas' ? true : (a.ultima_sala_id != null && salasPermitidasIds.has(Number(a.ultima_sala_id)))
+      /**
+       * ✅ CORREÇÃO DEFINITIVA:
+       * - Se professor + Sala = "todas (minhas salas)", não pode eliminar "sem histórico".
+       * - Se incluirSemHistorico=true e ultima_sala_id null => deixa passar.
+       * - Se salasPermitidasIds ainda estiver vazio, não bloqueia (evita lista 0 enquanto carrega lotação).
+       */
+      const aplicarFiltroMinhasSalas = isProfessor && filtroSalaId === 'todas'
+
+      const matchMinhasSalas = (() => {
+        if (!aplicarFiltroMinhasSalas) return true
+
+        // se ainda não carregou as salas permitidas, não bloqueia a lista inteira
+        if (!salasPermitidasIds || salasPermitidasIds.size === 0) return true
+
+        // aluno sem histórico: só deixa se "incluirSemHistorico" estiver ligado
+        if (a.ultima_sala_id == null) return incluirSemHistorico
+
+        // aluno com sala: precisa estar nas salas do professor
+        return salasPermitidasIds.has(Number(a.ultima_sala_id))
+      })()
 
       return matchTexto && matchPeDeMeia && matchSala && matchDisc && matchMinhasSalas
     })
 
     return lista
-  }, [ausentes, filtroTexto, somentePeDeMeia, filtroSalaId, filtroDisciplinaId, isProfessor, salasPermitidasIds])
+  }, [ausentes, filtroTexto, somentePeDeMeia, filtroSalaId, filtroDisciplinaId, isProfessor, salasPermitidasIds, incluirSemHistorico])
 
   const totalSemContato = useMemo(
     () => listaFiltrada.filter((x) => normalizarTexto(x.ultimo_acompanhamento_status ?? '').includes('sem contato')).length,
@@ -315,7 +340,6 @@ export default function AcompanhamentoPage() {
         if (errProf) throw errProf
 
         const pid = prof?.id_professor ? Number(prof.id_professor) : null
-        
 
         if (pid) {
           const { data: lotacoes, error: errLot } = await supabase
@@ -328,10 +352,9 @@ export default function AcompanhamentoPage() {
           const ids = new Set<number>((lotacoes ?? []).map((r: any) => Number(r.id_sala)))
           setSalasPermitidasIds(ids)
 
-          if (filtroSalaId === 'todas') {
-            // mantém "todas", mas filtrando internamente
-          } else {
-            if (!ids.has(Number(filtroSalaId))) setFiltroSalaId('todas')
+          // se o usuário selecionou uma sala que não é dele, volta para "todas"
+          if (filtroSalaId !== 'todas' && !ids.has(Number(filtroSalaId))) {
+            setFiltroSalaId('todas')
           }
         }
       }
@@ -350,7 +373,7 @@ export default function AcompanhamentoPage() {
     setCarregandoAusentes(true)
     try {
       const { data, error } = await supabase.rpc('rpc_acompanhamento_ausentes', {
-        p_dias: diasMinimo,
+        p_dias: Number(diasMinimo) || 15,
         p_id_sala: filtroSalaId === 'todas' ? null : Number(filtroSalaId),
         p_id_disciplina: filtroDisciplinaId === 'todas' ? null : Number(filtroDisciplinaId),
         p_incluir_sem_historico: incluirSemHistorico,
@@ -387,12 +410,13 @@ export default function AcompanhamentoPage() {
         ultima_visita: r.ultima_visita ?? null,
         dias_sem_vir: r.dias_sem_vir != null ? Number(r.dias_sem_vir) : null,
 
-        ultima_sala_id: r.ultima_sala_id != null ? Number(r.ultima_sala_id) : null,
-        ultima_sala_nome: r.ultima_sala_nome ?? null,
+        // ✅ seus campos atuais no TSX:
+        ultima_sala_id: r.ultima_sala_id != null ? Number(r.ultima_sala_id) : (r.id_sala != null ? Number(r.id_sala) : null),
+        ultima_sala_nome: r.ultima_sala_nome ?? (r.sala_nome ?? null),
         ultima_sala_tipo: r.ultima_sala_tipo ?? null,
 
-        ultima_disciplina_id: r.ultima_disciplina_id != null ? Number(r.ultima_disciplina_id) : null,
-        ultima_disciplina_nome: r.ultima_disciplina_nome ?? null,
+        ultima_disciplina_id: r.ultima_disciplina_id != null ? Number(r.ultima_disciplina_id) : (r.id_disciplina != null ? Number(r.id_disciplina) : null),
+        ultima_disciplina_nome: r.ultima_disciplina_nome ?? (r.disciplina_nome ?? null),
 
         ultimo_acompanhamento_data: r.ultimo_acompanhamento_data ?? null,
         ultimo_acompanhamento_tipo: r.ultimo_acompanhamento_tipo ?? null,
@@ -473,7 +497,6 @@ export default function AcompanhamentoPage() {
       setConfirmDelId(null)
       setHistorico([])
 
-      // defaults do novo registro
       setNovoTipo('Contato')
       setNovoStatus('Sem contato')
       setNovoObs('')
@@ -693,7 +716,10 @@ export default function AcompanhamentoPage() {
             control={<Switch checked={incluirSemHistorico} onChange={(e) => setIncluirSemHistorico(e.target.checked)} />}
             label="Incluir sem histórico"
           />
-          <FormControlLabel control={<Switch checked={somentePeDeMeia} onChange={(e) => setSomentePeDeMeia(e.target.checked)} />} label="Somente Pé-de-Meia elegíveis" />
+          <FormControlLabel
+            control={<Switch checked={somentePeDeMeia} onChange={(e) => setSomentePeDeMeia(e.target.checked)} />}
+            label="Somente Pé-de-Meia elegíveis"
+          />
           <Chip size="small" label={`Total: ${listaFiltrada.length}`} variant="outlined" />
           <Chip size="small" label={`Sem contato: ${totalSemContato}`} color="warning" variant="outlined" />
           <Chip size="small" label={`Com contato: ${totalComContato}`} color="info" variant="outlined" />
@@ -721,7 +747,8 @@ export default function AcompanhamentoPage() {
 
               const statusTxt = (a.ultimo_acompanhamento_status ?? '').trim()
               const statusNorm = normalizarTexto(statusTxt)
-              const statusColor = statusNorm.includes('sem contato') ? 'warning' : statusNorm.includes('com contato') ? 'info' : statusNorm.includes('retorn') ? 'success' : 'default'
+              const statusColor =
+                statusNorm.includes('sem contato') ? 'warning' : statusNorm.includes('com contato') ? 'info' : statusNorm.includes('retorn') ? 'success' : 'default'
 
               return (
                 <Card
@@ -740,7 +767,11 @@ export default function AcompanhamentoPage() {
                 >
                   <CardContent sx={{ flexGrow: 1, pb: 1 }}>
                     <Stack direction="row" spacing={2} alignItems="center" sx={{ mb: 1.5 }}>
-                      <Avatar src={a.aluno_foto_url ?? undefined} alt={a.aluno_nome} sx={{ width: 56, height: 56, border: '2px solid', borderColor: 'primary.main' }} />
+                      <Avatar
+                        src={a.aluno_foto_url ?? undefined}
+                        alt={a.aluno_nome}
+                        sx={{ width: 56, height: 56, border: '2px solid', borderColor: 'primary.main' }}
+                      />
                       <Box sx={{ minWidth: 0, flex: 1 }}>
                         <Typography variant="h6" sx={{ fontWeight: 800, overflowWrap: 'anywhere', lineHeight: 1.2 }}>
                           {a.aluno_nome}
@@ -757,7 +788,11 @@ export default function AcompanhamentoPage() {
                     </Stack>
 
                     <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ mb: 1 }}>
-                      {a.dias_sem_vir != null ? <Chip size="small" label={`${a.dias_sem_vir} dias sem vir`} color="warning" /> : <Chip size="small" label="Sem histórico" variant="outlined" />}
+                      {a.dias_sem_vir != null ? (
+                        <Chip size="small" label={`${a.dias_sem_vir} dias sem vir`} color="warning" />
+                      ) : (
+                        <Chip size="small" label="Sem histórico" variant="outlined" />
+                      )}
                       {elegivel ? <Chip size="small" label="Pé-de-Meia: Elegível" color="success" /> : <Chip size="small" label="Pé-de-Meia" variant="outlined" />}
                       {a.possui_necessidade_especial ? <Chip size="small" label="PCD" color="info" variant="outlined" /> : null}
                     </Stack>
@@ -826,7 +861,11 @@ export default function AcompanhamentoPage() {
               >
                 <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems={{ sm: 'center' }} justifyContent="space-between">
                   <Stack direction="row" spacing={2} alignItems="center">
-                    <Avatar src={alunoAtual.aluno_foto_url ?? undefined} alt={alunoAtual.aluno_nome} sx={{ width: 64, height: 64, border: '2px solid', borderColor: 'primary.main' }} />
+                    <Avatar
+                      src={alunoAtual.aluno_foto_url ?? undefined}
+                      alt={alunoAtual.aluno_nome}
+                      sx={{ width: 64, height: 64, border: '2px solid', borderColor: 'primary.main' }}
+                    />
                     <Box>
                       <Typography variant="h6" sx={{ fontWeight: 900 }}>
                         {alunoAtual.aluno_nome}
@@ -850,7 +889,13 @@ export default function AcompanhamentoPage() {
                         </Tooltip>
                         {montarLinkWhatsApp(alunoAtual.celular) ? (
                           <Tooltip title="WhatsApp">
-                            <IconButton component="a" href={montarLinkWhatsApp(alunoAtual.celular) ?? undefined} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>
+                            <IconButton
+                              component="a"
+                              href={montarLinkWhatsApp(alunoAtual.celular) ?? undefined}
+                              target="_blank"
+                              rel="noreferrer"
+                              onClick={(e) => e.stopPropagation()}
+                            >
                               <WhatsAppIcon />
                             </IconButton>
                           </Tooltip>
