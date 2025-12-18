@@ -390,6 +390,8 @@ function FichaHeader(props: {
 
 function GradeDeNotas(props: { gradeData: GradeData | null }) {
   const { gradeData } = props
+  const theme = useTheme()
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'))
 
   if (!gradeData || !gradeData.headers?.length) {
     return (
@@ -399,6 +401,98 @@ function GradeDeNotas(props: { gradeData: GradeData | null }) {
     )
   }
 
+  // Descobre a “Série” (header) de cada protocolo pelo colspan acumulado
+  const getSerieByIndex = (idx: number): string => {
+    let acc = 0
+    for (const h of gradeData.headers) {
+      const start = acc
+      const end = acc + Number(h.colspan || 0) - 1
+      if (idx >= start && idx <= end) return h.serie
+      acc += Number(h.colspan || 0)
+    }
+    return gradeData.headers[0]?.serie ?? '-'
+  }
+
+  // ======= MOBILE: cards =======
+  if (isMobile) {
+    return (
+      <>
+        <Typography variant="h6" gutterBottom>
+          Grade de Notas
+        </Typography>
+
+        {/* Média final */}
+        <Paper
+          variant="outlined"
+          sx={{
+            p: 2,
+            borderRadius: 2,
+            mb: 2,
+            width: '100%',
+            minWidth: 0,
+            overflow: 'hidden',
+          }}
+        >
+          <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={2}>
+            <Typography sx={{ fontWeight: 900 }}>Média Final</Typography>
+            <Typography sx={{ fontWeight: 900, fontSize: 22 }}>
+              {gradeData.mediaFinal !== null ? String(gradeData.mediaFinal).replace('.', ',') : '-'}
+            </Typography>
+          </Stack>
+        </Paper>
+
+        {/* Cards por protocolo */}
+        <Stack spacing={1.5}>
+          {gradeData.protocolos.map((numeroProtocolo, idx) => {
+            const serie = getSerieByIndex(idx)
+
+            return (
+              <Paper
+                key={`${serie}-${numeroProtocolo}`}
+                variant="outlined"
+                sx={{
+                  p: 2,
+                  borderRadius: 2,
+                  width: '100%',
+                  minWidth: 0,
+                  overflow: 'hidden',
+                }}
+              >
+                <Stack spacing={1}>
+                  <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={2}>
+                    <Typography sx={{ fontWeight: 900 }}>
+                      {serie} • Protocolo {numeroProtocolo}ª
+                    </Typography>
+                  </Stack>
+
+                  <Divider />
+
+                  {/* linhas da grade */}
+                  <Stack spacing={0.75}>
+                    {gradeData.body.map((row) => {
+                      const val = row.notas[idx] ?? null
+                      return (
+                        <Stack key={row.etapa} direction="row" justifyContent="space-between" spacing={2}>
+                          <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 800 }}>
+                            {row.etapa}
+                          </Typography>
+                          <Typography variant="body2" sx={{ fontWeight: 900 }}>
+                            {val !== null ? String(val).replace('.', ',') : '-'}
+                          </Typography>
+                        </Stack>
+                      )
+                    })}
+                  </Stack>
+                </Stack>
+              </Paper>
+            )
+          })}
+        </Stack>
+      </>
+    )
+  }
+
+  // ======= DESKTOP: tabela (normal) =======
   return (
     <>
       <Typography variant="h6" gutterBottom>
@@ -413,17 +507,14 @@ function GradeDeNotas(props: { gradeData: GradeData | null }) {
           width: '100%',
           maxWidth: '100%',
           overflowX: 'auto',
-          WebkitOverflowScrolling: 'touch',
         }}
       >
         <Table
           size="small"
           sx={{
             borderCollapse: 'collapse',
-
-            // ✅ desktop: ocupa tudo; mobile: continua rolando por causa do minWidth
             width: '100%',
-            minWidth: 720,
+            minWidth: 900,
           }}
         >
           <TableHead sx={{ bgcolor: 'action.hover' }}>
@@ -460,9 +551,7 @@ function GradeDeNotas(props: { gradeData: GradeData | null }) {
           <TableBody>
             {gradeData.body.map((row, idx) => (
               <TableRow key={row.etapa}>
-                <TableCell sx={{ fontWeight: 900, border: '1px solid #ddd', whiteSpace: 'nowrap' }}>
-                  {row.etapa}
-                </TableCell>
+                <TableCell sx={{ fontWeight: 900, border: '1px solid #ddd', whiteSpace: 'nowrap' }}>{row.etapa}</TableCell>
 
                 {row.notas.map((nota, i) => (
                   <TableCell key={i} align="center" sx={{ border: '1px solid #ddd', whiteSpace: 'nowrap' }}>
@@ -490,13 +579,10 @@ function GradeDeNotas(props: { gradeData: GradeData | null }) {
           </TableBody>
         </Table>
       </TableContainer>
-
-      <Typography variant="caption" color="text.secondary">
-        * No celular, role a tabela para o lado.
-      </Typography>
     </>
   )
 }
+
 
 
 function HistoricoAtendimentos(props: {
@@ -505,6 +591,8 @@ function HistoricoAtendimentos(props: {
   onDelete: (s: SessaoHistorico) => void
 }) {
   const { sessoes, onEdit, onDelete } = props
+  const theme = useTheme()
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'))
 
   const hasActivityType = (sessao: SessaoHistorico, type: 'AT' | 'AV' | 'RE') => {
     const typeMap: Record<'AT' | 'AV' | 'RE', number[]> = {
@@ -515,6 +603,92 @@ function HistoricoAtendimentos(props: {
     return (sessao.atividades || []).some((a) => typeMap[type].includes(Number(a.id_tipo_protocolo)))
   }
 
+  // ======= MOBILE: cards =======
+  if (isMobile) {
+    return (
+      <>
+        <Typography variant="h6" gutterBottom sx={{ mt: 4 }}>
+          Histórico de Atendimentos
+        </Typography>
+
+        {sessoes.length === 0 ? (
+          <Alert severity="info">Nenhum histórico de atendimento para esta disciplina.</Alert>
+        ) : (
+          <Stack spacing={1.5}>
+            {sessoes.map((sessao) => {
+              const registroTexto = (sessao.atividades || [])
+                .map((at) => {
+                  const tipoNome = first(at.tipos_protocolo)?.nome ?? 'Atividade'
+                  const status = at.status || 'N/D'
+                  const nota = at.nota !== null && at.nota !== undefined ? ` (Nota ${Number(at.nota).toFixed(1).replace('.', ',')})` : ''
+                  return `${tipoNome} #${at.numero_protocolo}: ${status}${nota}`
+                })
+                .join('\n')
+
+              return (
+                <Paper
+                  key={sessao.id_sessao}
+                  variant="outlined"
+                  sx={{ p: 2, borderRadius: 2, width: '100%', minWidth: 0, overflow: 'hidden' }}
+                >
+                  <Stack spacing={1}>
+                    <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={2}>
+                      <Box sx={{ minWidth: 0 }}>
+                        <Typography sx={{ fontWeight: 900, overflowWrap: 'anywhere' }}>
+                          {formatDateBR(sessao.hora_entrada)}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {formatTimeBR(sessao.hora_entrada)} → {sessao.hora_saida ? formatTimeBR(sessao.hora_saida) : '...'}
+                        </Typography>
+                      </Box>
+
+                      <Stack direction="row" spacing={1}>
+                        <Tooltip title="Editar">
+                          <IconButton size="small" onClick={() => onEdit(sessao)}>
+                            <EditIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip title="Excluir">
+                          <IconButton size="small" onClick={() => onDelete(sessao)}>
+                            <DeleteIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                      </Stack>
+                    </Stack>
+
+                    <Typography variant="body2" color="text.secondary" sx={{ overflowWrap: 'anywhere' }}>
+                      Professor(a): <strong>{sessao.professor_nome || 'N/A'}</strong>
+                    </Typography>
+
+                    <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                      <Chip size="small" label="OR" variant="outlined" />
+                      <Chip size="small" label="AT" color={hasActivityType(sessao, 'AT') ? 'info' : 'default'} variant={hasActivityType(sessao, 'AT') ? 'filled' : 'outlined'} />
+                      <Chip size="small" label="AV" color={hasActivityType(sessao, 'AV') ? 'info' : 'default'} variant={hasActivityType(sessao, 'AV') ? 'filled' : 'outlined'} />
+                      <Chip size="small" label="RE" color={hasActivityType(sessao, 'RE') ? 'info' : 'default'} variant={hasActivityType(sessao, 'RE') ? 'filled' : 'outlined'} />
+                    </Stack>
+
+                    <Divider />
+
+                    <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>
+                      {registroTexto || '-'}
+                    </Typography>
+
+                    {sessao.resumo_atividades ? (
+                      <Typography variant="body2" color="text.secondary" sx={{ whiteSpace: 'pre-wrap', fontStyle: 'italic' }}>
+                        {sessao.resumo_atividades}
+                      </Typography>
+                    ) : null}
+                  </Stack>
+                </Paper>
+              )
+            })}
+          </Stack>
+        )}
+      </>
+    )
+  }
+
+  // ======= DESKTOP: tabela =======
   return (
     <>
       <Typography variant="h6" gutterBottom sx={{ mt: 4 }}>
@@ -594,6 +768,7 @@ function HistoricoAtendimentos(props: {
     </>
   )
 }
+
 
 function EditHistoricoModal(props: {
   open: boolean
