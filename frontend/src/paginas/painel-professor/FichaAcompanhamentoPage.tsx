@@ -143,6 +143,28 @@ function inputLocalToISO(v: string): string {
   return d.toISOString()
 }
 
+function arredondarMediaFinal(n: number | null): number | null {
+  if (n === null || !Number.isFinite(n)) return null
+
+  // regra:
+  // < 6,25 -> 6,0 (ou o inteiro abaixo, se você quiser generalizar)
+  // 6,25..6,74 -> 6,5
+  // >= 6,75 -> 7,0
+  // ✅ generalizado por faixas de 0,25/0,75
+  const inteiro = Math.floor(n)
+  const frac = n - inteiro
+
+  if (frac < 0.25) return inteiro
+  if (frac < 0.75) return inteiro + 0.5
+  return inteiro + 1
+}
+
+function formatarBR(n: number): string {
+  // 6 -> "6" | 6.5 -> "6,5"
+  return Number.isInteger(n) ? String(n) : String(n).replace('.', ',')
+}
+
+
 // ===================== Constantes =====================
 
 const TIPOS = {
@@ -436,7 +458,11 @@ function GradeDeNotas(props: { gradeData: GradeData | null }) {
           <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={2}>
             <Typography sx={{ fontWeight: 900 }}>Média Final</Typography>
             <Typography sx={{ fontWeight: 900, fontSize: 22 }}>
-              {gradeData.mediaFinal !== null ? String(gradeData.mediaFinal).replace('.', ',') : '-'}
+              {(() => {
+                const v = arredondarMediaFinal(gradeData.mediaFinal)
+                return v !== null ? formatarBR(v) : '-'
+              })()}
+
             </Typography>
           </Stack>
         </Paper>
@@ -571,7 +597,11 @@ function GradeDeNotas(props: { gradeData: GradeData | null }) {
                       whiteSpace: 'nowrap',
                     }}
                   >
-                    {gradeData.mediaFinal !== null ? String(gradeData.mediaFinal).replace('.', ',') : '-'}
+                    {(() => {
+                      const v = arredondarMediaFinal(gradeData.mediaFinal)
+                      return v !== null ? formatarBR(v) : '-'
+                    })()}
+
                   </TableCell>
                 ) : null}
               </TableRow>
