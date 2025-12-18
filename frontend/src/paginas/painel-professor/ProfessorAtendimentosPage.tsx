@@ -1143,7 +1143,9 @@ export default function ProfessorAtendimentosPage() {
             }))
 
             const matsFiltradas =
-              nivelFiltroEnsino === 'todos' ? matsRaw : matsRaw.filter((m: any) => Number(m.id_nivel_ensino) === Number(nivelFiltroEnsino))
+              nivelFiltroEnsino === 'todos'
+                ? matsRaw
+                : matsRaw.filter((m: any) => Number(m.id_nivel_ensino) === Number(nivelFiltroEnsino))
 
             matsFiltradas.sort((x: any, y: any) => {
               if (y.ano_letivo !== x.ano_letivo) return y.ano_letivo - x.ano_letivo
@@ -1811,7 +1813,20 @@ export default function ProfessorAtendimentosPage() {
     } finally {
       if (mountedRef.current) setTransferindo(false)
     }
-  }, [supabase, idProfessor, sessaoAtual, professorDestino, nomeProfessorAtual, aviso, info, sucesso, erro, carregarSessoes, filtroDataInicio, filtroDataFim])
+  }, [
+    supabase,
+    idProfessor,
+    sessaoAtual,
+    professorDestino,
+    nomeProfessorAtual,
+    aviso,
+    info,
+    sucesso,
+    erro,
+    carregarSessoes,
+    filtroDataInicio,
+    filtroDataFim,
+  ])
 
   // ======= registro dialog =======
   const abrirDialogNovoRegistro = useCallback(() => {
@@ -1925,7 +1940,22 @@ export default function ProfessorAtendimentosPage() {
     } finally {
       if (mountedRef.current) setSalvandoRegistro(false)
     }
-  }, [supabase, sessaoAtual, validarRegistro, aviso, sucesso, erro, regNumero, regTipoId, regStatus, regNota, regAdaptada, regSintese, registroEditandoId, carregarRegistrosDaSessao])
+  }, [
+    supabase,
+    sessaoAtual,
+    validarRegistro,
+    aviso,
+    sucesso,
+    erro,
+    regNumero,
+    regTipoId,
+    regStatus,
+    regNota,
+    regAdaptada,
+    regSintese,
+    registroEditandoId,
+    carregarRegistrosDaSessao,
+  ])
 
   const pedirExcluirRegistro = useCallback((id: number) => setConfirmDeleteId(id), [])
   const cancelarExcluirRegistro = useCallback(() => setConfirmDeleteId(null), [])
@@ -1965,7 +1995,12 @@ export default function ProfessorAtendimentosPage() {
   return (
     <Box sx={{ p: 2, maxWidth: 1400, mx: 'auto' }}>
       {/* Header */}
-      <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems={{ xs: 'stretch', md: 'center' }} justifyContent="space-between">
+      <Stack
+        direction={{ xs: 'column', md: 'row' }}
+        spacing={2}
+        alignItems={{ xs: 'stretch', md: 'center' }}
+        justifyContent="space-between"
+      >
         <Box sx={{ minWidth: 0 }}>
           <Typography variant="h4" sx={{ fontWeight: 900, lineHeight: 1.1 }}>
             Atendimentos
@@ -1976,11 +2011,21 @@ export default function ProfessorAtendimentosPage() {
         </Box>
 
         <Stack direction="row" spacing={1} justifyContent={{ xs: 'flex-start', md: 'flex-end' }} flexWrap="wrap">
-          <Button variant="contained" startIcon={<AddIcon />} onClick={abrirFluxoNovoAtendimento} disabled={carregandoBase || !idProfessor}>
+          <Button
+            variant="contained"
+            startIcon={<AddIcon />}
+            onClick={abrirFluxoNovoAtendimento}
+            disabled={carregandoBase || !idProfessor}
+          >
             Iniciar atendimento
           </Button>
 
-          <Button variant="outlined" startIcon={<EditIcon />} onClick={abrirFluxoLancamentoManual} disabled={carregandoBase || !idProfessor}>
+          <Button
+            variant="outlined"
+            startIcon={<EditIcon />}
+            onClick={abrirFluxoLancamentoManual}
+            disabled={carregandoBase || !idProfessor}
+          >
             Lançamento manual
           </Button>
 
@@ -2065,14 +2110,22 @@ export default function ProfessorAtendimentosPage() {
             <Button variant="outlined" onClick={resetarParaHoje} startIcon={<WarningAmberIcon />}>
               Hoje
             </Button>
-            <Button variant="contained" onClick={aplicarFiltros} startIcon={<CheckCircleOutlineIcon />} disabled={!idProfessor}>
+            <Button
+              variant="contained"
+              onClick={aplicarFiltros}
+              startIcon={<CheckCircleOutlineIcon />}
+              disabled={!idProfessor}
+            >
               Aplicar
             </Button>
           </Stack>
         </Stack>
 
         <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems="center" sx={{ mt: 1 }}>
-          <FormControlLabel control={<Switch checked={mostrarHistorico} onChange={(e) => setMostrarHistorico(e.target.checked)} />} label="Mostrar histórico" />
+          <FormControlLabel
+            control={<Switch checked={mostrarHistorico} onChange={(e) => setMostrarHistorico(e.target.checked)} />}
+            label="Mostrar histórico"
+          />
           <Typography variant="caption" color="text.secondary">
             Por padrão, a tela mostra apenas atendimentos em andamento.
           </Typography>
@@ -2133,7 +2186,10 @@ export default function ProfessorAtendimentosPage() {
                             sx={{ width: 56, height: 56, border: '2px solid', borderColor: 'primary.main' }}
                           />
                           <Box sx={{ minWidth: 0, flex: 1 }}>
-                            <Typography variant="h6" sx={{ fontWeight: 700, overflowWrap: 'anywhere', lineHeight: 1.2 }}>
+                            <Typography
+                              variant="h6"
+                              sx={{ fontWeight: 700, overflowWrap: 'anywhere', lineHeight: 1.2 }}
+                            >
                               {s.aluno_nome}
                             </Typography>
                             <Typography variant="body2" color="text.secondary">
@@ -2145,7 +2201,12 @@ export default function ProfessorAtendimentosPage() {
                         <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ mb: 1 }}>
                           <Chip label={s.disciplina_nome ?? '-'} color="primary" variant="outlined" size="small" />
                           <Chip label={s.ano_nome ?? '-'} variant="outlined" size="small" />
-                          <Chip label={s.sala_nome ?? '-'} variant="outlined" size="small" icon={<MeetingRoomIcon />} />
+                          <Chip
+                            label={s.sala_nome ?? '-'}
+                            variant="outlined"
+                            size="small"
+                            icon={<MeetingRoomIcon />}
+                          />
                         </Stack>
 
                         <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ mb: 1 }}>
@@ -2156,7 +2217,12 @@ export default function ProfessorAtendimentosPage() {
                             variant={elegivelPeDeMeia ? 'filled' : 'outlined'}
                             label={elegivelPeDeMeia ? 'Pé-de-Meia: Elegível' : 'Pé-de-Meia: Não'}
                           />
-                          <Chip size="small" color={pcd ? 'info' : 'default'} variant={pcd ? 'filled' : 'outlined'} label={pcd ? 'PCD: Sim' : 'PCD: Não'} />
+                          <Chip
+                            size="small"
+                            color={pcd ? 'info' : 'default'}
+                            variant={pcd ? 'filled' : 'outlined'}
+                            label={pcd ? 'PCD: Sim' : 'PCD: Não'}
+                          />
                         </Stack>
 
                         <Typography variant="caption" color="text.secondary" display="block">
@@ -2273,7 +2339,10 @@ export default function ProfessorAtendimentosPage() {
                         <Stack direction="row" spacing={2} alignItems="center" sx={{ mb: 1.5 }}>
                           <Avatar src={s.aluno_foto_url ?? undefined} alt={s.aluno_nome} sx={{ width: 52, height: 52 }} />
                           <Box sx={{ minWidth: 0, flex: 1 }}>
-                            <Typography variant="subtitle1" sx={{ fontWeight: 800, overflowWrap: 'anywhere', lineHeight: 1.2 }}>
+                            <Typography
+                              variant="subtitle1"
+                              sx={{ fontWeight: 800, overflowWrap: 'anywhere', lineHeight: 1.2 }}
+                            >
                               {s.aluno_nome}
                             </Typography>
                             <Typography variant="body2" color="text.secondary">
@@ -2285,7 +2354,12 @@ export default function ProfessorAtendimentosPage() {
                         <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ mb: 1 }}>
                           <Chip label={s.disciplina_nome ?? '-'} color="primary" variant="outlined" size="small" />
                           <Chip label={s.ano_nome ?? '-'} variant="outlined" size="small" />
-                          <Chip label={s.sala_nome ?? '-'} variant="outlined" size="small" icon={<MeetingRoomIcon />} />
+                          <Chip
+                            label={s.sala_nome ?? '-'}
+                            variant="outlined"
+                            size="small"
+                            icon={<MeetingRoomIcon />}
+                          />
                           <Chip size="small" variant="outlined" label={`Nível: ${nomeNivelEnsinoCurto(s.id_nivel_ensino)}`} />
                         </Stack>
 
@@ -2342,7 +2416,13 @@ export default function ProfessorAtendimentosPage() {
       </Paper>
 
       {/* Dialog: escolher sala */}
-      <Dialog open={dlgEscolherSala} onClose={() => setDlgEscolherSala(false)} fullWidth maxWidth="md" fullScreen={isMobile}>
+      <Dialog
+        open={dlgEscolherSala}
+        onClose={() => setDlgEscolherSala(false)}
+        fullWidth
+        maxWidth="md"
+        fullScreen={isMobile}
+      >
         <DialogTitle sx={{ fontWeight: 900 }}>
           Qual sala você vai atender?
           <IconButton onClick={() => setDlgEscolherSala(false)} sx={{ position: 'absolute', right: 8, top: 8 }}>
@@ -2397,7 +2477,13 @@ export default function ProfessorAtendimentosPage() {
       </Dialog>
 
       {/* Dialog: iniciar atendimento / lançamento manual */}
-      <Dialog open={dlgNovoAtendimento} onClose={() => setDlgNovoAtendimento(false)} fullWidth maxWidth="md" fullScreen={isMobile}>
+      <Dialog
+        open={dlgNovoAtendimento}
+        onClose={() => setDlgNovoAtendimento(false)}
+        fullWidth
+        maxWidth="md"
+        fullScreen={isMobile}
+      >
         <DialogTitle sx={{ fontWeight: 900 }}>
           {fluxoTipo === 'manual' ? 'Lançamento manual (offline)' : 'Iniciar atendimento'}
           <IconButton onClick={() => setDlgNovoAtendimento(false)} sx={{ position: 'absolute', right: 8, top: 8 }}>
@@ -2435,7 +2521,8 @@ export default function ProfessorAtendimentosPage() {
                   <Box>
                     <Typography sx={{ fontWeight: 900 }}>Sala</Typography>
                     <Typography variant="body2" color="text.secondary">
-                      {minhasSalas.find((x) => x.id_sala === salaAtendimentoId)?.nome ?? '-'} • {minhasSalas.find((x) => x.id_sala === salaAtendimentoId)?.tipo_sala ?? '-'}
+                      {minhasSalas.find((x) => x.id_sala === salaAtendimentoId)?.nome ?? '-'} •{' '}
+                      {minhasSalas.find((x) => x.id_sala === salaAtendimentoId)?.tipo_sala ?? '-'}
                     </Typography>
                   </Box>
                 </Stack>
@@ -2573,13 +2660,27 @@ export default function ProfessorAtendimentosPage() {
 
                     <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
                       {qtdDisciplinasAbertas != null ? (
-                        <Chip size="small" label={`Disciplinas abertas: ${qtdDisciplinasAbertas}`} color={podeAbrirNovaDisciplina ? 'info' : 'warning'} variant="outlined" />
+                        <Chip
+                          size="small"
+                          label={`Disciplinas abertas: ${qtdDisciplinasAbertas}`}
+                          color={podeAbrirNovaDisciplina ? 'info' : 'warning'}
+                          variant="outlined"
+                        />
                       ) : null}
 
-                      <Chip size="small" variant="outlined" label={`Nível do aluno: ${nomeNivelEnsinoCurto(alunoSelecionado.id_nivel_ensino ?? null)}`} />
+                      <Chip
+                        size="small"
+                        variant="outlined"
+                        label={`Nível do aluno: ${nomeNivelEnsinoCurto(alunoSelecionado.id_nivel_ensino ?? null)}`}
+                      />
 
                       {idProgressoSelecionadoParaAbrirFicha ? (
-                        <Button size="small" variant="outlined" startIcon={<DescriptionIcon />} onClick={() => abrirFichaAcompanhamento(idProgressoSelecionadoParaAbrirFicha)}>
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          startIcon={<DescriptionIcon />}
+                          onClick={() => abrirFichaAcompanhamento(idProgressoSelecionadoParaAbrirFicha)}
+                        >
                           Abrir Ficha
                         </Button>
                       ) : null}
@@ -2666,7 +2767,13 @@ export default function ProfessorAtendimentosPage() {
       </Dialog>
 
       {/* Confirmar abertura de ficha */}
-      <Dialog open={dlgConfirmAbrirFicha} onClose={() => setDlgConfirmAbrirFicha(false)} fullWidth maxWidth="sm" fullScreen={isMobile}>
+      <Dialog
+        open={dlgConfirmAbrirFicha}
+        onClose={() => setDlgConfirmAbrirFicha(false)}
+        fullWidth
+        maxWidth="sm"
+        fullScreen={isMobile}
+      >
         <DialogTitle sx={{ fontWeight: 900 }}>
           Confirmar abertura de ficha
           <IconButton onClick={() => setDlgConfirmAbrirFicha(false)} sx={{ position: 'absolute', right: 8, top: 8 }}>
@@ -2776,7 +2883,12 @@ export default function ProfessorAtendimentosPage() {
                       </Button>
                     ) : null}
 
-                    <Button variant="outlined" startIcon={<DescriptionIcon />} disabled={!sessaoAtual.id_progresso} onClick={() => abrirFichaAcompanhamento(sessaoAtual.id_progresso)}>
+                    <Button
+                      variant="outlined"
+                      startIcon={<DescriptionIcon />}
+                      disabled={!sessaoAtual.id_progresso}
+                      onClick={() => abrirFichaAcompanhamento(sessaoAtual.id_progresso)}
+                    >
                       Abrir Ficha
                     </Button>
 
@@ -2784,7 +2896,12 @@ export default function ProfessorAtendimentosPage() {
                       Salvar resumo
                     </Button>
 
-                    <Button variant="contained" color="warning" onClick={() => void encerrarSessaoAgora()} disabled={salvandoSessao || Boolean(sessaoAtual.hora_saida)}>
+                    <Button
+                      variant="contained"
+                      color="warning"
+                      onClick={() => void encerrarSessaoAgora()}
+                      disabled={salvandoSessao || Boolean(sessaoAtual.hora_saida)}
+                    >
                       Encerrar sessão
                     </Button>
                   </Stack>
