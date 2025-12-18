@@ -1,3 +1,4 @@
+// src/paginas/painel-professor/ProfessorAtendimentosPage.tsx
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
@@ -53,6 +54,9 @@ import { useSupabase } from '../../contextos/SupabaseContext'
 import { useNotificacaoContext } from '../../contextos/NotificacaoContext'
 import { useAuth } from '../../contextos/AuthContext'
 
+type NivelEnsinoFiltro = 'todos' | 1 | 2
+type FluxoTipo = 'normal' | 'manual'
+
 type SalaAtendimento = {
   id_sala: number
   nome: string
@@ -75,13 +79,31 @@ type StatusDisciplinaAluno = {
   nome: string
 }
 
-type SalaDisciplinaAnoOption = {
+type FaixaProtocolosAno = {
   id_config: number
-  id_disciplina: number
   id_ano_escolar: number
-  quantidade_protocolos: number
-  disciplina_nome: string
   ano_nome: string
+  quantidade_protocolos: number
+  inicio: number
+  fim: number
+}
+
+type SalaDisciplinaNivelOption = {
+  id_disciplina: number
+  id_nivel_ensino: number
+  disciplina_nome: string
+
+  // total somando os anos (ex.: Química 1º+2º+3º = 7)
+  total_protocolos: number
+
+  // ano usado pra criar progresso (maior id_ano_escolar do nível)
+  ano_representativo_id: number
+  ano_representativo_nome: string
+  id_config_representativo: number
+
+  // faixas por ano: 1º:1-2, 2º:3-4, 3º:5-7
+  faixas: FaixaProtocolosAno[]
+
   label: string
 }
 
@@ -93,12 +115,18 @@ type AlunoBuscaOption = {
 
   id_matricula?: number | null
   numero_inscricao?: string | null
+  id_nivel_ensino?: number | null
+
+  nis?: string | null
+  possui_necessidade_especial?: boolean | null
+  possui_beneficio_governo?: boolean | null
 }
 
 type ProgressoOption = {
   id_progresso: number
   id_disciplina: number
   id_ano_escolar: number
+  id_nivel_ensino?: number | null
   disciplina_nome: string
   ano_nome: string
   status_nome?: string | null
@@ -118,6 +146,11 @@ type SessaoView = {
   aluno_nome: string
   aluno_foto_url?: string | null
   numero_inscricao?: string | null
+
+  id_nivel_ensino?: number | null
+  aluno_nis?: string | null
+  aluno_possui_necessidade_especial?: boolean | null
+  aluno_possui_beneficio_governo?: boolean | null
 
   sala_nome?: string | null
   sala_tipo?: string | null
@@ -195,6 +228,18 @@ function formatarDataHoraBR(iso: string | null | undefined): string {
   })
 }
 
+function nomeNivelEnsinoCurto(idNivel: number | null | undefined): string {
+  if (idNivel === 1) return 'Fundamental'
+  if (idNivel === 2) return 'Médio'
+  return '-'
+}
+
+function nomeNivelEnsinoLongo(idNivel: number | null | undefined): string {
+  if (idNivel === 1) return 'Ensino Fundamental'
+  if (idNivel === 2) return 'Ensino Médio'
+  return '-'
+}
+
 function isStatusDisciplinaAberta(statusNome: string): boolean {
   const s = normalizarTexto(statusNome)
   if (
@@ -228,9 +273,6 @@ function renderNumeroInscricao(option: { numero_inscricao?: string | null }): st
   return ra ? `RA: ${ra}` : 'RA: -'
 }
 
-/**
- * ✅ Detecta se o usuário está digitando algo "numérico" (RA/CPF)
- */
 function isBuscaNumerica(input: string): boolean {
   const t = input.trim()
   return t.length > 0 && /^[\d.\-\s]+$/.test(t)
@@ -240,12 +282,23 @@ function extrairDigitos(input: string): string {
   return input.replace(/\D/g, '')
 }
 
-/**
- * ✅ Escolhe um progresso "melhor" para uma disciplina, ignorando ano na escolha:
- * - prioriza progresso ABERTO
- * - depois maior id_ano_escolar
- * - depois maior id_progresso
- */
+function formatarCPF(digitos: string): string {
+  const d = extrairDigitos(digitos).padStart(11, '0').slice(-11)
+  return `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6, 9)}-${d.slice(9, 11)}`
+}
+
+function isElegivelPeDeMeia(opts: {
+  id_nivel_ensino?: number | null
+  nis?: string | null
+  possui_beneficio_governo?: boolean | null
+}): boolean {
+  const nivel = opts.id_nivel_ensino ?? null
+  if (nivel !== 2) return false
+  const nisOk = Boolean(opts.nis?.trim())
+  const benOk = Boolean(opts.possui_beneficio_governo)
+  return nisOk || benOk
+}
+
 function escolherProgressoPorDisciplina(lista: ProgressoOption[], idDisciplina: number): ProgressoOption | null {
   const candidatos = lista.filter((p) => p.id_disciplina === idDisciplina)
   if (candidatos.length === 0) return null
@@ -261,10 +314,6 @@ function escolherProgressoPorDisciplina(lista: ProgressoOption[], idDisciplina: 
   return ordenado[0] ?? null
 }
 
-/**
- * ✅ Agrupa fichas abertas por disciplina (sem dividir por ano),
- * mantendo a melhor (maior ano / maior id).
- */
 function agruparAbertasPorDisciplina(abertas: ProgressoOption[]): ProgressoOption[] {
   const mapa = new Map<number, ProgressoOption>()
 
@@ -282,6 +331,19 @@ function agruparAbertasPorDisciplina(abertas: ProgressoOption[]): ProgressoOptio
   })
 
   return Array.from(mapa.values()).sort((a, b) => a.disciplina_nome.localeCompare(b.disciplina_nome))
+}
+
+function resumoFaixasProtocolos(faixas: FaixaProtocolosAno[]): string {
+  if (!faixas?.length) return ''
+  return faixas
+    .filter((f) => Number(f.quantidade_protocolos ?? 0) > 0)
+    .map((f) => `${f.ano_nome}: ${f.inicio}-${f.fim}`)
+    .join(' • ')
+}
+
+function anoPorNumeroProtocolo(faixas: FaixaProtocolosAno[], n: number): string | null {
+  const f = (faixas ?? []).find((x) => n >= x.inicio && n <= x.fim)
+  return f?.ano_nome ?? null
 }
 
 export default function ProfessorAtendimentosPage() {
@@ -306,7 +368,6 @@ export default function ProfessorAtendimentosPage() {
     return n ? String(n) : 'Professor'
   }, [usuario])
 
-  // ======= abrir ficha =======
   const abrirFichaAcompanhamento = useCallback(
     (idProgresso: number | null | undefined) => {
       if (!idProgresso) {
@@ -325,7 +386,8 @@ export default function ProfessorAtendimentosPage() {
 
   const [idProfessor, setIdProfessor] = useState<number | null>(null)
   const [minhasSalas, setMinhasSalas] = useState<SalaAtendimento[]>([])
-  const [configsPorSala, setConfigsPorSala] = useState<Record<number, SalaDisciplinaAnoOption[]>>({})
+  const [configsPorSala, setConfigsPorSala] = useState<Record<number, SalaDisciplinaNivelOption[]>>({})
+
   const [tiposProtocolo, setTiposProtocolo] = useState<TipoProtocolo[]>([])
   const [statusMatriculas, setStatusMatriculas] = useState<StatusMatricula[]>([])
   const [statusDisciplinas, setStatusDisciplinas] = useState<StatusDisciplinaAluno[]>([])
@@ -340,8 +402,6 @@ export default function ProfessorAtendimentosPage() {
   const [filtroDataFim, setFiltroDataFim] = useState<string>(hojeISODateLocal())
   const [filtroTexto, setFiltroTexto] = useState<string>('')
   const [filtroSalaId, setFiltroSalaId] = useState<number | 'todas'>('todas')
-
-  // ✅ 1) Histórico oculto por padrão (só mostra se marcar ou ao filtrar período != hoje)
   const [mostrarHistorico, setMostrarHistorico] = useState<boolean>(false)
 
   const [sessoes, setSessoes] = useState<SessaoView[]>([])
@@ -356,10 +416,10 @@ export default function ProfessorAtendimentosPage() {
         normalizarTexto(s.disciplina_nome ?? '').includes(q) ||
         normalizarTexto(s.ano_nome ?? '').includes(q) ||
         normalizarTexto(s.sala_nome ?? '').includes(q) ||
-        normalizarTexto(s.numero_inscricao ?? '').includes(q)
+        normalizarTexto(s.numero_inscricao ?? '').includes(q) ||
+        normalizarTexto(nomeNivelEnsinoCurto(s.id_nivel_ensino)).includes(q)
 
       const matchSala = filtroSalaId === 'todas' || s.id_sala === filtroSalaId
-
       return matchTexto && matchSala
     })
   }, [sessoes, filtroTexto, filtroSalaId])
@@ -380,19 +440,27 @@ export default function ProfessorAtendimentosPage() {
     []
   )
 
-  // ======= dialogs: escolher sala e iniciar atendimento =======
+  // ======= dialogs =======
   const [dlgEscolherSala, setDlgEscolherSala] = useState(false)
   const [dlgNovoAtendimento, setDlgNovoAtendimento] = useState(false)
 
+  const [fluxoTipo, setFluxoTipo] = useState<FluxoTipo>('normal')
+
   const [salaAtendimentoId, setSalaAtendimentoId] = useState<number | null>(null)
 
-  // busca aluno
+  const [nivelFiltroEnsino, setNivelFiltroEnsino] = useState<NivelEnsinoFiltro>('todos')
+
   const [alunoInput, setAlunoInput] = useState<string>('')
   const [buscandoAlunos, setBuscandoAlunos] = useState(false)
   const [opcoesAluno, setOpcoesAluno] = useState<AlunoBuscaOption[]>([])
   const [alunoSelecionado, setAlunoSelecionado] = useState<AlunoBuscaOption | null>(null)
 
-  // fichas/progresso
+  const nivelEfetivoDoAtendimento = useMemo<number | null>(() => {
+    if (alunoSelecionado?.id_nivel_ensino != null) return Number(alunoSelecionado.id_nivel_ensino)
+    if (nivelFiltroEnsino !== 'todos') return Number(nivelFiltroEnsino)
+    return null
+  }, [alunoSelecionado?.id_nivel_ensino, nivelFiltroEnsino])
+
   const [carregandoFichas, setCarregandoFichas] = useState(false)
   const [progressosAlunoTodos, setProgressosAlunoTodos] = useState<ProgressoOption[]>([])
   const [fichasAbertasNaSala, setFichasAbertasNaSala] = useState<ProgressoOption[]>([])
@@ -400,172 +468,29 @@ export default function ProfessorAtendimentosPage() {
 
   const [usarFichaExistente, setUsarFichaExistente] = useState(true)
   const [progressoEscolhidoId, setProgressoEscolhidoId] = useState<number | null>(null)
-
-  const [configSelecionada, setConfigSelecionada] = useState<SalaDisciplinaAnoOption | null>(null)
+  const [configSelecionada, setConfigSelecionada] = useState<SalaDisciplinaNivelOption | null>(null)
 
   const [novoHoraEntrada, setNovoHoraEntrada] = useState<string>(agoraParaInputDateTimeLocal())
+  const [novoHoraSaida, setNovoHoraSaida] = useState<string>(agoraParaInputDateTimeLocal())
   const [novoResumo, setNovoResumo] = useState<string>('')
   const [salvandoNovoAtendimento, setSalvandoNovoAtendimento] = useState(false)
 
-  // ✅ modal confirmar abertura de ficha (quando precisa criar progresso novo)
   const [dlgConfirmAbrirFicha, setDlgConfirmAbrirFicha] = useState(false)
 
-  // ======= sessão/protocolos =======
+  // sessão
   const [dlgSessao, setDlgSessao] = useState(false)
   const [sessaoAtual, setSessaoAtual] = useState<SessaoView | null>(null)
   const [registros, setRegistros] = useState<RegistroView[]>([])
   const [salvandoSessao, setSalvandoSessao] = useState(false)
 
-  // ======= 3) Transferência =======
+  // transferência
   const [dlgTransferir, setDlgTransferir] = useState(false)
   const [carregandoProfSala, setCarregandoProfSala] = useState(false)
   const [professoresSala, setProfessoresSala] = useState<ProfessorDestinoOption[]>([])
   const [professorDestino, setProfessorDestino] = useState<ProfessorDestinoOption | null>(null)
   const [transferindo, setTransferindo] = useState(false)
 
-  const abrirDialogTransferencia = useCallback(async () => {
-    if (!supabase) return
-    if (!idProfessor) return
-    if (!sessaoAtual?.id_sala) {
-      aviso('Esta sessão não tem sala vinculada.')
-      return
-    }
-
-    setDlgTransferir(true)
-    setCarregandoProfSala(true)
-    setProfessorDestino(null)
-    setProfessoresSala([])
-
-    try {
-      const { data, error } = await supabase
-        .from('professores_salas')
-        .select(
-          `
-          id_professor,
-          ativo,
-          professores (
-            id_professor,
-            user_id,
-            usuarios ( name, foto_url )
-          )
-        `
-        )
-        .eq('id_sala', sessaoAtual.id_sala)
-        .eq('ativo', true)
-
-      if (error) throw error
-
-      const lista: ProfessorDestinoOption[] = (data ?? [])
-        .map((r: any) => {
-          const p = first(r?.professores) as any
-          const u = first(p?.usuarios) as any
-          return {
-            id_professor: Number(r.id_professor),
-            nome: u?.name ? String(u.name) : `Professor #${r.id_professor}`,
-            foto_url: u?.foto_url ?? null,
-          }
-        })
-        .filter((p: ProfessorDestinoOption) => p.id_professor !== idProfessor)
-        .sort((a, b) => a.nome.localeCompare(b.nome))
-
-      setProfessoresSala(lista)
-
-      if (lista.length === 0) {
-        aviso('Não há outro professor ativo nesta sala para transferir.')
-      }
-    } catch (e) {
-      console.error(e)
-      erro('Falha ao carregar professores da sala.')
-    } finally {
-      if (mountedRef.current) setCarregandoProfSala(false)
-    }
-  }, [supabase, idProfessor, sessaoAtual?.id_sala, aviso, erro])
-
-  const confirmarTransferencia = useCallback(async () => {
-    if (!supabase) return
-    if (!idProfessor) return
-    if (!sessaoAtual) return
-    if (sessaoAtual.hora_saida) {
-      info('Esta sessão já está encerrada.')
-      return
-    }
-    if (!sessaoAtual.id_sala) {
-      aviso('Sessão sem sala vinculada.')
-      return
-    }
-    if (!professorDestino?.id_professor) {
-      aviso('Selecione o professor de destino.')
-      return
-    }
-
-    setTransferindo(true)
-    try {
-      const agoraISO = new Date().toISOString()
-      const agoraBR = formatarDataHoraBR(agoraISO)
-
-      const linhaFechamento = `[TRANSFERÊNCIA] Encerrado por transferência para ${professorDestino.nome} em ${agoraBR}.`
-      const resumoFechamento = [sessaoAtual.resumo_atividades?.trim(), linhaFechamento].filter(Boolean).join('\n')
-
-      // 1) encerra a sessão atual (professor que transferiu)
-      const { error: errUp } = await supabase
-        .from('sessoes_atendimento')
-        .update({
-          hora_saida: agoraISO,
-          resumo_atividades: resumoFechamento,
-        })
-        .eq('id_sessao', sessaoAtual.id_sessao)
-
-      if (errUp) throw errUp
-
-      // 2) cria nova sessão para o professor de destino
-      const linhaAbertura = `[TRANSFERÊNCIA] Recebido por transferência de ${nomeProfessorAtual} em ${agoraBR}.`
-      const { error: errIns } = await supabase.from('sessoes_atendimento').insert({
-        id_aluno: sessaoAtual.id_aluno,
-        id_professor: professorDestino.id_professor,
-        id_sala: sessaoAtual.id_sala,
-        id_progresso: sessaoAtual.id_progresso,
-        hora_entrada: agoraISO,
-        hora_saida: null,
-        resumo_atividades: linhaAbertura,
-      })
-
-      if (errIns) throw errIns
-
-      sucesso('Atendimento transferido com sucesso.')
-
-      // ✅ mostra histórico automaticamente após transferência (para ver o encerrado)
-      setMostrarHistorico(true)
-
-      // fecha dialogs
-      setDlgTransferir(false)
-      setDlgSessao(false)
-      setSessaoAtual(null)
-      setRegistros([])
-
-      // recarrega lista do professor atual (ele verá como "encerrado")
-      if (idProfessor) {
-        await carregarSessoes(idProfessor, filtroDataInicio, filtroDataFim)
-      }
-    } catch (e: any) {
-      console.error(e)
-      erro(`Falha ao transferir: ${e?.message || 'erro desconhecido'}`)
-    } finally {
-      if (mountedRef.current) setTransferindo(false)
-    }
-  }, [
-    supabase,
-    idProfessor,
-    sessaoAtual,
-    professorDestino,
-    nomeProfessorAtual,
-    aviso,
-    info,
-    sucesso,
-    erro,
-    filtroDataInicio,
-    filtroDataFim,
-  ])
-
+  // registro dialog
   const [dlgRegistro, setDlgRegistro] = useState(false)
   const [registroEditandoId, setRegistroEditandoId] = useState<number | null>(null)
   const [regNumero, setRegNumero] = useState<string>('')
@@ -577,30 +502,31 @@ export default function ProfessorAtendimentosPage() {
   const [salvandoRegistro, setSalvandoRegistro] = useState(false)
   const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null)
 
-  /**
-   * ✅ Mapa de limite de protocolos por (SALA + DISCIPLINA)
-   * Como agora não dividimos por ano, usamos o TOTAL (SOMA) de quantidade_protocolos por sala+disciplina.
-   */
-  const mapaLimitePorSalaDisciplina = useMemo(() => {
-    const m = new Map<string, number>()
-    Object.entries(configsPorSala).forEach(([salaIdStr, lista]) => {
-      const salaId = Number(salaIdStr)
-      lista.forEach((o) => {
-        m.set(`${salaId}-${o.id_disciplina}`, Number(o.quantidade_protocolos ?? 0))
-      })
-    })
-    return m
-  }, [configsPorSala])
-
+  // ======= faixas/limite da sessão atual =======
   const limiteProtocolosSessao = useMemo(() => {
-    if (!sessaoAtual?.id_sala || !sessaoAtual?.id_disciplina) return null
-    return mapaLimitePorSalaDisciplina.get(`${sessaoAtual.id_sala}-${sessaoAtual.id_disciplina}`) ?? null
-  }, [sessaoAtual, mapaLimitePorSalaDisciplina])
+    if (!sessaoAtual?.id_sala || !sessaoAtual?.id_disciplina || !sessaoAtual?.id_nivel_ensino) return null
+    const cfg = (configsPorSala[sessaoAtual.id_sala] ?? []).find(
+      (c) => c.id_disciplina === sessaoAtual.id_disciplina && c.id_nivel_ensino === sessaoAtual.id_nivel_ensino
+    )
+    return cfg?.total_protocolos ?? null
+  }, [sessaoAtual?.id_sala, sessaoAtual?.id_disciplina, sessaoAtual?.id_nivel_ensino, configsPorSala])
+
+  const faixasSessaoAtual = useMemo(() => {
+    if (!sessaoAtual?.id_sala || !sessaoAtual?.id_disciplina || !sessaoAtual?.id_nivel_ensino) return [] as FaixaProtocolosAno[]
+    const cfg = (configsPorSala[sessaoAtual.id_sala] ?? []).find(
+      (c) => c.id_disciplina === sessaoAtual.id_disciplina && c.id_nivel_ensino === sessaoAtual.id_nivel_ensino
+    )
+    return cfg?.faixas ?? []
+  }, [sessaoAtual?.id_sala, sessaoAtual?.id_disciplina, sessaoAtual?.id_nivel_ensino, configsPorSala])
+
+  const resumoFaixasSessaoAtual = useMemo(() => resumoFaixasProtocolos(faixasSessaoAtual), [faixasSessaoAtual])
 
   const configsDaSalaSelecionada = useMemo(() => {
     if (!salaAtendimentoId) return []
-    return configsPorSala[salaAtendimentoId] ?? []
-  }, [configsPorSala, salaAtendimentoId])
+    const lista = configsPorSala[salaAtendimentoId] ?? []
+    if (!nivelEfetivoDoAtendimento) return lista
+    return lista.filter((c) => Number(c.id_nivel_ensino) === Number(nivelEfetivoDoAtendimento))
+  }, [configsPorSala, salaAtendimentoId, nivelEfetivoDoAtendimento])
 
   const idProgressoSelecionadoParaAbrirFicha = useMemo(() => {
     if (usarFichaExistente) return progressoEscolhidoId ?? null
@@ -652,7 +578,6 @@ export default function ProfessorAtendimentosPage() {
         })) as SalaAtendimento[]
 
       const salasAtivas = salas.filter((s) => s.is_ativa)
-
       if (salasAtivas.length === 0) {
         erro('Você não está lotado(a) em nenhuma sala ativa. Peça ao Admin/Secretaria para configurar.')
         setMinhasSalas([])
@@ -660,7 +585,6 @@ export default function ProfessorAtendimentosPage() {
       }
 
       setMinhasSalas(salasAtivas)
-
       const salaIds = salasAtivas.map((s) => s.id_sala)
 
       const [tiposRes, statusMatRes, statusDiscRes, cfgSalaRes] = await Promise.all([
@@ -679,7 +603,7 @@ export default function ProfessorAtendimentosPage() {
               id_ano_escolar,
               quantidade_protocolos,
               disciplinas ( nome_disciplina ),
-              anos_escolares ( nome_ano )
+              anos_escolares ( nome_ano, id_nivel_ensino )
             )
           `
           )
@@ -695,12 +619,8 @@ export default function ProfessorAtendimentosPage() {
       setStatusMatriculas((statusMatRes.data ?? []) as StatusMatricula[])
       setStatusDisciplinas((statusDiscRes.data ?? []) as StatusDisciplinaAluno[])
 
-      /**
-       * ✅ Monta configs por sala, "juntando" por disciplina (não divide por ano)
-       * Regra correta: para cada disciplina dentro da sala, SOMA quantidade_protocolos de todos os anos.
-       * Mantém id_ano_escolar como o MAIOR (mais recente) apenas para usar como "ano representativo" na criação de progresso.
-       */
-      const tmp: Record<number, Map<number, SalaDisciplinaAnoOption>> = {}
+      // monta configs por sala (disciplina+nivel) com faixas por ano
+      const tmp: Record<number, Map<string, SalaDisciplinaNivelOption>> = {}
 
       ;(cfgSalaRes.data ?? []).forEach((row: any) => {
         const salaId = Number(row.id_sala)
@@ -712,56 +632,102 @@ export default function ProfessorAtendimentosPage() {
 
         const disciplinaNome = disc?.nome_disciplina ? String(disc.nome_disciplina) : `Disciplina #${cfg.id_disciplina}`
         const anoNome = ano?.nome_ano ? String(ano.nome_ano) : `Ano #${cfg.id_ano_escolar}`
+        const nivelId = Number(ano?.id_nivel_ensino ?? 0)
         const qtd = Number(cfg.quantidade_protocolos ?? 0)
+        if (!nivelId || qtd <= 0) return
 
-        const opt: SalaDisciplinaAnoOption = {
-          id_config: Number(cfg.id_config),
-          id_disciplina: Number(cfg.id_disciplina),
-          id_ano_escolar: Number(cfg.id_ano_escolar),
-          quantidade_protocolos: qtd,
-          disciplina_nome: disciplinaNome,
-          ano_nome: anoNome,
-          label: '',
-        }
+        if (!tmp[salaId]) tmp[salaId] = new Map()
 
-        if (!tmp[salaId]) tmp[salaId] = new Map<number, SalaDisciplinaAnoOption>()
-
-        const atual = tmp[salaId].get(opt.id_disciplina)
+        const key = `${Number(cfg.id_disciplina)}-${nivelId}`
+        const atual = tmp[salaId].get(key)
 
         if (!atual) {
-          tmp[salaId].set(opt.id_disciplina, opt)
+          tmp[salaId].set(key, {
+            id_disciplina: Number(cfg.id_disciplina),
+            id_nivel_ensino: nivelId,
+            disciplina_nome: disciplinaNome,
+            total_protocolos: qtd,
+            ano_representativo_id: Number(cfg.id_ano_escolar),
+            ano_representativo_nome: anoNome,
+            id_config_representativo: Number(cfg.id_config),
+            faixas: [
+              {
+                id_config: Number(cfg.id_config),
+                id_ano_escolar: Number(cfg.id_ano_escolar),
+                ano_nome: anoNome,
+                quantidade_protocolos: qtd,
+                inicio: 0,
+                fim: 0,
+              },
+            ],
+            label: '',
+          })
           return
         }
 
-        const soma = Number(atual.quantidade_protocolos ?? 0) + Number(opt.quantidade_protocolos ?? 0)
-        const usarOptComoRepresentativo = opt.id_ano_escolar > atual.id_ano_escolar
+        const total = Number(atual.total_protocolos ?? 0) + qtd
+        const faixas = [...(atual.faixas ?? [])]
+        const idx = faixas.findIndex((f) => f.id_ano_escolar === Number(cfg.id_ano_escolar))
 
-        tmp[salaId].set(opt.id_disciplina, {
+        if (idx >= 0) {
+          faixas[idx] = {
+            ...faixas[idx],
+            id_config: Number(cfg.id_config),
+            ano_nome: anoNome,
+            quantidade_protocolos: Number(faixas[idx].quantidade_protocolos ?? 0) + qtd,
+          }
+        } else {
+          faixas.push({
+            id_config: Number(cfg.id_config),
+            id_ano_escolar: Number(cfg.id_ano_escolar),
+            ano_nome: anoNome,
+            quantidade_protocolos: qtd,
+            inicio: 0,
+            fim: 0,
+          })
+        }
+
+        const usarRepresentativo = Number(cfg.id_ano_escolar) > Number(atual.ano_representativo_id ?? 0)
+
+        tmp[salaId].set(key, {
           ...atual,
-          quantidade_protocolos: soma,
-          ...(usarOptComoRepresentativo
+          total_protocolos: total,
+          faixas,
+          ...(usarRepresentativo
             ? {
-                id_ano_escolar: opt.id_ano_escolar,
-                ano_nome: opt.ano_nome,
-                id_config: opt.id_config,
+                ano_representativo_id: Number(cfg.id_ano_escolar),
+                ano_representativo_nome: anoNome,
+                id_config_representativo: Number(cfg.id_config),
               }
             : {}),
         })
       })
 
-      const mapaFinal: Record<number, SalaDisciplinaAnoOption[]> = {}
-      Object.entries(tmp).forEach(([salaIdStr, mapDisc]) => {
+      const mapaFinal: Record<number, SalaDisciplinaNivelOption[]> = {}
+      Object.entries(tmp).forEach(([salaIdStr, mapDiscNivel]) => {
         const salaId = Number(salaIdStr)
-        const lista = Array.from(mapDisc.values()).map((o) => ({
-          ...o,
-          label: `${o.disciplina_nome} (protocolos: ${o.quantidade_protocolos})`,
-        }))
+        const lista = Array.from(mapDiscNivel.values()).map((o) => {
+          const faixasOrd = [...(o.faixas ?? [])].sort((a, b) => a.id_ano_escolar - b.id_ano_escolar)
+          let acc = 0
+          const faixasCalc = faixasOrd.map((f) => {
+            const inicio = acc + 1
+            const fim = acc + Number(f.quantidade_protocolos ?? 0)
+            acc = fim
+            return { ...f, inicio, fim }
+          })
+
+          const resumo = resumoFaixasProtocolos(faixasCalc)
+          const label = `${nomeNivelEnsinoCurto(o.id_nivel_ensino)} • ${o.disciplina_nome} (prot: ${acc})${resumo ? ` • ${resumo}` : ''}`
+
+          return { ...o, total_protocolos: acc, faixas: faixasCalc, label }
+        })
+
         lista.sort((a, b) => a.label.localeCompare(b.label))
         mapaFinal[salaId] = lista
       })
 
       setConfigsPorSala(mapaFinal)
-    } catch (e: any) {
+    } catch (e) {
       console.error(e)
       erro('Falha ao carregar dados-base do atendimento.')
     } finally {
@@ -793,6 +759,9 @@ export default function ProfessorAtendimentosPage() {
             resumo_atividades,
             alunos (
               id_aluno,
+              nis,
+              possui_necessidade_especial,
+              possui_beneficio_governo,
               usuarios ( name, foto_url )
             ),
             salas_atendimento (
@@ -805,8 +774,8 @@ export default function ProfessorAtendimentosPage() {
               id_disciplina,
               id_ano_escolar,
               disciplinas ( nome_disciplina ),
-              anos_escolares ( nome_ano ),
-              matriculas ( numero_inscricao )
+              anos_escolares ( nome_ano, id_nivel_ensino ),
+              matriculas ( numero_inscricao, id_nivel_ensino )
             )
           `
           )
@@ -826,6 +795,13 @@ export default function ProfessorAtendimentosPage() {
           const ano = first(prog?.anos_escolares) as any
           const mat = first(prog?.matriculas) as any
 
+          const nivelId =
+            mat?.id_nivel_ensino != null
+              ? Number(mat.id_nivel_ensino)
+              : ano?.id_nivel_ensino != null
+                ? Number(ano.id_nivel_ensino)
+                : null
+
           return {
             id_sessao: Number(s.id_sessao),
             id_aluno: Number(s.id_aluno),
@@ -839,6 +815,11 @@ export default function ProfessorAtendimentosPage() {
             aluno_nome: alunoUser?.name ?? `Aluno #${s.id_aluno}`,
             aluno_foto_url: alunoUser?.foto_url ?? null,
             numero_inscricao: mat?.numero_inscricao ?? null,
+
+            id_nivel_ensino: nivelId,
+            aluno_nis: aluno?.nis ?? null,
+            aluno_possui_necessidade_especial: aluno?.possui_necessidade_especial ?? null,
+            aluno_possui_beneficio_governo: aluno?.possui_beneficio_governo ?? null,
 
             sala_nome: sala?.nome ?? (s.id_sala ? `Sala #${s.id_sala}` : '-'),
             sala_tipo: sala?.tipo_sala ?? '-',
@@ -858,7 +839,7 @@ export default function ProfessorAtendimentosPage() {
           r[s.id_sessao] = s.resumo_atividades ?? ''
         })
         setResumoPorSessao(r)
-      } catch (e: any) {
+      } catch (e) {
         console.error(e)
         erro('Erro ao carregar sessões de atendimento.')
       } finally {
@@ -868,6 +849,7 @@ export default function ProfessorAtendimentosPage() {
     [supabase, erro]
   )
 
+  // ======= finalizar rápido =======
   const finalizarSessaoRapido = useCallback(
     async (sessao: SessaoView) => {
       if (!supabase) return
@@ -889,9 +871,9 @@ export default function ProfessorAtendimentosPage() {
         if (errUp) throw errUp
 
         sucesso('Atendimento finalizado.')
-        setMostrarHistorico(true) // ajuda a visualizar encerrados, sem “sumir”
+        setMostrarHistorico(true)
         await carregarSessoes(idProfessor, filtroDataInicio, filtroDataFim)
-      } catch (e: any) {
+      } catch (e) {
         console.error(e)
         erro('Falha ao finalizar atendimento.')
       }
@@ -949,7 +931,7 @@ export default function ProfessorAtendimentosPage() {
         })
 
         setRegistros(lista)
-      } catch (e: any) {
+      } catch (e) {
         console.error(e)
         erro('Erro ao carregar protocolos desta sessão.')
       } finally {
@@ -989,7 +971,7 @@ export default function ProfessorAtendimentosPage() {
 
       if (errUp) throw errUp
       sucesso('Resumo da sessão salvo.')
-    } catch (e: any) {
+    } catch (e) {
       console.error(e)
       erro('Falha ao salvar o resumo da sessão.')
     } finally {
@@ -1021,7 +1003,7 @@ export default function ProfessorAtendimentosPage() {
       sucesso('Sessão encerrada com sucesso.')
       setMostrarHistorico(true)
       setSessaoAtual((old) => (old ? { ...old, hora_saida: agora } : old))
-    } catch (e: any) {
+    } catch (e) {
       console.error(e)
       erro('Falha ao encerrar a sessão.')
     } finally {
@@ -1038,25 +1020,26 @@ export default function ProfessorAtendimentosPage() {
   const obterIdStatusDisciplinaDefault = useCallback((): number | null => {
     const cursando = statusDisciplinas.find((s) => normalizarTexto(s.nome).includes('cursando'))
     if (cursando) return Number(cursando.id_status_disciplina)
-
     const aCursar = statusDisciplinas.find((s) => normalizarTexto(s.nome).includes('a cursar'))
     if (aCursar) return Number(aCursar.id_status_disciplina)
-
     return statusDisciplinas[0]?.id_status_disciplina ? Number(statusDisciplinas[0].id_status_disciplina) : null
   }, [statusDisciplinas])
 
   const obterMatriculaPreferencial = useCallback(
-    async (alunoId: number): Promise<number | null> => {
+    async (alunoId: number, idNivelEnsino?: number | null): Promise<number | null> => {
       if (!supabase) return null
 
       const ativaId = obterIdStatusMatriculaAtiva()
-      const { data, error: err } = await supabase
+      let q = supabase
         .from('matriculas')
-        .select('id_matricula,id_status_matricula,ano_letivo,data_matricula,numero_inscricao')
+        .select('id_matricula,id_status_matricula,ano_letivo,data_matricula,numero_inscricao,id_nivel_ensino')
         .eq('id_aluno', alunoId)
         .order('ano_letivo', { ascending: false })
         .order('data_matricula', { ascending: false })
 
+      if (idNivelEnsino != null) q = q.eq('id_nivel_ensino', idNivelEnsino)
+
+      const { data, error: err } = await q
       if (err) throw err
 
       const lista = (data ?? []).map((m: any) => ({
@@ -1070,7 +1053,6 @@ export default function ProfessorAtendimentosPage() {
         const ativa = lista.find((m) => m.id_status_matricula === ativaId)
         if (ativa) return ativa.id_matricula
       }
-
       return lista[0].id_matricula
     },
     [supabase, obterIdStatusMatriculaAtiva]
@@ -1089,7 +1071,6 @@ export default function ProfessorAtendimentosPage() {
         .maybeSingle()
 
       if (errSel) throw errSel
-
       if (existente?.id_progresso) return Number(existente.id_progresso)
 
       const statusDefaultId = obterIdStatusDisciplinaDefault()
@@ -1108,13 +1089,12 @@ export default function ProfessorAtendimentosPage() {
 
       if (errIns) throw errIns
       if (!criado?.id_progresso) throw new Error('Falha ao criar progresso (sem id_progresso).')
-
       return Number(criado.id_progresso)
     },
     [supabase, obterIdStatusDisciplinaDefault]
   )
 
-  // ======= 2) buscar aluno (nome / RA / CPF) — SOLUÇÃO DEFINITIVA =======
+  // ======= buscar alunos (nome / RA / CPF) =======
   const buscarAlunos = useCallback(
     async (termo: string) => {
       if (!supabase) return
@@ -1129,62 +1109,20 @@ export default function ProfessorAtendimentosPage() {
 
       try {
         const digitos = extrairDigitos(t)
-        const numerico = isBuscaNumerica(t)
-        const temLetras = !numerico
+        const temLetras = /[A-Za-zÀ-ÿ]/.test(t)
+        const buscaNumerica = isBuscaNumerica(t)
 
-
-        // helper: pega matrícula “mais recente”
-        const pickMatriculaTop = (mats: any[]) => {
-          const lista = (mats ?? [])
-            .map((m: any) => ({
-              id_matricula: Number(m.id_matricula),
-              numero_inscricao: m.numero_inscricao ? String(m.numero_inscricao) : null,
-              ano_letivo: Number(m.ano_letivo ?? 0),
-              data_matricula: m.data_matricula ? String(m.data_matricula) : '1900-01-01',
-            }))
-            .sort((a, b) => {
-              if (b.ano_letivo !== a.ano_letivo) return b.ano_letivo - a.ano_letivo
-              return new Date(b.data_matricula).getTime() - new Date(a.data_matricula).getTime()
-            })
-
-          return lista[0] ?? null
-        }
-
-        // helper: mapeia resultado vindo de "alunos"
-        const mapFromAlunos = (data: any[]): AlunoBuscaOption[] => {
-          return (data ?? []).map((a: any) => {
-            const u = first(a?.usuarios) as any
-            const top = pickMatriculaTop(a?.matriculas ?? [])
-
-            return {
-              id_aluno: Number(a.id_aluno),
-              nome: u?.name ?? `Aluno #${a.id_aluno}`,
-              email: u?.email ?? null,
-              foto_url: u?.foto_url ?? null,
-              id_matricula: top?.id_matricula ?? null,
-              numero_inscricao: top?.numero_inscricao ?? null,
-            }
-          })
-        }
-
-        // helper: remove duplicados por aluno (mantém o primeiro)
-        const dedupeByAluno = (items: AlunoBuscaOption[]) => {
-          const m = new Map<number, AlunoBuscaOption>()
-          items.forEach((it) => {
-            if (!m.has(it.id_aluno)) m.set(it.id_aluno, it)
-          })
-          return Array.from(m.values())
-        }
-
-        // ========= 1) BUSCA POR NOME =========
         if (temLetras) {
           const { data, error } = await supabase
             .from('alunos')
             .select(
               `
               id_aluno,
+              nis,
+              possui_necessidade_especial,
+              possui_beneficio_governo,
               usuarios!inner ( name, email, foto_url, cpf ),
-              matriculas ( id_matricula, numero_inscricao, ano_letivo, data_matricula )
+              matriculas ( id_matricula, numero_inscricao, ano_letivo, data_matricula, id_nivel_ensino )
             `
             )
             .ilike('usuarios.name', `%${t}%`)
@@ -1192,18 +1130,58 @@ export default function ProfessorAtendimentosPage() {
 
           if (error) throw error
 
-          setOpcoesAluno(dedupeByAluno(mapFromAlunos(data ?? [])))
+          const opts: AlunoBuscaOption[] = []
+          ;(data ?? []).forEach((a: any) => {
+            const u = first(a?.usuarios) as any
+
+            const matsRaw = (a?.matriculas ?? []).map((m: any) => ({
+              id_matricula: m?.id_matricula != null ? Number(m.id_matricula) : null,
+              numero_inscricao: m?.numero_inscricao ? String(m.numero_inscricao) : null,
+              ano_letivo: Number(m?.ano_letivo ?? 0),
+              data_matricula: m?.data_matricula ? String(m.data_matricula) : '1900-01-01',
+              id_nivel_ensino: m?.id_nivel_ensino != null ? Number(m.id_nivel_ensino) : null,
+            }))
+
+            const matsFiltradas =
+              nivelFiltroEnsino === 'todos' ? matsRaw : matsRaw.filter((m: any) => Number(m.id_nivel_ensino) === Number(nivelFiltroEnsino))
+
+            matsFiltradas.sort((x: any, y: any) => {
+              if (y.ano_letivo !== x.ano_letivo) return y.ano_letivo - x.ano_letivo
+              return new Date(y.data_matricula).getTime() - new Date(x.data_matricula).getTime()
+            })
+
+            matsFiltradas.forEach((m: any) => {
+              if (!m.id_matricula) return
+              opts.push({
+                id_aluno: Number(a.id_aluno),
+                nome: u?.name ?? `Aluno #${a.id_aluno}`,
+                email: u?.email ?? null,
+                foto_url: u?.foto_url ?? null,
+                id_matricula: Number(m.id_matricula),
+                numero_inscricao: m.numero_inscricao ?? null,
+                id_nivel_ensino: m.id_nivel_ensino ?? null,
+                nis: a?.nis ?? null,
+                possui_necessidade_especial: a?.possui_necessidade_especial ?? null,
+                possui_beneficio_governo: a?.possui_beneficio_governo ?? null,
+              })
+            })
+          })
+
+          opts.sort((a, b) => a.nome.localeCompare(b.nome))
+          setOpcoesAluno(opts.slice(0, 25))
           return
         }
 
-        // ========= 2) BUSCA NUMÉRICA (RA / CPF) =========
-        if (digitos.length < 2) {
+        if (!buscaNumerica) {
           setOpcoesAluno([])
           return
         }
 
-        // ✅ (A) RA: busca DEFINITIVA direto em matriculas.numero_inscricao
-        const { data: mats, error: errMats } = await supabase
+        const tentarCPF = digitos.length >= 11
+        const cpfFmt = digitos.length >= 11 ? formatarCPF(digitos) : null
+
+        // RA (matriculas)
+        let qRA = supabase
           .from('matriculas')
           .select(
             `
@@ -1211,85 +1189,116 @@ export default function ProfessorAtendimentosPage() {
             id_aluno,
             numero_inscricao,
             ano_letivo,
-            data_matricula,
+            id_nivel_ensino,
             alunos!inner (
               id_aluno,
+              nis,
+              possui_necessidade_especial,
+              possui_beneficio_governo,
               usuarios!inner ( name, email, foto_url, cpf )
             )
           `
           )
           .ilike('numero_inscricao', `%${digitos}%`)
           .order('ano_letivo', { ascending: false })
-          .order('data_matricula', { ascending: false })
           .limit(25)
 
+        if (nivelFiltroEnsino !== 'todos') qRA = qRA.eq('id_nivel_ensino', nivelFiltroEnsino)
+
+        const { data: mats, error: errMats } = await qRA
         if (errMats) throw errMats
 
-        const optsRA: AlunoBuscaOption[] = (mats ?? []).map((m: any) => {
+        const optsMap = new Map<number, AlunoBuscaOption>()
+        ;(mats ?? []).forEach((m: any) => {
           const aluno = first(m?.alunos) as any
           const u = first(aluno?.usuarios) as any
+          const idMat = Number(m.id_matricula)
 
-          return {
+          optsMap.set(idMat, {
             id_aluno: Number(m.id_aluno ?? aluno?.id_aluno),
             nome: u?.name ?? `Aluno #${m.id_aluno ?? aluno?.id_aluno}`,
             email: u?.email ?? null,
             foto_url: u?.foto_url ?? null,
-            id_matricula: Number(m.id_matricula),
+            id_matricula: idMat,
             numero_inscricao: m.numero_inscricao ? String(m.numero_inscricao) : null,
-          }
+            id_nivel_ensino: m?.id_nivel_ensino != null ? Number(m.id_nivel_ensino) : null,
+            nis: aluno?.nis ?? null,
+            possui_necessidade_especial: aluno?.possui_necessidade_especial ?? null,
+            possui_beneficio_governo: aluno?.possui_beneficio_governo ?? null,
+          })
         })
 
-        // ✅ (B) CPF: só tenta se o usuário digitou bastante dígito (evita sujeira)
-        let optsCPF: AlunoBuscaOption[] = []
-        if (digitos.length >= 6) {
-          const { data: cpfData1, error: errCpf1 } = await supabase
+        // CPF (opcional)
+        if (tentarCPF) {
+          const orParts = [
+            `usuarios.cpf.ilike.%${t}%`,
+            `usuarios.cpf.ilike.%${digitos}%`,
+            cpfFmt ? `usuarios.cpf.ilike.%${cpfFmt}%` : null,
+          ].filter(Boolean)
+
+          const { data: dataCPF, error: errCPF } = await supabase
             .from('alunos')
             .select(
               `
               id_aluno,
+              nis,
+              possui_necessidade_especial,
+              possui_beneficio_governo,
               usuarios!inner ( name, email, foto_url, cpf ),
-              matriculas ( id_matricula, numero_inscricao, ano_letivo, data_matricula )
+              matriculas ( id_matricula, numero_inscricao, ano_letivo, data_matricula, id_nivel_ensino )
             `
             )
-            .ilike('usuarios.cpf', `%${t}%`)
+            .or(orParts.join(','))
             .limit(25)
 
-          if (errCpf1) throw errCpf1
+          if (errCPF) throw errCPF
 
-          const { data: cpfData2, error: errCpf2 } =
-            t !== digitos
-              ? await supabase
-                  .from('alunos')
-                  .select(
-                    `
-                    id_aluno,
-                    usuarios!inner ( name, email, foto_url, cpf ),
-                    matriculas ( id_matricula, numero_inscricao, ano_letivo, data_matricula )
-                  `
-                  )
-                  .ilike('usuarios.cpf', `%${digitos}%`)
-                  .limit(25)
-              : { data: [], error: null as any }
+          ;(dataCPF ?? []).forEach((a: any) => {
+            const u = first(a?.usuarios) as any
+            const matsRaw = (a?.matriculas ?? []).map((m: any) => ({
+              id_matricula: m?.id_matricula != null ? Number(m.id_matricula) : null,
+              numero_inscricao: m?.numero_inscricao ? String(m.numero_inscricao) : null,
+              ano_letivo: Number(m?.ano_letivo ?? 0),
+              data_matricula: m?.data_matricula ? String(m.data_matricula) : '1900-01-01',
+              id_nivel_ensino: m?.id_nivel_ensino != null ? Number(m.id_nivel_ensino) : null,
+            }))
 
-          if (errCpf2) throw errCpf2
+            const matsFiltradas =
+              nivelFiltroEnsino === 'todos'
+                ? matsRaw
+                : matsRaw.filter((m: any) => Number(m.id_nivel_ensino) === Number(nivelFiltroEnsino))
 
-          optsCPF = dedupeByAluno([...mapFromAlunos(cpfData1 ?? []), ...mapFromAlunos(cpfData2 ?? [])])
+            matsFiltradas.sort((x: any, y: any) => {
+              if (y.ano_letivo !== x.ano_letivo) return y.ano_letivo - x.ano_letivo
+              return new Date(y.data_matricula).getTime() - new Date(x.data_matricula).getTime()
+            })
+
+            matsFiltradas.forEach((m: any) => {
+              if (!m.id_matricula) return
+              const idMat = Number(m.id_matricula)
+              if (optsMap.has(idMat)) return
+
+              optsMap.set(idMat, {
+                id_aluno: Number(a.id_aluno),
+                nome: u?.name ?? `Aluno #${a.id_aluno}`,
+                email: u?.email ?? null,
+                foto_url: u?.foto_url ?? null,
+                id_matricula: idMat,
+                numero_inscricao: m.numero_inscricao ?? null,
+                id_nivel_ensino: m.id_nivel_ensino ?? null,
+                nis: a?.nis ?? null,
+                possui_necessidade_especial: a?.possui_necessidade_especial ?? null,
+                possui_beneficio_governo: a?.possui_beneficio_governo ?? null,
+              })
+            })
+          })
         }
 
-        // merge + ranking (RA exato primeiro)
-        const merged = dedupeByAluno([...optsRA, ...optsCPF])
+        const optsFinal = Array.from(optsMap.values())
+          .sort((a, b) => a.nome.localeCompare(b.nome))
+          .slice(0, 25)
 
-        const rankRA = (o: AlunoBuscaOption) => {
-          const ra = extrairDigitos(o.numero_inscricao ?? '')
-          if (ra === digitos) return 0
-          if (ra.startsWith(digitos) || ra.endsWith(digitos)) return 1
-          if (ra.includes(digitos)) return 2
-          return 3
-        }
-
-        merged.sort((a, b) => rankRA(a) - rankRA(b) || a.nome.localeCompare(b.nome))
-
-        setOpcoesAluno(merged)
+        setOpcoesAluno(optsFinal)
       } catch (e) {
         console.error(e)
         erro('Falha ao buscar alunos.')
@@ -1297,18 +1306,19 @@ export default function ProfessorAtendimentosPage() {
         if (mountedRef.current) setBuscandoAlunos(false)
       }
     },
-    [supabase, erro]
+    [supabase, erro, nivelFiltroEnsino]
   )
 
-
-  // ======= carregar fichas do aluno (progresso) =======
+  // ======= fichas do aluno =======
   const carregarFichasDoAlunoNaSala = useCallback(
     async (aluno: AlunoBuscaOption, salaId: number) => {
       if (!supabase) return
-
       setCarregandoFichas(true)
+
       try {
-        const idMatricula = aluno.id_matricula ?? (await obterMatriculaPreferencial(aluno.id_aluno))
+        const nivelAluno = aluno.id_nivel_ensino != null ? Number(aluno.id_nivel_ensino) : null
+        const idMatricula = aluno.id_matricula ?? (await obterMatriculaPreferencial(aluno.id_aluno, nivelAluno ?? undefined))
+
         if (!idMatricula) {
           setProgressosAlunoTodos([])
           setFichasAbertasNaSala([])
@@ -1316,7 +1326,7 @@ export default function ProfessorAtendimentosPage() {
           setProgressoEscolhidoId(null)
           setConfigSelecionada(null)
           setUsarFichaExistente(false)
-          aviso('Este aluno não possui matrícula cadastrada. A Secretaria deve cadastrar a matrícula primeiro.')
+          aviso('Este aluno não possui matrícula cadastrada.')
           return
         }
 
@@ -1330,7 +1340,7 @@ export default function ProfessorAtendimentosPage() {
             id_status_disciplina,
             status_disciplina_aluno ( nome ),
             disciplinas ( nome_disciplina ),
-            anos_escolares ( nome_ano )
+            anos_escolares ( nome_ano, id_nivel_ensino )
           `
           )
           .eq('id_matricula', idMatricula)
@@ -1345,11 +1355,13 @@ export default function ProfessorAtendimentosPage() {
           const disciplinaNome = disc?.nome_disciplina ? String(disc.nome_disciplina) : `Disciplina #${p.id_disciplina}`
           const anoNome = ano?.nome_ano ? String(ano.nome_ano) : `Ano #${p.id_ano_escolar}`
           const statusNome = st?.nome ? String(st.nome) : null
+          const nivelId = ano?.id_nivel_ensino != null ? Number(ano.id_nivel_ensino) : null
 
           return {
             id_progresso: Number(p.id_progresso),
             id_disciplina: Number(p.id_disciplina),
             id_ano_escolar: Number(p.id_ano_escolar),
+            id_nivel_ensino: nivelId,
             disciplina_nome: disciplinaNome,
             ano_nome: anoNome,
             status_nome: statusNome,
@@ -1360,14 +1372,18 @@ export default function ProfessorAtendimentosPage() {
         setProgressosAlunoTodos(todos)
 
         const abertasRaw = todos.filter((p) => isStatusDisciplinaAberta(p.status_nome ?? ''))
-
         const qtdAbertasDisc = new Set(abertasRaw.map((p) => p.id_disciplina)).size
         setQtdDisciplinasAbertas(qtdAbertasDisc)
 
-        const setDisciplinasSala = new Set((configsPorSala[salaId] ?? []).map((c) => c.id_disciplina))
+        const setDisciplinasSala = new Set(
+          (configsPorSala[salaId] ?? [])
+            .filter((c) => (nivelAluno != null ? Number(c.id_nivel_ensino) === Number(nivelAluno) : true))
+            .map((c) => c.id_disciplina)
+        )
 
         const abertasPorDisc = agruparAbertasPorDisciplina(abertasRaw)
         const abertasNaSala = abertasPorDisc.filter((p) => setDisciplinasSala.has(p.id_disciplina))
+
         setFichasAbertasNaSala(abertasNaSala)
 
         if (abertasNaSala.length > 0) {
@@ -1378,7 +1394,7 @@ export default function ProfessorAtendimentosPage() {
           setUsarFichaExistente(false)
           setProgressoEscolhidoId(null)
         }
-      } catch (e: any) {
+      } catch (e) {
         console.error(e)
         erro('Falha ao verificar fichas do aluno.')
       } finally {
@@ -1388,39 +1404,52 @@ export default function ProfessorAtendimentosPage() {
     [supabase, obterMatriculaPreferencial, configsPorSala, aviso, erro]
   )
 
-  // ======= abrir fluxo iniciar atendimento =======
-  const abrirFluxoNovoAtendimento = useCallback(() => {
-    if (carregandoBase) return
-    if (!idProfessor) {
-      aviso('Professor não identificado.')
-      return
-    }
-    if (minhasSalas.length === 0) {
-      aviso('Você não tem salas configuradas.')
-      return
-    }
+  // ======= abrir fluxo =======
+  const abrirFluxo = useCallback(
+    (modo: FluxoTipo) => {
+      if (carregandoBase) return
+      if (!idProfessor) {
+        aviso('Professor não identificado.')
+        return
+      }
+      if (minhasSalas.length === 0) {
+        aviso('Você não tem salas configuradas.')
+        return
+      }
 
-    setAlunoInput('')
-    setOpcoesAluno([])
-    setAlunoSelecionado(null)
-    setProgressosAlunoTodos([])
-    setFichasAbertasNaSala([])
-    setQtdDisciplinasAbertas(null)
-    setUsarFichaExistente(true)
-    setProgressoEscolhidoId(null)
-    setConfigSelecionada(null)
-    setNovoHoraEntrada(agoraParaInputDateTimeLocal())
-    setNovoResumo('')
-    setDlgConfirmAbrirFicha(false)
+      setFluxoTipo(modo)
 
-    if (minhasSalas.length === 1) {
-      setSalaAtendimentoId(minhasSalas[0].id_sala)
-      setDlgNovoAtendimento(true)
-    } else {
-      setSalaAtendimentoId(null)
-      setDlgEscolherSala(true)
-    }
-  }, [carregandoBase, idProfessor, minhasSalas, aviso])
+      setAlunoInput('')
+      setOpcoesAluno([])
+      setAlunoSelecionado(null)
+      setNivelFiltroEnsino('todos')
+
+      setProgressosAlunoTodos([])
+      setFichasAbertasNaSala([])
+      setQtdDisciplinasAbertas(null)
+      setUsarFichaExistente(true)
+      setProgressoEscolhidoId(null)
+      setConfigSelecionada(null)
+
+      const agora = agoraParaInputDateTimeLocal()
+      setNovoHoraEntrada(agora)
+      setNovoHoraSaida(agora)
+      setNovoResumo('')
+      setDlgConfirmAbrirFicha(false)
+
+      if (minhasSalas.length === 1) {
+        setSalaAtendimentoId(minhasSalas[0].id_sala)
+        setDlgNovoAtendimento(true)
+      } else {
+        setSalaAtendimentoId(null)
+        setDlgEscolherSala(true)
+      }
+    },
+    [carregandoBase, idProfessor, minhasSalas, aviso]
+  )
+
+  const abrirFluxoNovoAtendimento = useCallback(() => abrirFluxo('normal'), [abrirFluxo])
+  const abrirFluxoLancamentoManual = useCallback(() => abrirFluxo('manual'), [abrirFluxo])
 
   const escolherSalaEContinuar = useCallback((idSala: number) => {
     setSalaAtendimentoId(idSala)
@@ -1428,7 +1457,7 @@ export default function ProfessorAtendimentosPage() {
     setDlgNovoAtendimento(true)
   }, [])
 
-  // debounce de busca aluno
+  // debounce busca aluno
   useEffect(() => {
     if (!dlgNovoAtendimento) return
     const t = alunoInput.trim()
@@ -1438,7 +1467,7 @@ export default function ProfessorAtendimentosPage() {
     return () => clearTimeout(h)
   }, [alunoInput, dlgNovoAtendimento, buscarAlunos])
 
-  // ao escolher aluno + sala, carrega fichas
+  // ao escolher aluno + sala carrega fichas
   useEffect(() => {
     if (!dlgNovoAtendimento) return
     if (!alunoSelecionado?.id_aluno) return
@@ -1446,6 +1475,7 @@ export default function ProfessorAtendimentosPage() {
     void carregarFichasDoAlunoNaSala(alunoSelecionado, salaAtendimentoId)
   }, [dlgNovoAtendimento, alunoSelecionado?.id_aluno, salaAtendimentoId, carregarFichasDoAlunoNaSala])
 
+  // ======= criar atendimento =======
   const podeAbrirNovaDisciplina = useMemo(() => {
     if (podeAbrirMaisQue3) return true
     if (qtdDisciplinasAbertas == null) return true
@@ -1458,65 +1488,74 @@ export default function ProfessorAtendimentosPage() {
       if (!usuario?.id) return
       if (!idProfessor) return
 
-      if (!salaAtendimentoId) {
-        aviso('Selecione a sala.')
-        return
+      if (!salaAtendimentoId) return aviso('Selecione a sala.')
+      if (!alunoSelecionado?.id_aluno) return aviso('Selecione o aluno.')
+      if (!novoHoraEntrada?.trim()) return aviso('Informe a hora de entrada.')
+
+      if (fluxoTipo === 'manual' && !novoHoraSaida?.trim()) return aviso('No lançamento manual, informe a hora de saída.')
+
+      const dtEntrada = new Date(novoHoraEntrada)
+      if (Number.isNaN(dtEntrada.getTime())) return aviso('Hora de entrada inválida.')
+
+      let dtSaida: Date | null = null
+      if (fluxoTipo === 'manual') {
+        dtSaida = new Date(novoHoraSaida)
+        if (Number.isNaN(dtSaida.getTime())) return aviso('Hora de saída inválida.')
+        if (dtSaida.getTime() < dtEntrada.getTime()) return aviso('Hora de saída não pode ser menor que a entrada.')
       }
-      if (!alunoSelecionado?.id_aluno) {
-        aviso('Selecione o aluno.')
-        return
-      }
-      if (!novoHoraEntrada?.trim()) {
-        aviso('Informe a hora de entrada.')
-        return
+
+      const nivelAluno = alunoSelecionado.id_nivel_ensino != null ? Number(alunoSelecionado.id_nivel_ensino) : null
+      if (nivelAluno != null && nivelFiltroEnsino !== 'todos' && Number(nivelFiltroEnsino) !== Number(nivelAluno)) {
+        return erro(`Nível incompatível: o aluno é ${nomeNivelEnsinoLongo(nivelAluno)}.`)
       }
 
       setSalvandoNovoAtendimento(true)
       try {
-        const idMatricula = alunoSelecionado.id_matricula ?? (await obterMatriculaPreferencial(alunoSelecionado.id_aluno))
-        if (!idMatricula) {
-          aviso('Este aluno não possui matrícula cadastrada.')
-          return
-        }
+        const idMatricula =
+          alunoSelecionado.id_matricula ??
+          (await obterMatriculaPreferencial(alunoSelecionado.id_aluno, nivelAluno ?? nivelEfetivoDoAtendimento ?? undefined))
+
+        if (!idMatricula) return aviso('Este aluno não possui matrícula cadastrada.')
 
         let idProgresso: number | null = null
 
         if (usarFichaExistente) {
-          if (!progressoEscolhidoId) {
-            aviso('Selecione uma ficha aberta da sala.')
-            return
-          }
+          if (!progressoEscolhidoId) return aviso('Selecione uma ficha aberta da sala.')
           idProgresso = progressoEscolhidoId
         } else {
-          if (!configSelecionada) {
-            aviso('Selecione a disciplina para abrir ficha.')
-            return
+          if (!configSelecionada) return aviso('Selecione a disciplina para abrir ficha.')
+
+          if (nivelAluno != null && Number(configSelecionada.id_nivel_ensino) !== Number(nivelAluno)) {
+            return erro(
+              `Disciplina de nível incorreto: aluno ${nomeNivelEnsinoLongo(nivelAluno)} vs disciplina ${nomeNivelEnsinoLongo(configSelecionada.id_nivel_ensino)}.`
+            )
           }
 
           const existente = escolherProgressoPorDisciplina(progressosAlunoTodos, configSelecionada.id_disciplina)
 
           if (!existente && !opts?.confirmarCriacaoFicha) {
             if (!podeAbrirNovaDisciplina) {
-              erro('Este aluno já possui 3 ou mais disciplinas abertas. Apenas ADMIN/DIRETOR/COORDENAÇÃO pode abrir nova disciplina.')
-              return
+              return erro('Aluno já possui 3+ disciplinas abertas. Apenas ADMIN/DIRETOR/COORDENAÇÃO pode abrir nova disciplina.')
             }
             setDlgConfirmAbrirFicha(true)
             return
           }
 
-          if (!existente) {
-            if (!podeAbrirNovaDisciplina) {
-              erro('Este aluno já possui 3 ou mais disciplinas abertas. Apenas ADMIN/DIRETOR/COORDENAÇÃO pode abrir nova disciplina.')
-              return
-            }
+          if (!existente && !podeAbrirNovaDisciplina) {
+            return erro('Aluno já possui 3+ disciplinas abertas. Apenas ADMIN/DIRETOR/COORDENAÇÃO pode abrir nova disciplina.')
           }
 
           idProgresso = existente
             ? existente.id_progresso
-            : await garantirProgresso(idMatricula, configSelecionada.id_disciplina, configSelecionada.id_ano_escolar)
+            : await garantirProgresso(idMatricula, configSelecionada.id_disciplina, configSelecionada.ano_representativo_id)
         }
 
-        const horaEntradaISO = new Date(novoHoraEntrada).toISOString()
+        const horaEntradaISO = dtEntrada.toISOString()
+        const horaSaidaISO = fluxoTipo === 'manual' && dtSaida ? dtSaida.toISOString() : null
+
+        const agoraISO = new Date().toISOString()
+        const marcadorManual = fluxoTipo === 'manual' ? `[LANÇAMENTO MANUAL] Lançado em ${formatarDataHoraBR(agoraISO)}.` : ''
+        const resumoFinal = [marcadorManual, novoResumo.trim()].filter((x) => Boolean(String(x).trim())).join('\n')
 
         const { data: nova, error: errIns } = await supabase
           .from('sessoes_atendimento')
@@ -1526,40 +1565,43 @@ export default function ProfessorAtendimentosPage() {
             id_sala: salaAtendimentoId,
             id_progresso: idProgresso,
             hora_entrada: horaEntradaISO,
-            resumo_atividades: novoResumo.trim() ? novoResumo.trim() : null,
+            hora_saida: horaSaidaISO,
+            resumo_atividades: resumoFinal ? resumoFinal : null,
           })
           .select(
             `
-          id_sessao,
-          id_aluno,
-          id_professor,
-          id_progresso,
-          id_sala,
-          hora_entrada,
-          hora_saida,
-          resumo_atividades,
-          alunos ( usuarios ( name, foto_url ) ),
-          salas_atendimento ( nome, tipo_sala ),
-          progresso_aluno (
-            id_disciplina,
-            id_ano_escolar,
-            disciplinas ( nome_disciplina ),
-            anos_escolares ( nome_ano ),
-            matriculas ( numero_inscricao )
-          )
-        `
+            id_sessao,
+            id_aluno,
+            id_professor,
+            id_progresso,
+            id_sala,
+            hora_entrada,
+            hora_saida,
+            resumo_atividades,
+            alunos ( nis, possui_necessidade_especial, possui_beneficio_governo, usuarios ( name, foto_url ) ),
+            salas_atendimento ( nome, tipo_sala ),
+            progresso_aluno (
+              id_disciplina,
+              id_ano_escolar,
+              disciplinas ( nome_disciplina ),
+              anos_escolares ( nome_ano, id_nivel_ensino ),
+              matriculas ( numero_inscricao, id_nivel_ensino )
+            )
+          `
           )
           .single()
 
         if (errIns) throw errIns
 
-        sucesso('Atendimento iniciado.')
+        sucesso(fluxoTipo === 'manual' ? 'Atendimento lançado manualmente.' : 'Atendimento iniciado.')
+        if (fluxoTipo === 'manual') setMostrarHistorico(true)
 
         setDlgConfirmAbrirFicha(false)
         setDlgNovoAtendimento(false)
 
         await carregarSessoes(idProfessor, filtroDataInicio, filtroDataFim)
 
+        // abre modal da sessão criada
         const aluno = first(nova?.alunos) as any
         const alunoUser = first(aluno?.usuarios) as any
         const sala = first(nova?.salas_atendimento) as any
@@ -1567,6 +1609,13 @@ export default function ProfessorAtendimentosPage() {
         const disc = first(prog?.disciplinas) as any
         const ano = first(prog?.anos_escolares) as any
         const mat = first(prog?.matriculas) as any
+
+        const nivelId =
+          mat?.id_nivel_ensino != null
+            ? Number(mat.id_nivel_ensino)
+            : ano?.id_nivel_ensino != null
+              ? Number(ano.id_nivel_ensino)
+              : null
 
         const sessaoMontada: SessaoView = {
           id_sessao: Number(nova.id_sessao),
@@ -1577,9 +1626,16 @@ export default function ProfessorAtendimentosPage() {
           hora_entrada: String(nova.hora_entrada),
           hora_saida: nova.hora_saida ? String(nova.hora_saida) : null,
           resumo_atividades: nova.resumo_atividades ?? null,
+
           aluno_nome: alunoUser?.name ?? alunoSelecionado.nome,
           aluno_foto_url: alunoUser?.foto_url ?? null,
           numero_inscricao: mat?.numero_inscricao ?? alunoSelecionado.numero_inscricao ?? null,
+
+          id_nivel_ensino: nivelId,
+          aluno_nis: aluno?.nis ?? null,
+          aluno_possui_necessidade_especial: aluno?.possui_necessidade_especial ?? null,
+          aluno_possui_beneficio_governo: aluno?.possui_beneficio_governo ?? null,
+
           sala_nome: sala?.nome ?? '-',
           sala_tipo: sala?.tipo_sala ?? '-',
           disciplina_nome: disc?.nome_disciplina ?? '-',
@@ -1593,7 +1649,7 @@ export default function ProfessorAtendimentosPage() {
         await carregarRegistrosDaSessao(sessaoMontada.id_sessao)
       } catch (e: any) {
         console.error(e)
-        erro(`Falha ao iniciar atendimento: ${e?.message || 'erro desconhecido'}`)
+        erro(`Falha ao ${fluxoTipo === 'manual' ? 'lançar' : 'iniciar'} atendimento: ${e?.message || 'erro desconhecido'}`)
       } finally {
         if (mountedRef.current) setSalvandoNovoAtendimento(false)
       }
@@ -1605,6 +1661,7 @@ export default function ProfessorAtendimentosPage() {
       salaAtendimentoId,
       alunoSelecionado,
       novoHoraEntrada,
+      novoHoraSaida,
       novoResumo,
       usarFichaExistente,
       progressoEscolhidoId,
@@ -1612,6 +1669,8 @@ export default function ProfessorAtendimentosPage() {
       progressosAlunoTodos,
       podeAbrirNovaDisciplina,
       obterMatriculaPreferencial,
+      nivelEfetivoDoAtendimento,
+      nivelFiltroEnsino,
       garantirProgresso,
       carregarSessoes,
       filtroDataInicio,
@@ -1620,17 +1679,14 @@ export default function ProfessorAtendimentosPage() {
       sucesso,
       aviso,
       erro,
+      fluxoTipo,
     ]
   )
 
-  // ======= 1) filtros =======
+  // ======= filtros =======
   const aplicarFiltros = useCallback(async () => {
-    if (!idProfessor) {
-      aviso('Professor não identificado.')
-      return
-    }
+    if (!idProfessor) return aviso('Professor não identificado.')
 
-    // ✅ se período não for “hoje”, ativa histórico automaticamente
     const hoje = hojeISODateLocal()
     const isHoje = filtroDataInicio === hoje && filtroDataFim === hoje
     if (!isHoje) setMostrarHistorico(true)
@@ -1644,12 +1700,118 @@ export default function ProfessorAtendimentosPage() {
     setFiltroDataFim(hoje)
     setFiltroTexto('')
     setFiltroSalaId('todas')
-
-    // ✅ ao clicar Hoje, esconde histórico de novo
     setMostrarHistorico(false)
-
     if (idProfessor) await carregarSessoes(idProfessor, hoje, hoje)
   }, [idProfessor, carregarSessoes])
+
+  // ======= transferência =======
+  const abrirDialogTransferencia = useCallback(async () => {
+    if (!supabase) return
+    if (!idProfessor) return
+    if (!sessaoAtual?.id_sala) return aviso('Esta sessão não tem sala vinculada.')
+
+    setDlgTransferir(true)
+    setCarregandoProfSala(true)
+    setProfessorDestino(null)
+    setProfessoresSala([])
+
+    try {
+      const { data, error } = await supabase
+        .from('professores_salas')
+        .select(
+          `
+          id_professor,
+          ativo,
+          professores (
+            id_professor,
+            user_id,
+            usuarios ( name, foto_url )
+          )
+        `
+        )
+        .eq('id_sala', sessaoAtual.id_sala)
+        .eq('ativo', true)
+
+      if (error) throw error
+
+      const lista: ProfessorDestinoOption[] = (data ?? [])
+        .map((r: any) => {
+          const p = first(r?.professores) as any
+          const u = first(p?.usuarios) as any
+          return {
+            id_professor: Number(r.id_professor),
+            nome: u?.name ? String(u.name) : `Professor #${r.id_professor}`,
+            foto_url: u?.foto_url ?? null,
+          }
+        })
+        .filter((p: ProfessorDestinoOption) => p.id_professor !== idProfessor)
+        .sort((a, b) => a.nome.localeCompare(b.nome))
+
+      setProfessoresSala(lista)
+      if (lista.length === 0) aviso('Não há outro professor ativo nesta sala para transferir.')
+    } catch (e) {
+      console.error(e)
+      erro('Falha ao carregar professores da sala.')
+    } finally {
+      if (mountedRef.current) setCarregandoProfSala(false)
+    }
+  }, [supabase, idProfessor, sessaoAtual?.id_sala, aviso, erro])
+
+  const confirmarTransferencia = useCallback(async () => {
+    if (!supabase) return
+    if (!idProfessor) return
+    if (!sessaoAtual) return
+    if (sessaoAtual.hora_saida) return info('Esta sessão já está encerrada.')
+    if (!sessaoAtual.id_sala) return aviso('Sessão sem sala vinculada.')
+    if (!professorDestino?.id_professor) return aviso('Selecione o professor de destino.')
+
+    setTransferindo(true)
+    try {
+      const agoraISO = new Date().toISOString()
+      const agoraBR = formatarDataHoraBR(agoraISO)
+
+      const linhaFechamento = `[TRANSFERÊNCIA] Encerrado por transferência para ${professorDestino.nome} em ${agoraBR}.`
+      const resumoFechamento = [sessaoAtual.resumo_atividades?.trim(), linhaFechamento].filter(Boolean).join('\n')
+
+      const { error: errUp } = await supabase
+        .from('sessoes_atendimento')
+        .update({
+          hora_saida: agoraISO,
+          resumo_atividades: resumoFechamento,
+        })
+        .eq('id_sessao', sessaoAtual.id_sessao)
+
+      if (errUp) throw errUp
+
+      const linhaAbertura = `[TRANSFERÊNCIA] Recebido por transferência de ${nomeProfessorAtual} em ${agoraBR}.`
+      const { error: errIns } = await supabase.from('sessoes_atendimento').insert({
+        id_aluno: sessaoAtual.id_aluno,
+        id_professor: professorDestino.id_professor,
+        id_sala: sessaoAtual.id_sala,
+        id_progresso: sessaoAtual.id_progresso,
+        hora_entrada: agoraISO,
+        hora_saida: null,
+        resumo_atividades: linhaAbertura,
+      })
+
+      if (errIns) throw errIns
+
+      sucesso('Atendimento transferido com sucesso.')
+      setMostrarHistorico(true)
+
+      setDlgTransferir(false)
+      setDlgSessao(false)
+      setSessaoAtual(null)
+      setRegistros([])
+
+      await carregarSessoes(idProfessor, filtroDataInicio, filtroDataFim)
+    } catch (e: any) {
+      console.error(e)
+      erro(`Falha ao transferir: ${e?.message || 'erro desconhecido'}`)
+    } finally {
+      if (mountedRef.current) setTransferindo(false)
+    }
+  }, [supabase, idProfessor, sessaoAtual, professorDestino, nomeProfessorAtual, aviso, info, sucesso, erro, carregarSessoes, filtroDataInicio, filtroDataFim])
 
   // ======= registro dialog =======
   const abrirDialogNovoRegistro = useCallback(() => {
@@ -1657,7 +1819,6 @@ export default function ProfessorAtendimentosPage() {
 
     const usados = new Set(registros.map((r) => r.numero_protocolo))
     let sugestao = 1
-
     const limite = limiteProtocolosSessao ?? 50
     while (usados.has(sugestao) && sugestao <= limite) sugestao += 1
 
@@ -1712,19 +1873,13 @@ export default function ProfessorAtendimentosPage() {
     if (!sessaoAtual) return
 
     const v = validarRegistro()
-    if (!v.ok) {
-      aviso(v.msg || 'Validação falhou.')
-      return
-    }
+    if (!v.ok) return aviso(v.msg || 'Validação falhou.')
 
     const numero = Number(regNumero)
     const tipoId = Number(regTipoId)
     const notaNum = regNota.trim() === '' ? null : Number(regNota)
 
-    if (regNota.trim() !== '' && Number.isNaN(notaNum)) {
-      aviso('Nota inválida (use número).')
-      return
-    }
+    if (regNota.trim() !== '' && Number.isNaN(notaNum)) return aviso('Nota inválida (use número).')
 
     setSalvandoRegistro(true)
     try {
@@ -1764,36 +1919,16 @@ export default function ProfessorAtendimentosPage() {
 
       setDlgRegistro(false)
       await carregarRegistrosDaSessao(sessaoAtual.id_sessao)
-    } catch (e: any) {
+    } catch (e) {
       console.error(e)
       erro('Falha ao salvar protocolo.')
     } finally {
       if (mountedRef.current) setSalvandoRegistro(false)
     }
-  }, [
-    supabase,
-    sessaoAtual,
-    validarRegistro,
-    aviso,
-    sucesso,
-    erro,
-    regNumero,
-    regTipoId,
-    regStatus,
-    regNota,
-    regAdaptada,
-    regSintese,
-    registroEditandoId,
-    carregarRegistrosDaSessao,
-  ])
+  }, [supabase, sessaoAtual, validarRegistro, aviso, sucesso, erro, regNumero, regTipoId, regStatus, regNota, regAdaptada, regSintese, registroEditandoId, carregarRegistrosDaSessao])
 
-  const pedirExcluirRegistro = useCallback((id: number) => {
-    setConfirmDeleteId(id)
-  }, [])
-
-  const cancelarExcluirRegistro = useCallback(() => {
-    setConfirmDeleteId(null)
-  }, [])
+  const pedirExcluirRegistro = useCallback((id: number) => setConfirmDeleteId(id), [])
+  const cancelarExcluirRegistro = useCallback(() => setConfirmDeleteId(null), [])
 
   const confirmarExcluirRegistro = useCallback(async () => {
     if (!supabase) return
@@ -1804,11 +1939,10 @@ export default function ProfessorAtendimentosPage() {
     try {
       const { error: errDel } = await supabase.from('registros_atendimento').delete().eq('id_atividade', confirmDeleteId)
       if (errDel) throw errDel
-
       sucesso('Registro excluído.')
       setConfirmDeleteId(null)
       await carregarRegistrosDaSessao(sessaoAtual.id_sessao)
-    } catch (e: any) {
+    } catch (e) {
       console.error(e)
       erro('Falha ao excluir registro.')
     } finally {
@@ -1818,16 +1952,12 @@ export default function ProfessorAtendimentosPage() {
 
   // ======= effects =======
   useEffect(() => {
-    void (async () => {
-      await carregarBase()
-    })()
+    void carregarBase()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [usuario?.id, supabase])
 
   useEffect(() => {
-    if (!carregandoBase && idProfessor) {
-      void carregarSessoes(idProfessor, filtroDataInicio, filtroDataFim)
-    }
+    if (!carregandoBase && idProfessor) void carregarSessoes(idProfessor, filtroDataInicio, filtroDataFim)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [carregandoBase, idProfessor])
 
@@ -1835,29 +1965,23 @@ export default function ProfessorAtendimentosPage() {
   return (
     <Box sx={{ p: 2, maxWidth: 1400, mx: 'auto' }}>
       {/* Header */}
-      <Stack
-        direction={{ xs: 'column', md: 'row' }}
-        spacing={2}
-        alignItems={{ xs: 'stretch', md: 'center' }}
-        justifyContent="space-between"
-      >
+      <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems={{ xs: 'stretch', md: 'center' }} justifyContent="space-between">
         <Box sx={{ minWidth: 0 }}>
           <Typography variant="h4" sx={{ fontWeight: 900, lineHeight: 1.1 }}>
             Atendimentos
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            Inicie atendimentos por sala e lance protocolos (estilo SIGE-CEJA V2).
+            Inicie atendimentos por sala e lance protocolos.
           </Typography>
         </Box>
 
-        <Stack direction="row" spacing={1} justifyContent={{ xs: 'flex-start', md: 'flex-end' }}>
-          <Button
-            variant="contained"
-            startIcon={<AddIcon />}
-            onClick={abrirFluxoNovoAtendimento}
-            disabled={carregandoBase || !idProfessor}
-          >
+        <Stack direction="row" spacing={1} justifyContent={{ xs: 'flex-start', md: 'flex-end' }} flexWrap="wrap">
+          <Button variant="contained" startIcon={<AddIcon />} onClick={abrirFluxoNovoAtendimento} disabled={carregandoBase || !idProfessor}>
             Iniciar atendimento
+          </Button>
+
+          <Button variant="outlined" startIcon={<EditIcon />} onClick={abrirFluxoLancamentoManual} disabled={carregandoBase || !idProfessor}>
+            Lançamento manual
           </Button>
 
           <Tooltip title="Recarregar">
@@ -1941,25 +2065,16 @@ export default function ProfessorAtendimentosPage() {
             <Button variant="outlined" onClick={resetarParaHoje} startIcon={<WarningAmberIcon />}>
               Hoje
             </Button>
-            <Button
-              variant="contained"
-              onClick={aplicarFiltros}
-              startIcon={<CheckCircleOutlineIcon />}
-              disabled={!idProfessor}
-            >
+            <Button variant="contained" onClick={aplicarFiltros} startIcon={<CheckCircleOutlineIcon />} disabled={!idProfessor}>
               Aplicar
             </Button>
           </Stack>
         </Stack>
 
-        {/* ✅ controle do histórico */}
         <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems="center" sx={{ mt: 1 }}>
-          <FormControlLabel
-            control={<Switch checked={mostrarHistorico} onChange={(e) => setMostrarHistorico(e.target.checked)} />}
-            label="Mostrar histórico"
-          />
+          <FormControlLabel control={<Switch checked={mostrarHistorico} onChange={(e) => setMostrarHistorico(e.target.checked)} />} label="Mostrar histórico" />
           <Typography variant="caption" color="text.secondary">
-            Por padrão, a tela mostra apenas atendimentos em andamento. O histórico aparece somente quando você quiser.
+            Por padrão, a tela mostra apenas atendimentos em andamento.
           </Typography>
         </Stack>
 
@@ -1987,129 +2102,139 @@ export default function ProfessorAtendimentosPage() {
               <Alert severity="info">Nenhum atendimento em andamento no filtro atual.</Alert>
             ) : (
               <Box sx={cardGridSx}>
-                {sessoesAbertas.map((s) => (
-                  <Card
-                    key={s.id_sessao}
-                    elevation={2}
-                    onClick={() => void abrirSessao(s)}
-                    sx={{
-                      display: 'flex',
-                      flexDirection: 'column',
-                      height: '100%',
-                      borderRadius: 2,
-                      cursor: 'pointer',
-                      transition: 'transform 0.2s, box-shadow 0.2s',
-                      '&:hover': { transform: 'translateY(-4px)', boxShadow: 6 },
-                    }}
-                  >
-                    <CardContent sx={{ flexGrow: 1, pb: 1 }}>
-                      <Stack direction="row" spacing={2} alignItems="center" sx={{ mb: 1.5 }}>
-                        <Avatar
-                          src={s.aluno_foto_url ?? undefined}
-                          alt={s.aluno_nome}
-                          sx={{
-                            width: 56,
-                            height: 56,
-                            border: '2px solid',
-                            borderColor: 'primary.main',
-                          }}
+                {sessoesAbertas.map((s) => {
+                  const elegivelPeDeMeia = isElegivelPeDeMeia({
+                    id_nivel_ensino: s.id_nivel_ensino ?? null,
+                    nis: s.aluno_nis ?? null,
+                    possui_beneficio_governo: s.aluno_possui_beneficio_governo ?? null,
+                  })
+                  const pcd = Boolean(s.aluno_possui_necessidade_especial)
+
+                  return (
+                    <Card
+                      key={s.id_sessao}
+                      elevation={2}
+                      onClick={() => void abrirSessao(s)}
+                      sx={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        height: '100%',
+                        borderRadius: 2,
+                        cursor: 'pointer',
+                        transition: 'transform 0.2s, box-shadow 0.2s',
+                        '&:hover': { transform: 'translateY(-4px)', boxShadow: 6 },
+                      }}
+                    >
+                      <CardContent sx={{ flexGrow: 1, pb: 1 }}>
+                        <Stack direction="row" spacing={2} alignItems="center" sx={{ mb: 1.5 }}>
+                          <Avatar
+                            src={s.aluno_foto_url ?? undefined}
+                            alt={s.aluno_nome}
+                            sx={{ width: 56, height: 56, border: '2px solid', borderColor: 'primary.main' }}
+                          />
+                          <Box sx={{ minWidth: 0, flex: 1 }}>
+                            <Typography variant="h6" sx={{ fontWeight: 700, overflowWrap: 'anywhere', lineHeight: 1.2 }}>
+                              {s.aluno_nome}
+                            </Typography>
+                            <Typography variant="body2" color="text.secondary">
+                              {renderNumeroInscricao({ numero_inscricao: s.numero_inscricao })}
+                            </Typography>
+                          </Box>
+                        </Stack>
+
+                        <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ mb: 1 }}>
+                          <Chip label={s.disciplina_nome ?? '-'} color="primary" variant="outlined" size="small" />
+                          <Chip label={s.ano_nome ?? '-'} variant="outlined" size="small" />
+                          <Chip label={s.sala_nome ?? '-'} variant="outlined" size="small" icon={<MeetingRoomIcon />} />
+                        </Stack>
+
+                        <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ mb: 1 }}>
+                          <Chip size="small" variant="outlined" label={`Nível: ${nomeNivelEnsinoCurto(s.id_nivel_ensino)}`} />
+                          <Chip
+                            size="small"
+                            color={elegivelPeDeMeia ? 'success' : 'default'}
+                            variant={elegivelPeDeMeia ? 'filled' : 'outlined'}
+                            label={elegivelPeDeMeia ? 'Pé-de-Meia: Elegível' : 'Pé-de-Meia: Não'}
+                          />
+                          <Chip size="small" color={pcd ? 'info' : 'default'} variant={pcd ? 'filled' : 'outlined'} label={pcd ? 'PCD: Sim' : 'PCD: Não'} />
+                        </Stack>
+
+                        <Typography variant="caption" color="text.secondary" display="block">
+                          Entrada: {formatarDataHoraBR(s.hora_entrada)}
+                        </Typography>
+
+                        <TextField
+                          label="Resumo (opcional)"
+                          fullWidth
+                          multiline
+                          minRows={2}
+                          size="small"
+                          value={resumoPorSessao[s.id_sessao] ?? ''}
+                          onChange={(e) =>
+                            setResumoPorSessao((old) => ({
+                              ...old,
+                              [s.id_sessao]: e.target.value,
+                            }))
+                          }
+                          onClick={(e) => e.stopPropagation()}
+                          sx={{ mt: 1.2 }}
                         />
-                        <Box sx={{ minWidth: 0, flex: 1 }}>
-                          {/* ✅ 4) sem cortar */}
-                          <Typography
-                            variant="h6"
-                            sx={{ fontWeight: 700, overflowWrap: 'anywhere', lineHeight: 1.2 }}
-                            title={s.aluno_nome}
+                      </CardContent>
+
+                      <Divider />
+
+                      <CardActions sx={{ p: 1.2 }}>
+                        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ width: '100%' }}>
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            startIcon={<VisibilityIcon />}
+                            sx={{ flex: 1 }}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              void abrirSessao(s)
+                            }}
                           >
-                            {s.aluno_nome}
-                          </Typography>
-                          <Typography variant="body2" color="text.secondary">
-                            {renderNumeroInscricao({ numero_inscricao: s.numero_inscricao })}
-                          </Typography>
-                        </Box>
-                      </Stack>
+                            Abrir
+                          </Button>
 
-                      <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ mb: 1 }}>
-                        <Chip label={s.disciplina_nome ?? '-'} color="primary" variant="outlined" size="small" />
-                        <Chip label={s.ano_nome ?? '-'} variant="outlined" size="small" />
-                        <Chip label={s.sala_nome ?? '-'} variant="outlined" size="small" icon={<MeetingRoomIcon />} />
-                      </Stack>
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            startIcon={<DescriptionIcon />}
+                            sx={{ flex: 1 }}
+                            disabled={!s.id_progresso}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              abrirFichaAcompanhamento(s.id_progresso)
+                            }}
+                          >
+                            Abrir Ficha
+                          </Button>
 
-                      <Typography variant="caption" color="text.secondary" display="block">
-                        Entrada: {formatarDataHoraBR(s.hora_entrada)}
-                      </Typography>
-
-                      <TextField
-                        label="Resumo (opcional)"
-                        fullWidth
-                        multiline
-                        minRows={2}
-                        size="small"
-                        value={resumoPorSessao[s.id_sessao] ?? ''}
-                        onChange={(e) =>
-                          setResumoPorSessao((old) => ({
-                            ...old,
-                            [s.id_sessao]: e.target.value,
-                          }))
-                        }
-                        onClick={(e) => e.stopPropagation()}
-                        sx={{ mt: 1.2 }}
-                      />
-                    </CardContent>
-
-                    <Divider />
-
-                    <CardActions sx={{ p: 1.2 }}>
-                      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ width: '100%' }}>
-                        <Button
-                          size="small"
-                          variant="outlined"
-                          startIcon={<VisibilityIcon />}
-                          sx={{ flex: 1 }}
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            void abrirSessao(s)
-                          }}
-                        >
-                          Abrir
-                        </Button>
-
-                        <Button
-                          size="small"
-                          variant="outlined"
-                          startIcon={<DescriptionIcon />}
-                          sx={{ flex: 1 }}
-                          disabled={!s.id_progresso}
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            abrirFichaAcompanhamento(s.id_progresso)
-                          }}
-                        >
-                          Abrir Ficha
-                        </Button>
-
-                        <Button
-                          size="small"
-                          variant="contained"
-                          color="warning"
-                          startIcon={<CheckCircleOutlineIcon />}
-                          sx={{ flex: 1 }}
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            void finalizarSessaoRapido(s)
-                          }}
-                        >
-                          Finalizar
-                        </Button>
-                      </Stack>
-                    </CardActions>
-                  </Card>
-                ))}
+                          <Button
+                            size="small"
+                            variant="contained"
+                            color="warning"
+                            startIcon={<CheckCircleOutlineIcon />}
+                            sx={{ flex: 1 }}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              void finalizarSessaoRapido(s)
+                            }}
+                          >
+                            Finalizar
+                          </Button>
+                        </Stack>
+                      </CardActions>
+                    </Card>
+                  )
+                })}
               </Box>
             )}
           </Paper>
 
-          {/* ✅ 1) Histórico só aparece se mostrarHistorico = true */}
+          {/* Histórico */}
           {mostrarHistorico ? (
             <Paper variant="outlined" sx={{ p: 2, borderRadius: 2, flex: 1 }}>
               <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1}>
@@ -2148,12 +2273,7 @@ export default function ProfessorAtendimentosPage() {
                         <Stack direction="row" spacing={2} alignItems="center" sx={{ mb: 1.5 }}>
                           <Avatar src={s.aluno_foto_url ?? undefined} alt={s.aluno_nome} sx={{ width: 52, height: 52 }} />
                           <Box sx={{ minWidth: 0, flex: 1 }}>
-                            {/* ✅ 4) sem cortar */}
-                            <Typography
-                              variant="subtitle1"
-                              sx={{ fontWeight: 800, overflowWrap: 'anywhere', lineHeight: 1.2 }}
-                              title={s.aluno_nome}
-                            >
+                            <Typography variant="subtitle1" sx={{ fontWeight: 800, overflowWrap: 'anywhere', lineHeight: 1.2 }}>
                               {s.aluno_nome}
                             </Typography>
                             <Typography variant="body2" color="text.secondary">
@@ -2166,6 +2286,7 @@ export default function ProfessorAtendimentosPage() {
                           <Chip label={s.disciplina_nome ?? '-'} color="primary" variant="outlined" size="small" />
                           <Chip label={s.ano_nome ?? '-'} variant="outlined" size="small" />
                           <Chip label={s.sala_nome ?? '-'} variant="outlined" size="small" icon={<MeetingRoomIcon />} />
+                          <Chip size="small" variant="outlined" label={`Nível: ${nomeNivelEnsinoCurto(s.id_nivel_ensino)}`} />
                         </Stack>
 
                         <Typography variant="caption" color="text.secondary" display="block">
@@ -2231,7 +2352,7 @@ export default function ProfessorAtendimentosPage() {
 
         <DialogContent dividers>
           <Alert severity="info" sx={{ mb: 2 }}>
-            Você está lotado(a) em mais de uma sala. Selecione abaixo para iniciar o atendimento.
+            Você está lotado(a) em mais de uma sala. Selecione abaixo para continuar.
           </Alert>
 
           <Box sx={cardGridSx}>
@@ -2275,10 +2396,10 @@ export default function ProfessorAtendimentosPage() {
         </DialogActions>
       </Dialog>
 
-      {/* Dialog: iniciar atendimento */}
+      {/* Dialog: iniciar atendimento / lançamento manual */}
       <Dialog open={dlgNovoAtendimento} onClose={() => setDlgNovoAtendimento(false)} fullWidth maxWidth="md" fullScreen={isMobile}>
         <DialogTitle sx={{ fontWeight: 900 }}>
-          Iniciar atendimento
+          {fluxoTipo === 'manual' ? 'Lançamento manual (offline)' : 'Iniciar atendimento'}
           <IconButton onClick={() => setDlgNovoAtendimento(false)} sx={{ position: 'absolute', right: 8, top: 8 }}>
             <CloseIcon />
           </IconButton>
@@ -2286,9 +2407,17 @@ export default function ProfessorAtendimentosPage() {
 
         <DialogContent dividers>
           <Stack spacing={2}>
-            <Alert severity="info">
-              Busque o aluno por <strong>nome</strong>, <strong>RA</strong> ou <strong>CPF</strong>. A sala e as disciplinas vêm da sua lotação.
-            </Alert>
+            {fluxoTipo === 'manual' ? (
+              <Alert severity="warning">
+                Use este modo para lançar depois um atendimento feito quando o sistema estava fora do ar.
+                <br />
+                Informe <b>entrada e saída</b>. O atendimento será criado <b>encerrado</b>.
+              </Alert>
+            ) : (
+              <Alert severity="info">
+                Busque o aluno por <strong>nome</strong>, <strong>RA</strong> ou <strong>CPF</strong>.
+              </Alert>
+            )}
 
             <Paper
               variant="outlined"
@@ -2306,8 +2435,7 @@ export default function ProfessorAtendimentosPage() {
                   <Box>
                     <Typography sx={{ fontWeight: 900 }}>Sala</Typography>
                     <Typography variant="body2" color="text.secondary">
-                      {minhasSalas.find((x) => x.id_sala === salaAtendimentoId)?.nome ?? '-'} •{' '}
-                      {minhasSalas.find((x) => x.id_sala === salaAtendimentoId)?.tipo_sala ?? '-'}
+                      {minhasSalas.find((x) => x.id_sala === salaAtendimentoId)?.nome ?? '-'} • {minhasSalas.find((x) => x.id_sala === salaAtendimentoId)?.tipo_sala ?? '-'}
                     </Typography>
                   </Box>
                 </Stack>
@@ -2326,6 +2454,44 @@ export default function ProfessorAtendimentosPage() {
               </Stack>
             </Paper>
 
+            {/* seleção de nível */}
+            <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
+              <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems={{ md: 'center' }}>
+                <FormControl size="small" sx={{ width: { xs: '100%', md: 280 } }}>
+                  <InputLabel id="nivel-filtro-label">Nível</InputLabel>
+                  <Select
+                    labelId="nivel-filtro-label"
+                    label="Nível"
+                    value={nivelFiltroEnsino as any}
+                    disabled={Boolean(alunoSelecionado)}
+                    onChange={(e) => {
+                      const v = e.target.value as any
+                      setNivelFiltroEnsino(v === 'todos' ? 'todos' : (Number(v) as 1 | 2))
+                      setAlunoInput('')
+                      setOpcoesAluno([])
+                      setAlunoSelecionado(null)
+                      setProgressosAlunoTodos([])
+                      setFichasAbertasNaSala([])
+                      setQtdDisciplinasAbertas(null)
+                      setUsarFichaExistente(true)
+                      setProgressoEscolhidoId(null)
+                      setConfigSelecionada(null)
+                    }}
+                  >
+                    <MenuItem value="todos">
+                      <em>Fundamental + Médio</em>
+                    </MenuItem>
+                    <MenuItem value={1}>Ensino Fundamental</MenuItem>
+                    <MenuItem value={2}>Ensino Médio</MenuItem>
+                  </Select>
+                </FormControl>
+
+                <Typography variant="caption" color="text.secondary">
+                  Selecione o nível antes de buscar. Após escolher o aluno, o nível fica travado pela matrícula.
+                </Typography>
+              </Stack>
+            </Paper>
+
             <Autocomplete
               options={opcoesAluno}
               value={alunoSelecionado}
@@ -2333,19 +2499,23 @@ export default function ProfessorAtendimentosPage() {
               onInputChange={(_, v) => setAlunoInput(v)}
               onChange={(_, v) => setAlunoSelecionado(v)}
               loading={buscandoAlunos}
+              filterOptions={(x) => x}
               isOptionEqualToValue={(a, b) => a.id_aluno === b.id_aluno && (a.id_matricula ?? null) === (b.id_matricula ?? null)}
-              getOptionLabel={(o) => o?.nome ?? ''}
+              getOptionLabel={(o) => {
+                const nivel = o?.id_nivel_ensino != null ? nomeNivelEnsinoCurto(o.id_nivel_ensino) : ''
+                const ra = o?.numero_inscricao ? `RA: ${o.numero_inscricao}` : ''
+                const extra = [nivel, ra].filter(Boolean).join(' • ')
+                return `${o?.nome ?? ''}${extra ? ` (${extra})` : ''}`
+              }}
               noOptionsText={alunoInput.trim().length < 2 ? 'Digite pelo menos 2 caracteres' : 'Nenhum aluno encontrado'}
               renderOption={(props, option) => (
                 <Box component="li" {...props} key={`${option.id_aluno}-${option.id_matricula ?? 'x'}`}>
                   <Stack direction="row" spacing={1.5} alignItems="center" sx={{ width: '100%' }}>
                     <Avatar src={option.foto_url ?? undefined} alt={option.nome} sx={{ width: 36, height: 36 }} />
                     <Box sx={{ minWidth: 0, flex: 1 }}>
-                      <Typography sx={{ fontWeight: 800, overflowWrap: 'anywhere' }}>
-                        {option.nome}
-                      </Typography>
+                      <Typography sx={{ fontWeight: 800, overflowWrap: 'anywhere' }}>{option.nome}</Typography>
                       <Typography variant="caption" color="text.secondary">
-                        {renderNumeroInscricao(option)}
+                        {nomeNivelEnsinoCurto(option.id_nivel_ensino ?? null)} • {renderNumeroInscricao(option)}
                       </Typography>
                     </Box>
                   </Stack>
@@ -2380,13 +2550,19 @@ export default function ProfessorAtendimentosPage() {
                 InputLabelProps={{ shrink: true }}
               />
 
-              <TextField
-                fullWidth
-                size="small"
-                label="Resumo inicial (opcional)"
-                value={novoResumo}
-                onChange={(e) => setNovoResumo(e.target.value)}
-              />
+              {fluxoTipo === 'manual' ? (
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Hora de saída"
+                  type="datetime-local"
+                  value={novoHoraSaida}
+                  onChange={(e) => setNovoHoraSaida(e.target.value)}
+                  InputLabelProps={{ shrink: true }}
+                />
+              ) : null}
+
+              <TextField fullWidth size="small" label="Resumo (opcional)" value={novoResumo} onChange={(e) => setNovoResumo(e.target.value)} />
             </Stack>
 
             {alunoSelecionado && salaAtendimentoId ? (
@@ -2397,21 +2573,13 @@ export default function ProfessorAtendimentosPage() {
 
                     <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
                       {qtdDisciplinasAbertas != null ? (
-                        <Chip
-                          size="small"
-                          label={`Disciplinas abertas: ${qtdDisciplinasAbertas}`}
-                          color={podeAbrirNovaDisciplina ? 'info' : 'warning'}
-                          variant="outlined"
-                        />
+                        <Chip size="small" label={`Disciplinas abertas: ${qtdDisciplinasAbertas}`} color={podeAbrirNovaDisciplina ? 'info' : 'warning'} variant="outlined" />
                       ) : null}
 
+                      <Chip size="small" variant="outlined" label={`Nível do aluno: ${nomeNivelEnsinoCurto(alunoSelecionado.id_nivel_ensino ?? null)}`} />
+
                       {idProgressoSelecionadoParaAbrirFicha ? (
-                        <Button
-                          size="small"
-                          variant="outlined"
-                          startIcon={<DescriptionIcon />}
-                          onClick={() => abrirFichaAcompanhamento(idProgressoSelecionadoParaAbrirFicha)}
-                        >
+                        <Button size="small" variant="outlined" startIcon={<DescriptionIcon />} onClick={() => abrirFichaAcompanhamento(idProgressoSelecionadoParaAbrirFicha)}>
                           Abrir Ficha
                         </Button>
                       ) : null}
@@ -2424,11 +2592,7 @@ export default function ProfessorAtendimentosPage() {
                     <Alert severity="warning">
                       Nenhuma <strong>ficha aberta</strong> para este aluno nesta sala.
                       <br />
-                      {podeAbrirNovaDisciplina || podeAbrirMaisQue3 ? (
-                        <>Você pode abrir uma nova disciplina.</>
-                      ) : (
-                        <>O aluno já tem 3 ou mais disciplinas abertas — somente ADMIN/DIRETOR/COORDENAÇÃO pode abrir mais.</>
-                      )}
+                      {podeAbrirNovaDisciplina || podeAbrirMaisQue3 ? <>Você pode abrir uma nova disciplina.</> : <>Bloqueado pela regra de 3 disciplinas.</>}
                     </Alert>
                   ) : null}
 
@@ -2464,9 +2628,9 @@ export default function ProfessorAtendimentosPage() {
                   ) : (
                     <>
                       <Alert severity="info">
-                        Selecione a <strong>disciplina</strong> da sala para abrir (ou reaproveitar, se já existir).
+                        Selecione a disciplina da sala para abrir.
                         <br />
-                        Se ainda não existir ficha, vamos pedir confirmação antes de criar.
+                        Os protocolos já estão somados por ano (1º, 2º, 3º…) e aparecem como faixas.
                       </Alert>
 
                       <Autocomplete
@@ -2475,7 +2639,7 @@ export default function ProfessorAtendimentosPage() {
                         onChange={(_, v) => setConfigSelecionada(v)}
                         getOptionLabel={(o) => o.label}
                         renderInput={(params) => <TextField {...params} label="Disciplina (da sala)" size="small" />}
-                        noOptionsText="Nenhuma disciplina configurada para esta sala"
+                        noOptionsText="Nenhuma disciplina configurada para esta sala neste nível"
                       />
 
                       {!podeAbrirNovaDisciplina && !podeAbrirMaisQue3 ? (
@@ -2496,12 +2660,12 @@ export default function ProfessorAtendimentosPage() {
             Cancelar
           </Button>
           <Button variant="contained" onClick={() => void criarAtendimento()} disabled={salvandoNovoAtendimento}>
-            {salvandoNovoAtendimento ? 'Iniciando...' : 'Iniciar'}
+            {salvandoNovoAtendimento ? (fluxoTipo === 'manual' ? 'Lançando...' : 'Iniciando...') : fluxoTipo === 'manual' ? 'Lançar' : 'Iniciar'}
           </Button>
         </DialogActions>
       </Dialog>
 
-      {/* ✅ Confirmar abertura de ficha */}
+      {/* Confirmar abertura de ficha */}
       <Dialog open={dlgConfirmAbrirFicha} onClose={() => setDlgConfirmAbrirFicha(false)} fullWidth maxWidth="sm" fullScreen={isMobile}>
         <DialogTitle sx={{ fontWeight: 900 }}>
           Confirmar abertura de ficha
@@ -2512,14 +2676,17 @@ export default function ProfessorAtendimentosPage() {
 
         <DialogContent dividers>
           <Alert severity="warning" sx={{ mb: 2 }}>
-            Esta disciplina ainda <strong>não possui ficha</strong> para este aluno.
+            Esta disciplina ainda não possui ficha para este aluno.
             <br />
-            Ao confirmar, o sistema vai <strong>criar a ficha (progresso)</strong> e iniciar o atendimento.
+            Ao confirmar, o sistema vai criar a ficha (progresso) e {fluxoTipo === 'manual' ? 'lançar' : 'iniciar'} o atendimento.
           </Alert>
 
           <Stack spacing={1}>
             <Typography variant="body2">
               <strong>Aluno:</strong> {alunoSelecionado?.nome ?? '-'} ({renderNumeroInscricao(alunoSelecionado ?? {})})
+            </Typography>
+            <Typography variant="body2">
+              <strong>Nível:</strong> {nomeNivelEnsinoCurto(alunoSelecionado?.id_nivel_ensino ?? null)}
             </Typography>
             <Typography variant="body2">
               <strong>Sala:</strong> {minhasSalas.find((x) => x.id_sala === salaAtendimentoId)?.nome ?? '-'}
@@ -2547,7 +2714,7 @@ export default function ProfessorAtendimentosPage() {
               void criarAtendimento({ confirmarCriacaoFicha: true })
             }}
           >
-            Abrir ficha e iniciar
+            {fluxoTipo === 'manual' ? 'Abrir ficha e lançar' : 'Abrir ficha e iniciar'}
           </Button>
         </DialogActions>
       </Dialog>
@@ -2579,19 +2746,14 @@ export default function ProfessorAtendimentosPage() {
                     <Typography variant="h6" sx={{ fontWeight: 900, overflowWrap: 'anywhere' }}>
                       {sessaoAtual.aluno_nome}
                     </Typography>
-                    <Chip
-                      size="small"
-                      label={sessaoAtual.hora_saida ? 'Encerrada' : 'Aberta'}
-                      color={sessaoAtual.hora_saida ? 'success' : 'warning'}
-                    />
+                    <Chip size="small" label={sessaoAtual.hora_saida ? 'Encerrada' : 'Aberta'} color={sessaoAtual.hora_saida ? 'success' : 'warning'} />
                     <Chip size="small" label={sessaoAtual.sala_nome ?? '-'} variant="outlined" />
-                    <Chip
-                      size="small"
-                      label={`${sessaoAtual.disciplina_nome ?? '-'} — ${sessaoAtual.ano_nome ?? '-'}`}
-                      variant="outlined"
-                    />
+                    <Chip size="small" label={`${sessaoAtual.disciplina_nome ?? '-'} — ${sessaoAtual.ano_nome ?? '-'}`} variant="outlined" />
+                    <Chip size="small" variant="outlined" label={`Nível: ${nomeNivelEnsinoCurto(sessaoAtual.id_nivel_ensino)}`} />
                     {limiteProtocolosSessao != null ? (
-                      <Chip size="small" label={`Protocolos: 1..${limiteProtocolosSessao}`} variant="outlined" />
+                      <Tooltip title={resumoFaixasSessaoAtual || ''} disableHoverListener={!resumoFaixasSessaoAtual}>
+                        <Chip size="small" label={`Protocolos: 1..${limiteProtocolosSessao}`} variant="outlined" />
+                      </Tooltip>
                     ) : null}
                   </Stack>
 
@@ -2608,23 +2770,13 @@ export default function ProfessorAtendimentosPage() {
                   />
 
                   <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} justifyContent="flex-end">
-                    {/* ✅ 3) Transferir só aparece se houver sala e sessão aberta */}
                     {sessaoAtual.id_sala && !sessaoAtual.hora_saida ? (
-                      <Button
-                        variant="outlined"
-                        startIcon={<SwapHorizIcon />}
-                        onClick={() => void abrirDialogTransferencia()}
-                      >
+                      <Button variant="outlined" startIcon={<SwapHorizIcon />} onClick={() => void abrirDialogTransferencia()}>
                         Transferir
                       </Button>
                     ) : null}
 
-                    <Button
-                      variant="outlined"
-                      startIcon={<DescriptionIcon />}
-                      disabled={!sessaoAtual.id_progresso}
-                      onClick={() => abrirFichaAcompanhamento(sessaoAtual.id_progresso)}
-                    >
+                    <Button variant="outlined" startIcon={<DescriptionIcon />} disabled={!sessaoAtual.id_progresso} onClick={() => abrirFichaAcompanhamento(sessaoAtual.id_progresso)}>
                       Abrir Ficha
                     </Button>
 
@@ -2632,12 +2784,7 @@ export default function ProfessorAtendimentosPage() {
                       Salvar resumo
                     </Button>
 
-                    <Button
-                      variant="contained"
-                      color="warning"
-                      onClick={() => void encerrarSessaoAgora()}
-                      disabled={salvandoSessao || Boolean(sessaoAtual.hora_saida)}
-                    >
+                    <Button variant="contained" color="warning" onClick={() => void encerrarSessaoAgora()} disabled={salvandoSessao || Boolean(sessaoAtual.hora_saida)}>
                       Encerrar sessão
                     </Button>
                   </Stack>
@@ -2648,12 +2795,7 @@ export default function ProfessorAtendimentosPage() {
                 <Typography variant="subtitle1" sx={{ fontWeight: 900 }}>
                   Protocolos / Atividades
                 </Typography>
-                <Button
-                  variant="contained"
-                  startIcon={<AddIcon />}
-                  onClick={abrirDialogNovoRegistro}
-                  disabled={!sessaoAtual.id_progresso}
-                >
+                <Button variant="contained" startIcon={<AddIcon />} onClick={abrirDialogNovoRegistro} disabled={!sessaoAtual.id_progresso}>
                   Adicionar protocolo
                 </Button>
               </Stack>
@@ -2668,12 +2810,7 @@ export default function ProfessorAtendimentosPage() {
                     const chip = statusChipProps(r.status)
                     return (
                       <Paper key={r.id_atividade} variant="outlined" sx={{ p: 1.5, borderRadius: 2 }}>
-                        <Stack
-                          direction={{ xs: 'column', md: 'row' }}
-                          spacing={1}
-                          alignItems={{ md: 'center' }}
-                          justifyContent="space-between"
-                        >
+                        <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} alignItems={{ md: 'center' }} justifyContent="space-between">
                           <Box sx={{ minWidth: 0 }}>
                             <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
                               <Typography variant="subtitle2" sx={{ fontWeight: 900 }}>
@@ -2725,7 +2862,7 @@ export default function ProfessorAtendimentosPage() {
         </DialogActions>
       </Dialog>
 
-      {/* ✅ 3) Dialog: Transferir atendimento */}
+      {/* Dialog: Transferir atendimento */}
       <Dialog open={dlgTransferir} onClose={() => setDlgTransferir(false)} fullWidth maxWidth="sm" fullScreen={isMobile}>
         <DialogTitle sx={{ fontWeight: 900 }}>
           Transferir atendimento
@@ -2740,8 +2877,7 @@ export default function ProfessorAtendimentosPage() {
           ) : (
             <Stack spacing={2}>
               <Alert severity="info">
-                Ao transferir, o sistema <strong>encerra esta sessão</strong> para você e <strong>abre uma nova</strong> para o professor escolhido,
-                com nova hora de entrada. Tudo fica registrado no <code>resumo_atividades</code>.
+                Ao transferir, o sistema encerra esta sessão para você e abre uma nova para o professor escolhido, com nova hora de entrada.
               </Alert>
 
               {carregandoProfSala ? <LinearProgress /> : null}
@@ -2762,13 +2898,6 @@ export default function ProfessorAtendimentosPage() {
                 )}
                 renderInput={(params) => <TextField {...params} label="Professor destino (mesma sala)" />}
               />
-
-              <Typography variant="body2" color="text.secondary">
-                <strong>Aluno:</strong> {sessaoAtual.aluno_nome} • {renderNumeroInscricao({ numero_inscricao: sessaoAtual.numero_inscricao })}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                <strong>Sala:</strong> {sessaoAtual.sala_nome ?? '-'} • <strong>Disciplina:</strong> {sessaoAtual.disciplina_nome ?? '-'}
-              </Typography>
             </Stack>
           )}
         </DialogContent>
@@ -2798,18 +2927,19 @@ export default function ProfessorAtendimentosPage() {
           ) : (
             <Stack spacing={2}>
               <Alert severity="info">
-                O número do protocolo é limitado pela configuração da sala (via <code>config_disciplina_ano</code>).
+                Limite de protocolos: {limiteProtocolosSessao ?? '-'}.
+                {resumoFaixasSessaoAtual ? (
+                  <>
+                    <br />
+                    <strong>Faixas:</strong> {resumoFaixasSessaoAtual}
+                  </>
+                ) : null}
               </Alert>
 
               <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
                 <FormControl fullWidth size="small">
                   <InputLabel id="reg-numero-label">Nº do protocolo</InputLabel>
-                  <Select
-                    labelId="reg-numero-label"
-                    label="Nº do protocolo"
-                    value={regNumero}
-                    onChange={(e) => setRegNumero(String(e.target.value))}
-                  >
+                  <Select labelId="reg-numero-label" label="Nº do protocolo" value={regNumero} onChange={(e) => setRegNumero(String(e.target.value))}>
                     <MenuItem value="">
                       <em>Selecione</em>
                     </MenuItem>
@@ -2817,23 +2947,21 @@ export default function ProfessorAtendimentosPage() {
                       const limite = limiteProtocolosSessao ?? 50
                       const itens: number[] = []
                       for (let i = 1; i <= limite; i += 1) itens.push(i)
-                      return itens.map((n) => (
-                        <MenuItem key={n} value={String(n)}>
-                          {n}
-                        </MenuItem>
-                      ))
+                      return itens.map((n) => {
+                        const ano = anoPorNumeroProtocolo(faixasSessaoAtual, n)
+                        return (
+                          <MenuItem key={n} value={String(n)}>
+                            {ano ? `${n} (${ano})` : n}
+                          </MenuItem>
+                        )
+                      })
                     })()}
                   </Select>
                 </FormControl>
 
                 <FormControl fullWidth size="small">
                   <InputLabel id="reg-tipo-label">Tipo de protocolo</InputLabel>
-                  <Select
-                    labelId="reg-tipo-label"
-                    label="Tipo de protocolo"
-                    value={regTipoId}
-                    onChange={(e) => setRegTipoId(String(e.target.value))}
-                  >
+                  <Select labelId="reg-tipo-label" label="Tipo de protocolo" value={regTipoId} onChange={(e) => setRegTipoId(String(e.target.value))}>
                     <MenuItem value="">
                       <em>Selecione</em>
                     </MenuItem>
@@ -2849,40 +2977,19 @@ export default function ProfessorAtendimentosPage() {
               <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
                 <FormControl fullWidth size="small">
                   <InputLabel id="reg-status-label">Status</InputLabel>
-                  <Select
-                    labelId="reg-status-label"
-                    label="Status"
-                    value={regStatus}
-                    onChange={(e) => setRegStatus(String(e.target.value))}
-                  >
+                  <Select labelId="reg-status-label" label="Status" value={regStatus} onChange={(e) => setRegStatus(String(e.target.value))}>
                     <MenuItem value="A fazer">A fazer</MenuItem>
                     <MenuItem value="Em andamento">Em andamento</MenuItem>
                     <MenuItem value="Concluída">Concluída</MenuItem>
                   </Select>
                 </FormControl>
 
-                <TextField
-                  fullWidth
-                  size="small"
-                  label="Nota (opcional)"
-                  value={regNota}
-                  onChange={(e) => setRegNota(e.target.value)}
-                  placeholder="Ex.: 8.5"
-                />
+                <TextField fullWidth size="small" label="Nota (opcional)" value={regNota} onChange={(e) => setRegNota(e.target.value)} placeholder="Ex.: 8.5" />
               </Stack>
 
-              <FormControlLabel
-                control={<Switch checked={regAdaptada} onChange={(e) => setRegAdaptada(e.target.checked)} />}
-                label="Atividade adaptada"
-              />
+              <FormControlLabel control={<Switch checked={regAdaptada} onChange={(e) => setRegAdaptada(e.target.checked)} />} label="Atividade adaptada" />
 
-              <TextField
-                label="Síntese / Observação"
-                value={regSintese}
-                onChange={(e) => setRegSintese(e.target.value)}
-                minRows={3}
-                multiline
-              />
+              <TextField label="Síntese / Observação" value={regSintese} onChange={(e) => setRegSintese(e.target.value)} minRows={3} multiline />
 
               {confirmDeleteId ? <Alert severity="warning">Confirma excluir o registro #{confirmDeleteId}?</Alert> : null}
             </Stack>
@@ -2895,12 +3002,7 @@ export default function ProfessorAtendimentosPage() {
               <Button variant="outlined" onClick={cancelarExcluirRegistro}>
                 Cancelar
               </Button>
-              <Button
-                variant="contained"
-                color="error"
-                onClick={() => void confirmarExcluirRegistro()}
-                disabled={salvandoRegistro}
-              >
+              <Button variant="contained" color="error" onClick={() => void confirmarExcluirRegistro()} disabled={salvandoRegistro}>
                 {salvandoRegistro ? 'Excluindo...' : 'Excluir'}
               </Button>
             </>
@@ -2910,12 +3012,7 @@ export default function ProfessorAtendimentosPage() {
                 Cancelar
               </Button>
               {registroEditandoId ? (
-                <Button
-                  variant="outlined"
-                  color="error"
-                  onClick={() => setConfirmDeleteId(registroEditandoId)}
-                  startIcon={<DeleteOutlineIcon />}
-                >
+                <Button variant="outlined" color="error" onClick={() => setConfirmDeleteId(registroEditandoId)} startIcon={<DeleteOutlineIcon />}>
                   Excluir
                 </Button>
               ) : null}

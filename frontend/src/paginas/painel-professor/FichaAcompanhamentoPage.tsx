@@ -1,3 +1,4 @@
+// src/paginas/fichas/FichaAcompanhamentoPage.tsx
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
@@ -46,6 +47,8 @@ import EditIcon from '@mui/icons-material/Edit'
 import WarningAmberIcon from '@mui/icons-material/WarningAmber'
 import DeleteIcon from '@mui/icons-material/Delete'
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
+import AddIcon from '@mui/icons-material/Add'
+import CloseIcon from '@mui/icons-material/Close'
 
 import { useSupabase } from '../../contextos/SupabaseContext'
 import { useNotificacaoContext } from '../../contextos/NotificacaoContext'
@@ -56,6 +59,14 @@ import { useAuth } from '../../contextos/AuthContext'
 function first<T>(v: T | T[] | null | undefined): T | null {
   if (!v) return null
   return Array.isArray(v) ? v[0] ?? null : v
+}
+
+function normalizarTexto(valor: string): string {
+  return String(valor ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim()
 }
 
 function formatDateBR(iso?: string | null): string {
@@ -93,6 +104,47 @@ function parseNota(v: unknown): number | null {
   return Number.isFinite(n) ? n : null
 }
 
+function isModalidadeOrientacao(modalidade?: string | null): boolean {
+  const s = normalizarTexto(modalidade ?? '')
+  return s.includes('orientacao')
+}
+
+function isElegivelPeDeMeia(opts: {
+  id_nivel_ensino?: number | null
+  nis?: string | null
+  possui_beneficio_governo?: boolean | null
+  qual_beneficio_governo?: string | null
+}): boolean {
+  if (opts.id_nivel_ensino !== 2) return false
+
+  const qual = normalizarTexto(opts.qual_beneficio_governo ?? '')
+  if (qual.includes('pe de meia') || qual.includes('pe-de-meia')) return true
+
+  const nis = (opts.nis ?? '').trim()
+  if (nis.length >= 5) return true
+
+  return Boolean(opts.possui_beneficio_governo)
+}
+
+// datetime-local helpers (ISO <-> input local)
+function formatForInputLocal(iso: string): string {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return ''
+  const yyyy = String(d.getFullYear())
+  const mm = String(d.getMonth() + 1).padStart(2, '0')
+  const dd = String(d.getDate()).padStart(2, '0')
+  const hh = String(d.getHours()).padStart(2, '0')
+  const mi = String(d.getMinutes()).padStart(2, '0')
+  return `${yyyy}-${mm}-${dd}T${hh}:${mi}`
+}
+
+function inputLocalToISO(v: string): string {
+  const d = new Date(v)
+  return d.toISOString()
+}
+
+// ===================== Constantes =====================
+
 const TIPOS = {
   PESQUISA: 1,
   COMPLEMENTAR: 2,
@@ -100,6 +152,13 @@ const TIPOS = {
   ASO: 4,
   RECUPERACAO: 5,
 } as const
+
+// ===================== Types =====================
+
+type TipoProtocoloRow = {
+  id_tipo_protocolo: number
+  nome: string
+}
 
 type UsuarioJoin = {
   id?: string
@@ -110,8 +169,11 @@ type UsuarioJoin = {
 
 type AlunoJoin = {
   id_aluno: number
+  nis?: string | null
   possui_necessidade_especial: boolean
   qual_necessidade_especial?: string | null
+  possui_beneficio_governo?: boolean | null
+  qual_beneficio_governo?: string | null
   usuarios?: UsuarioJoin | UsuarioJoin[] | null
 }
 
@@ -121,6 +183,7 @@ type MatriculaJoin = {
   modalidade: string
   ano_letivo: number
   data_matricula: string
+  id_nivel_ensino?: number | null
   niveis_ensino?: { nome?: string | null } | { nome?: string | null }[] | null
   alunos?: AlunoJoin | AlunoJoin[] | null
 }
@@ -133,6 +196,7 @@ type DisciplinaJoin = {
 type AnoEscolarJoin = {
   id_ano_escolar: number
   nome_ano: string
+  id_nivel_ensino?: number | null
 }
 
 type ProgressoJoin = {
@@ -164,6 +228,7 @@ type RegistroAtividade = {
 
 type SessaoHistorico = {
   id_sessao: number
+  id_progresso: number
   hora_entrada: string
   hora_saida: string | null
   resumo_atividades: string | null
@@ -202,48 +267,106 @@ type ProtocoloState = {
   }
 }
 
+type FaixaAnoProtocolos = {
+  id_ano_escolar: number
+  ano_nome: string
+  quantidade: number
+  inicio: number
+  fim: number
+}
+
 // ===================== Subcomponentes =====================
 
-function FichaHeader(props: { progresso: ProgressoJoin; anosCursados?: string }) {
-  const { progresso, anosCursados } = props
+function FichaHeader(props: {
+  progresso: ProgressoJoin
+  anosCursados?: string
+  peDeMeiaElegivel: boolean
+  isPCD: boolean
+}) {
+  const { progresso, anosCursados, peDeMeiaElegivel, isPCD } = props
 
   const disc = first(progresso.disciplinas)
   const mat = first(progresso.matriculas)
   const aluno = first(mat?.alunos)
   const user = first(aluno?.usuarios)
   const nivel = first(mat?.niveis_ensino)?.nome ?? ''
-
   const modalidade = String(mat?.modalidade ?? '')
 
   return (
-    <Paper sx={{ p: 2, mb: 3, borderRadius: '12px' }}>
-      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems={{ sm: 'center' }}>
-        <Avatar
-          sx={{ width: 90, height: 90 }}
-          src={user?.foto_url ?? undefined}
-          variant="rounded"
-        >
+    <Paper
+      sx={{
+        p: 2,
+        mb: 3,
+        borderRadius: '12px',
+        width: '100%',
+        minWidth: 0,
+        overflow: 'hidden',
+      }}
+    >
+      <Stack
+        direction={{ xs: 'column', sm: 'row' }}
+        spacing={2}
+        alignItems={{ xs: 'center', sm: 'center' }}
+        sx={{ width: '100%', minWidth: 0 }}
+      >
+        <Avatar sx={{ width: 86, height: 86, flexShrink: 0 }} src={user?.foto_url ?? undefined} variant="rounded">
           <PersonIcon sx={{ fontSize: 60 }} />
         </Avatar>
 
-        <Box sx={{ minWidth: 0 }}>
-          <Typography variant="h5" sx={{ fontWeight: 700, lineHeight: 1.1 }}>
+        <Box sx={{ width: '100%', minWidth: 0 }}>
+          <Typography
+            variant="h5"
+            sx={{
+              fontWeight: 900,
+              lineHeight: 1.1,
+              textAlign: { xs: 'center', sm: 'left' },
+              overflowWrap: 'anywhere',
+              wordBreak: 'break-word',
+            }}
+          >
             {user?.name ?? 'Aluno'}
           </Typography>
 
-          <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ mt: 1 }}>
+          {/* ✅ chips quebram linha no mobile (não corta) */}
+          <Stack
+            direction="row"
+            useFlexGap
+            flexWrap="wrap"
+            spacing={1}
+            sx={{
+              mt: 1,
+              width: '100%',
+              justifyContent: { xs: 'center', sm: 'flex-start' },
+              '& .MuiChip-root': { maxWidth: '100%' },
+              '& .MuiChip-label': { whiteSpace: 'normal' },
+            }}
+          >
             <Chip label={`RA: ${mat?.numero_inscricao ?? '-'}`} size="small" />
             <Chip label={disc?.nome_disciplina ?? '-'} color="primary" size="small" />
+            <Chip
+              label={peDeMeiaElegivel ? 'Pé-de-Meia: Elegível' : 'Pé-de-Meia: Não'}
+              color={peDeMeiaElegivel ? 'success' : 'default'}
+              variant={peDeMeiaElegivel ? 'filled' : 'outlined'}
+              size="small"
+            />
+            <Chip
+              label={isPCD ? 'PCD: Sim' : 'PCD: Não'}
+              color={isPCD ? 'info' : 'default'}
+              variant={isPCD ? 'filled' : 'outlined'}
+              size="small"
+            />
           </Stack>
 
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-            Nível: {nivel || '-'}
-          </Typography>
+          <Box sx={{ mt: 1 }}>
+            <Typography variant="body2" color="text.secondary" sx={{ overflowWrap: 'anywhere' }}>
+              Nível: {nivel || '-'}
+            </Typography>
 
-          <Typography variant="body2" color="text.secondary">
-            Modalidade: <strong>{modalidade || '-'}</strong>
-            {modalidade === 'Aproveitamento de Estudos' && anosCursados ? ` (${anosCursados})` : ''}
-          </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ overflowWrap: 'anywhere' }}>
+              Modalidade: <strong>{modalidade || '-'}</strong>
+              {modalidade === 'Aproveitamento de Estudos' && anosCursados ? ` (${anosCursados})` : ''}
+            </Typography>
+          </Box>
 
           {aluno?.possui_necessidade_especial ? (
             <Chip
@@ -252,8 +375,9 @@ function FichaHeader(props: { progresso: ProgressoJoin; anosCursados?: string })
               color="warning"
               size="small"
               sx={{
-                mt: 1,
+                mt: 1.25,
                 height: 'auto',
+                maxWidth: '100%',
                 '& .MuiChip-label': { py: '4px', whiteSpace: 'normal', lineHeight: 1.2 },
               }}
             />
@@ -268,7 +392,11 @@ function GradeDeNotas(props: { gradeData: GradeData | null }) {
   const { gradeData } = props
 
   if (!gradeData || !gradeData.headers?.length) {
-    return <Alert severity="info" sx={{ mb: 2 }}>Nenhum protocolo definido para esta ficha.</Alert>
+    return (
+      <Alert severity="info" sx={{ mb: 2 }}>
+        Nenhum protocolo definido para esta ficha.
+      </Alert>
+    )
   }
 
   return (
@@ -277,11 +405,30 @@ function GradeDeNotas(props: { gradeData: GradeData | null }) {
         Grade de Notas
       </Typography>
 
-      <TableContainer component={Paper} sx={{ borderRadius: '12px', mb: 3 }}>
-        <Table size="small" sx={{ borderCollapse: 'collapse' }}>
+      <TableContainer
+        component={Paper}
+        sx={{
+          borderRadius: '12px',
+          mb: 2,
+          width: '100%',
+          maxWidth: '100%',
+          overflowX: 'auto',
+          WebkitOverflowScrolling: 'touch',
+        }}
+      >
+        <Table
+          size="small"
+          sx={{
+            borderCollapse: 'collapse',
+
+            // ✅ desktop: ocupa tudo; mobile: continua rolando por causa do minWidth
+            width: '100%',
+            minWidth: 720,
+          }}
+        >
           <TableHead sx={{ bgcolor: 'action.hover' }}>
             <TableRow>
-              <TableCell sx={{ fontWeight: 900, border: '1px solid #ddd' }} rowSpan={2}>
+              <TableCell sx={{ fontWeight: 900, border: '1px solid #ddd', whiteSpace: 'nowrap' }} rowSpan={2}>
                 ETAPA/SÉRIE
               </TableCell>
 
@@ -290,20 +437,20 @@ function GradeDeNotas(props: { gradeData: GradeData | null }) {
                   key={h.serie}
                   align="center"
                   colSpan={h.colspan}
-                  sx={{ fontWeight: 900, border: '1px solid #ddd' }}
+                  sx={{ fontWeight: 900, border: '1px solid #ddd', whiteSpace: 'nowrap' }}
                 >
                   {h.serie}
                 </TableCell>
               ))}
 
-              <TableCell sx={{ fontWeight: 900, border: '1px solid #ddd' }} rowSpan={2}>
+              <TableCell sx={{ fontWeight: 900, border: '1px solid #ddd', whiteSpace: 'nowrap' }} rowSpan={2}>
                 MÉDIA
               </TableCell>
             </TableRow>
 
             <TableRow>
               {gradeData.protocolos.map((p) => (
-                <TableCell key={p} align="center" sx={{ fontWeight: 900, border: '1px solid #ddd' }}>
+                <TableCell key={p} align="center" sx={{ fontWeight: 900, border: '1px solid #ddd', whiteSpace: 'nowrap' }}>
                   {p}ª
                 </TableCell>
               ))}
@@ -313,12 +460,12 @@ function GradeDeNotas(props: { gradeData: GradeData | null }) {
           <TableBody>
             {gradeData.body.map((row, idx) => (
               <TableRow key={row.etapa}>
-                <TableCell sx={{ fontWeight: 900, border: '1px solid #ddd' }}>
+                <TableCell sx={{ fontWeight: 900, border: '1px solid #ddd', whiteSpace: 'nowrap' }}>
                   {row.etapa}
                 </TableCell>
 
                 {row.notas.map((nota, i) => (
-                  <TableCell key={i} align="center" sx={{ border: '1px solid #ddd' }}>
+                  <TableCell key={i} align="center" sx={{ border: '1px solid #ddd', whiteSpace: 'nowrap' }}>
                     {nota !== null ? String(nota).replace('.', ',') : '-'}
                   </TableCell>
                 ))}
@@ -327,7 +474,13 @@ function GradeDeNotas(props: { gradeData: GradeData | null }) {
                   <TableCell
                     align="center"
                     rowSpan={gradeData.body.length}
-                    sx={{ fontWeight: 900, fontSize: '1.1rem', verticalAlign: 'middle', border: '1px solid #ddd' }}
+                    sx={{
+                      fontWeight: 900,
+                      fontSize: '1.05rem',
+                      verticalAlign: 'middle',
+                      border: '1px solid #ddd',
+                      whiteSpace: 'nowrap',
+                    }}
                   >
                     {gradeData.mediaFinal !== null ? String(gradeData.mediaFinal).replace('.', ',') : '-'}
                   </TableCell>
@@ -337,9 +490,14 @@ function GradeDeNotas(props: { gradeData: GradeData | null }) {
           </TableBody>
         </Table>
       </TableContainer>
+
+      <Typography variant="caption" color="text.secondary">
+        * No celular, role a tabela para o lado.
+      </Typography>
     </>
   )
 }
+
 
 function HistoricoAtendimentos(props: {
   sessoes: SessaoHistorico[]
@@ -363,8 +521,8 @@ function HistoricoAtendimentos(props: {
         Histórico de Atendimentos Detalhado
       </Typography>
 
-      <TableContainer component={Paper} sx={{ borderRadius: '12px' }}>
-        <Table>
+      <TableContainer component={Paper} sx={{ borderRadius: '12px', overflowX: 'auto' }}>
+        <Table sx={{ minWidth: 900 }}>
           <TableHead sx={{ bgcolor: 'action.hover' }}>
             <TableRow>
               <TableCell>Data</TableCell>
@@ -387,16 +545,14 @@ function HistoricoAtendimentos(props: {
                     const tipoNome = first(at.tipos_protocolo)?.nome ?? 'Atividade'
                     const status = at.status || 'N/D'
                     const nota = at.nota !== null && at.nota !== undefined ? ` - Nota: ${Number(at.nota).toFixed(1)}` : ''
-                    return `${tipoNome} (${status})${nota}`
+                    return `${tipoNome} (#${at.numero_protocolo}) (${status})${nota}`
                   })
                   .join('; ')
 
                 return (
                   <TableRow key={sessao.id_sessao}>
                     <TableCell>{formatDateBR(sessao.hora_entrada)}</TableCell>
-                    <TableCell>
-                      {`${formatTimeBR(sessao.hora_entrada)} - ${sessao.hora_saida ? formatTimeBR(sessao.hora_saida) : '...'}`}
-                    </TableCell>
+                    <TableCell>{`${formatTimeBR(sessao.hora_entrada)} - ${sessao.hora_saida ? formatTimeBR(sessao.hora_saida) : '...'}`}</TableCell>
                     <TableCell align="center">X</TableCell>
                     <TableCell align="center">{hasActivityType(sessao, 'AT') ? 'X' : ''}</TableCell>
                     <TableCell align="center">{hasActivityType(sessao, 'AV') ? 'X' : ''}</TableCell>
@@ -405,13 +561,13 @@ function HistoricoAtendimentos(props: {
                     <TableCell>
                       <Typography variant="body2">{registroTexto || '-'}</Typography>
                       {sessao.resumo_atividades ? (
-                        <Typography variant="body2" sx={{ fontStyle: 'italic', mt: 1 }}>
+                        <Typography variant="body2" sx={{ fontStyle: 'italic', mt: 1, whiteSpace: 'pre-wrap' }}>
                           {sessao.resumo_atividades}
                         </Typography>
                       ) : null}
                     </TableCell>
                     <TableCell>
-                      <Tooltip title="Editar Atividades da Sessão">
+                      <Tooltip title="Editar Sessão e Atividades">
                         <IconButton size="small" onClick={() => onEdit(sessao)}>
                           <EditIcon fontSize="small" />
                         </IconButton>
@@ -443,119 +599,380 @@ function EditHistoricoModal(props: {
   open: boolean
   onClose: () => void
   sessao: SessaoHistorico | null
-  onSave: (atividadesEditadas: RegistroAtividade[]) => Promise<void>
+  totalProtocolos: number
+  tipos: TipoProtocoloRow[]
+  onSave: (payload: {
+    sessaoUpdate: { id_sessao: number; hora_entrada: string; hora_saida: string | null; resumo_atividades: string | null }
+    upserts: Array<{
+      id_atividade?: number
+      id_sessao: number
+      id_progresso: number
+      numero_protocolo: number
+      id_tipo_protocolo: number
+      status: string
+      nota: number | null
+      is_adaptada: boolean
+      sintese: string | null
+    }>
+    deletes: number[]
+  }) => Promise<void>
 }) {
-  const { open, onClose, sessao, onSave } = props
+  const { open, onClose, sessao, onSave, totalProtocolos, tipos } = props
   const theme = useTheme()
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'))
 
-  const [atividades, setAtividades] = useState<RegistroAtividade[]>([])
+  const [horaEntrada, setHoraEntrada] = useState<string>('')
+  const [horaSaida, setHoraSaida] = useState<string>('')
+  const [resumo, setResumo] = useState<string>('')
+
+  type EditAtividade = {
+    id_atividade?: number
+    id_sessao: number
+    id_progresso: number
+    numero_protocolo: number
+    id_tipo_protocolo: number
+    status: string
+    nota: number | null
+    is_adaptada: boolean
+    sintese: string | null
+  }
+
+  const [atividades, setAtividades] = useState<EditAtividade[]>([])
+  const [deletedIds, setDeletedIds] = useState<number[]>([])
   const [saving, setSaving] = useState(false)
+  const [erroLocal, setErroLocal] = useState<string>('')
 
   useEffect(() => {
-    if (sessao?.atividades) {
-      // deep clone
-      setAtividades(JSON.parse(JSON.stringify(sessao.atividades)) as RegistroAtividade[])
-    } else {
+    if (!sessao) {
+      setHoraEntrada('')
+      setHoraSaida('')
+      setResumo('')
       setAtividades([])
+      setDeletedIds([])
+      setErroLocal('')
+      return
     }
+
+    setHoraEntrada(sessao.hora_entrada ?? '')
+    setHoraSaida(sessao.hora_saida ?? '')
+    setResumo(sessao.resumo_atividades ?? '')
+    setDeletedIds([])
+    setErroLocal('')
+
+    const list: EditAtividade[] = (sessao.atividades ?? []).map((a) => ({
+      id_atividade: a.id_atividade,
+      id_sessao: a.id_sessao,
+      id_progresso: a.id_progresso,
+      numero_protocolo: Number(a.numero_protocolo),
+      id_tipo_protocolo: Number(a.id_tipo_protocolo),
+      status: String(a.status || 'A fazer'),
+      nota: a.nota != null ? Number(a.nota) : null,
+      is_adaptada: Boolean(a.is_adaptada),
+      sintese: a.sintese ?? null,
+    }))
+
+    setAtividades(list)
   }, [sessao])
 
-  const handleAtividadeChange = (index: number, field: keyof RegistroAtividade, value: any) => {
+  const handleAtividadeChange = (index: number, patch: Partial<EditAtividade>) => {
     setAtividades((old) => {
       const next = [...old]
-      const obj = { ...next[index] } as any
-      obj[field] = value
-      next[index] = obj
+      next[index] = { ...next[index], ...patch }
       return next
     })
   }
 
+  const handleRemoveAtividade = (index: number) => {
+    setAtividades((old) => {
+      const next = [...old]
+      const rem = next.splice(index, 1)[0]
+      if (rem?.id_atividade) {
+        setDeletedIds((d) => Array.from(new Set([...d, rem.id_atividade as number])))
+      }
+      return next
+    })
+  }
+
+  const handleAddAtividade = () => {
+    if (!sessao) return
+    const padraoTipo = tipos[0]?.id_tipo_protocolo ?? TIPOS.PESQUISA
+    setAtividades((old) => [
+      {
+        id_sessao: sessao.id_sessao,
+        id_progresso: sessao.id_progresso,
+        numero_protocolo: 1,
+        id_tipo_protocolo: Number(padraoTipo),
+        status: 'A fazer',
+        nota: null,
+        is_adaptada: false,
+        sintese: null,
+      },
+      ...old,
+    ])
+  }
+
+  const validar = (): boolean => {
+    setErroLocal('')
+    if (!sessao) return false
+
+    if (!horaEntrada) {
+      setErroLocal('Informe a hora de entrada da sessão.')
+      return false
+    }
+    const dE = new Date(horaEntrada)
+    if (Number.isNaN(dE.getTime())) {
+      setErroLocal('Hora de entrada inválida.')
+      return false
+    }
+
+    if (horaSaida) {
+      const dS = new Date(horaSaida)
+      if (Number.isNaN(dS.getTime())) {
+        setErroLocal('Hora de saída inválida.')
+        return false
+      }
+      if (dS.getTime() < dE.getTime()) {
+        setErroLocal('Hora de saída não pode ser menor que a hora de entrada.')
+        return false
+      }
+    }
+
+    const maxProt = Math.max(1, totalProtocolos || 1)
+
+    for (const a of atividades) {
+      if (!Number.isFinite(a.numero_protocolo) || a.numero_protocolo < 1 || a.numero_protocolo > maxProt) {
+        setErroLocal(`Número do protocolo inválido: ${a.numero_protocolo}.`)
+        return false
+      }
+      if (!Number.isFinite(a.id_tipo_protocolo) || a.id_tipo_protocolo <= 0) {
+        setErroLocal('Tipo de protocolo inválido.')
+        return false
+      }
+      if (!String(a.status || '').trim()) {
+        setErroLocal('Status inválido em uma atividade.')
+        return false
+      }
+      if (a.nota !== null && !Number.isFinite(a.nota)) {
+        setErroLocal('Nota inválida em uma atividade.')
+        return false
+      }
+    }
+
+    const seen = new Set<string>()
+    for (const a of atividades) {
+      const key = `${a.numero_protocolo}-${a.id_tipo_protocolo}`
+      if (seen.has(key)) {
+        setErroLocal(`Duplicidade: já existe atividade com protocolo ${a.numero_protocolo} e tipo ${a.id_tipo_protocolo}.`)
+        return false
+      }
+      seen.add(key)
+    }
+
+    return true
+  }
+
   const handleSave = async () => {
+    if (!sessao) return
+    if (!validar()) return
+
     setSaving(true)
     try {
-      await onSave(atividades)
+      await onSave({
+        sessaoUpdate: {
+          id_sessao: sessao.id_sessao,
+          hora_entrada: new Date(horaEntrada).toISOString(),
+          hora_saida: horaSaida ? new Date(horaSaida).toISOString() : null,
+          resumo_atividades: resumo?.trim() ? resumo.trim() : null,
+        },
+        upserts: atividades.map((a) => ({
+          id_atividade: a.id_atividade,
+          id_sessao: sessao.id_sessao,
+          id_progresso: sessao.id_progresso,
+          numero_protocolo: Number(a.numero_protocolo),
+          id_tipo_protocolo: Number(a.id_tipo_protocolo),
+          status: String(a.status || 'A fazer'),
+          nota: a.nota != null ? Number(a.nota) : null,
+          is_adaptada: Boolean(a.is_adaptada),
+          sintese: a.sintese?.trim() ? a.sintese.trim() : null,
+        })),
+        deletes: deletedIds,
+      })
+      onClose()
     } finally {
       setSaving(false)
-      onClose()
     }
   }
 
-  const renderAtividade = (atividade: RegistroAtividade, index: number) => {
-    const tipoNome = String(first(atividade.tipos_protocolo)?.nome ?? '')
-    const showNota = !['Atividade de Pesquisa', 'ASO'].includes(tipoNome)
-
-    return (
-      <Paper
-        key={atividade.id_atividade}
-        variant="outlined"
-        sx={{ p: 2, borderRadius: 2, mb: 1 }}
-      >
-        <Stack spacing={1}>
-          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ sm: 'center' }} justifyContent="space-between">
-            <Box sx={{ minWidth: 0 }}>
-              <Typography variant="body1" sx={{ fontWeight: 800 }}>
-                {tipoNome || 'Atividade'}
-              </Typography>
-              <Typography variant="caption" color="text.secondary">
-                Protocolo {atividade.numero_protocolo}
-              </Typography>
-            </Box>
-
-            <FormControlLabel
-              control={
-                <Checkbox
-                  checked={!!atividade.is_adaptada}
-                  onChange={(e) => handleAtividadeChange(index, 'is_adaptada', e.target.checked)}
-                />
-              }
-              label="Adaptada"
-            />
-          </Stack>
-
-          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
-            <FormControl fullWidth size="small">
-              <InputLabel>Status</InputLabel>
-              <Select
-                label="Status"
-                value={atividade.status || 'A fazer'}
-                onChange={(e) => handleAtividadeChange(index, 'status', String(e.target.value))}
-              >
-                <MenuItem value="A fazer">A fazer</MenuItem>
-                <MenuItem value="Em andamento">Em andamento</MenuItem>
-                <MenuItem value="Concluída">Concluída</MenuItem>
-              </Select>
-            </FormControl>
-
-            {showNota ? (
-              <TextField
-                fullWidth
-                size="small"
-                label="Nota"
-                type="number"
-                value={atividade.nota ?? ''}
-                onChange={(e) => handleAtividadeChange(index, 'nota', e.target.value)}
-              />
-            ) : null}
-          </Stack>
-        </Stack>
-      </Paper>
-    )
-  }
-
   return (
-    <Dialog open={open} onClose={onClose} fullWidth maxWidth="md" fullScreen={isMobile}>
+    <Dialog open={open} onClose={onClose} fullWidth maxWidth="lg" fullScreen={isMobile}>
       <DialogTitle sx={{ fontWeight: 900 }}>
-        Editar atendimento {sessao ? `(${formatDateBR(sessao.hora_entrada)})` : ''}
+        Editar Sessão {sessao ? `(${formatDateBR(sessao.hora_entrada)})` : ''}
+        <IconButton onClick={onClose} sx={{ position: 'absolute', right: 8, top: 8 }}>
+          <CloseIcon />
+        </IconButton>
       </DialogTitle>
 
       <DialogContent dividers>
-        {atividades.length > 0 ? (
-          atividades.map(renderAtividade)
+        {!sessao ? (
+          <Alert severity="warning">Sessão não selecionada.</Alert>
         ) : (
-          <Alert severity="info" sx={{ mt: 2 }}>
-            Nenhuma atividade registrada para esta sessão.
-          </Alert>
+          <Stack spacing={2}>
+            {erroLocal ? <Alert severity="error">{erroLocal}</Alert> : null}
+
+            <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
+              <Typography sx={{ fontWeight: 900, mb: 1 }}>Dados da Sessão</Typography>
+              <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Hora de entrada"
+                  type="datetime-local"
+                  value={horaEntrada ? formatForInputLocal(horaEntrada) : ''}
+                  onChange={(e) => setHoraEntrada(inputLocalToISO(e.target.value))}
+                  InputLabelProps={{ shrink: true }}
+                />
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Hora de saída (opcional)"
+                  type="datetime-local"
+                  value={horaSaida ? formatForInputLocal(horaSaida) : ''}
+                  onChange={(e) => setHoraSaida(e.target.value ? inputLocalToISO(e.target.value) : '')}
+                  InputLabelProps={{ shrink: true }}
+                />
+              </Stack>
+
+              <TextField
+                sx={{ mt: 2 }}
+                fullWidth
+                label="Resumo/Observações da sessão"
+                multiline
+                minRows={3}
+                value={resumo}
+                onChange={(e) => setResumo(e.target.value)}
+              />
+            </Paper>
+
+            <Stack direction="row" alignItems="center" justifyContent="space-between" flexWrap="wrap" gap={1}>
+              <Typography sx={{ fontWeight: 900 }}>Atividades (editar tudo)</Typography>
+              <Button startIcon={<AddIcon />} variant="outlined" onClick={handleAddAtividade}>
+                Adicionar atividade
+              </Button>
+            </Stack>
+
+            {atividades.length === 0 ? (
+              <Alert severity="info">Nenhuma atividade registrada nesta sessão.</Alert>
+            ) : (
+              <Stack spacing={1}>
+                {atividades.map((a, idx) => {
+                  const tipoNome =
+                    tipos.find((t) => t.id_tipo_protocolo === a.id_tipo_protocolo)?.nome ?? `Tipo #${a.id_tipo_protocolo}`
+                  const showNota = !['Atividade de Pesquisa', 'ASO'].includes(String(tipoNome))
+                  const maxProt = Math.max(1, totalProtocolos || 1)
+
+                  return (
+                    <Paper key={`${a.id_atividade ?? 'new'}-${idx}`} variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
+                      <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems={{ md: 'center' }}>
+                        <Box sx={{ flex: 1, minWidth: 0 }}>
+                          <Typography sx={{ fontWeight: 900 }}>{tipoNome}</Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            {a.id_atividade ? `ID atividade: ${a.id_atividade}` : 'Nova atividade (será inserida)'}
+                          </Typography>
+                        </Box>
+
+                        <Button
+                          variant="outlined"
+                          color="error"
+                          startIcon={<DeleteIcon />}
+                          onClick={() => handleRemoveAtividade(idx)}
+                        >
+                          Remover
+                        </Button>
+                      </Stack>
+
+                      <Divider sx={{ my: 1.5 }} />
+
+                      <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
+                        <FormControl fullWidth size="small">
+                          <InputLabel>Protocolo</InputLabel>
+                          <Select
+                            label="Protocolo"
+                            value={String(a.numero_protocolo)}
+                            onChange={(e) => handleAtividadeChange(idx, { numero_protocolo: Number(e.target.value) })}
+                          >
+                            {Array.from({ length: maxProt }, (_, i) => i + 1).map((n) => (
+                              <MenuItem key={n} value={String(n)}>
+                                {n}
+                              </MenuItem>
+                            ))}
+                          </Select>
+                        </FormControl>
+
+                        <FormControl fullWidth size="small">
+                          <InputLabel>Tipo</InputLabel>
+                          <Select
+                            label="Tipo"
+                            value={String(a.id_tipo_protocolo)}
+                            onChange={(e) => handleAtividadeChange(idx, { id_tipo_protocolo: Number(e.target.value) })}
+                          >
+                            {tipos.map((t) => (
+                              <MenuItem key={t.id_tipo_protocolo} value={String(t.id_tipo_protocolo)}>
+                                {t.nome}
+                              </MenuItem>
+                            ))}
+                          </Select>
+                        </FormControl>
+
+                        <FormControl fullWidth size="small">
+                          <InputLabel>Status</InputLabel>
+                          <Select
+                            label="Status"
+                            value={String(a.status || 'A fazer')}
+                            onChange={(e) => handleAtividadeChange(idx, { status: String(e.target.value) })}
+                          >
+                            <MenuItem value="A fazer">A fazer</MenuItem>
+                            <MenuItem value="Em andamento">Em andamento</MenuItem>
+                            <MenuItem value="Concluída">Concluída</MenuItem>
+                          </Select>
+                        </FormControl>
+
+                        {showNota ? (
+                          <TextField
+                            fullWidth
+                            size="small"
+                            label="Nota"
+                            type="number"
+                            value={a.nota ?? ''}
+                            onChange={(e) => handleAtividadeChange(idx, { nota: parseNota(e.target.value) })}
+                          />
+                        ) : null}
+                      </Stack>
+
+                      <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} sx={{ mt: 2 }}>
+                        <FormControlLabel
+                          control={
+                            <Checkbox
+                              checked={!!a.is_adaptada}
+                              onChange={(e) => handleAtividadeChange(idx, { is_adaptada: e.target.checked })}
+                            />
+                          }
+                          label="Adaptada"
+                        />
+
+                        <TextField
+                          fullWidth
+                          size="small"
+                          label="Síntese"
+                          value={a.sintese ?? ''}
+                          onChange={(e) => handleAtividadeChange(idx, { sintese: e.target.value })}
+                        />
+                      </Stack>
+                    </Paper>
+                  )
+                })}
+              </Stack>
+            )}
+          </Stack>
         )}
       </DialogContent>
 
@@ -693,6 +1110,15 @@ function ProtocolosDeEstudo(props: {
             label="Adaptada"
           />
         </Stack>
+
+        <TextField
+          sx={{ mt: 1 }}
+          size="small"
+          fullWidth
+          label="Síntese"
+          value={(registro as any).sintese ?? ''}
+          onChange={(e) => handleAtividadeChange(protoIndex, ativKey, 'sintese', e.target.value)}
+        />
       </Paper>
     )
   }
@@ -712,7 +1138,6 @@ function ProtocolosDeEstudo(props: {
         const a = atividades[k]
         if (!a) continue
 
-        // Só salva ASO/Recuperação quando necessário OU quando já existe registro (pra não criar lixo).
         const jaExiste = !!a.registro?.id_atividade
         if ((k === 'aso' || k === 'recuperacao') && !precisaRec && !jaExiste) continue
 
@@ -724,7 +1149,7 @@ function ProtocolosDeEstudo(props: {
           status: String(a.registro?.status || 'A fazer'),
           nota: parseNota(a.registro?.nota),
           is_adaptada: Boolean(a.registro?.is_adaptada),
-          sintese: (a.registro?.sintese ?? null) as string | null,
+          sintese: ((a.registro as any)?.sintese ?? null) as string | null,
         }
 
         await onSaveAtividade(payload)
@@ -742,7 +1167,7 @@ function ProtocolosDeEstudo(props: {
         Registro de Atividades
       </Typography>
 
-      <Paper sx={{ p: 2, borderRadius: '12px' }}>
+      <Paper sx={{ p: 2, borderRadius: '12px', overflow: 'hidden' }}>
         {protocolos.map((protocolo, protoIndex) => {
           const atividades = protocolo.atividades
           const notaAvaliacao = parseNota(atividades.avaliacao?.registro?.nota)
@@ -751,7 +1176,7 @@ function ProtocolosDeEstudo(props: {
 
           return (
             <Accordion
-              key={protocolo.numero}
+              key={`${protocolo.numero}-${protocolo.ano_escolar}`}
               expanded={expanded === protocolo.numero}
               onChange={handleAccordionChange(protocolo.numero)}
               disableGutters
@@ -764,14 +1189,14 @@ function ProtocolosDeEstudo(props: {
               }}
             >
               <AccordionSummary expandIcon={<ExpandMoreIcon />} sx={{ bgcolor: 'action.hover' }}>
-                <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} alignItems={{ md: 'center' }} sx={{ width: '100%' }}>
-                  <Typography sx={{ fontWeight: 800 }}>
+                <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} alignItems={{ md: 'center' }} sx={{ width: '100%', minWidth: 0 }}>
+                  <Typography sx={{ fontWeight: 800, overflowWrap: 'anywhere' }}>
                     Protocolo {protocolo.numero} ({protocolo.ano_escolar})
                   </Typography>
 
                   <Box sx={{ flex: 1 }} />
 
-                  <Stack direction="row" spacing={1} flexWrap="wrap">
+                  <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
                     <Chip label={`Nota: ${getNotaFinalProtocolo(atividades)}`} color="primary" size="small" variant="outlined" />
                     <Chip label={statusInfo.label} color={statusInfo.color} size="small" />
                   </Stack>
@@ -836,7 +1261,7 @@ function ObservacoesEditaveis(props: {
 
   return (
     <Paper sx={{ p: 2, borderRadius: '12px', mt: 4 }}>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1, gap: 1, flexWrap: 'wrap' }}>
         <Typography variant="h6">Observações Gerais da Disciplina</Typography>
         {!editMode ? (
           <Button startIcon={<EditIcon />} onClick={() => setEditMode(true)}>
@@ -853,16 +1278,7 @@ function ObservacoesEditaveis(props: {
         </Typography>
       ) : (
         <>
-          <TextField
-            fullWidth
-            multiline
-            rows={5}
-            value={observacoes}
-            onChange={(e) => setObservacoes(e.target.value)}
-            variant="outlined"
-            autoFocus
-            sx={{ mt: 2 }}
-          />
+          <TextField fullWidth multiline rows={5} value={observacoes} onChange={(e) => setObservacoes(e.target.value)} variant="outlined" autoFocus sx={{ mt: 2 }} />
           <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 2, gap: 1 }}>
             <Button onClick={handleCancel}>Cancelar</Button>
             <Button onClick={() => void handleSave()} variant="contained" disabled={saving}>
@@ -901,10 +1317,14 @@ export default function FichaAcompanhamentoPage() {
 
   const [loading, setLoading] = useState(true)
   const [progresso, setProgresso] = useState<ProgressoJoin | null>(null)
+
+  const [faixas, setFaixas] = useState<FaixaAnoProtocolos[]>([])
   const [gradeData, setGradeData] = useState<GradeData | null>(null)
   const [protocolos, setProtocolos] = useState<ProtocoloState[]>([])
   const [sessoes, setSessoes] = useState<SessaoHistorico[]>([])
   const [observacoes, setObservacoes] = useState<string>('')
+
+  const [tiposProtocolo, setTiposProtocolo] = useState<TipoProtocoloRow[]>([])
 
   const [idProfessor, setIdProfessor] = useState<number | null>(null)
   const sessaoAutoRef = useRef<number | null>(null)
@@ -916,131 +1336,167 @@ export default function FichaAcompanhamentoPage() {
   const [sessaoParaExcluir, setSessaoParaExcluir] = useState<SessaoHistorico | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
 
+  const totalProtocolos = useMemo(() => (faixas?.length ? faixas[faixas.length - 1].fim : 0), [faixas])
+
+  const peDeMeiaElegivel = useMemo(() => {
+    if (!progresso) return false
+    const mat = first(progresso.matriculas)
+    const aluno = first(mat?.alunos)
+    const nivelId =
+      (mat?.id_nivel_ensino != null ? Number(mat.id_nivel_ensino) : null) ??
+      (first(progresso.anos_escolares)?.id_nivel_ensino != null ? Number(first(progresso.anos_escolares)?.id_nivel_ensino) : null)
+
+    return isElegivelPeDeMeia({
+      id_nivel_ensino: nivelId,
+      nis: aluno?.nis ?? null,
+      possui_beneficio_governo: aluno?.possui_beneficio_governo ?? null,
+      qual_beneficio_governo: aluno?.qual_beneficio_governo ?? null,
+    })
+  }, [progresso])
+
+  const isPCD = useMemo(() => {
+    if (!progresso) return false
+    const mat = first(progresso.matriculas)
+    const aluno = first(mat?.alunos)
+    return Boolean(aluno?.possui_necessidade_especial)
+  }, [progresso])
+
+  const faixaResumo = useMemo(() => (faixas.length ? faixas.map((f) => `${f.ano_nome}: ${f.inicio}-${f.fim}`).join(' • ') : ''), [faixas])
+
   const carregarIdProfessor = useCallback(async () => {
     if (!supabase) return
     if (!usuario?.id) return
 
-    const { data, error: e } = await supabase
-      .from('professores')
-      .select('id_professor')
-      .eq('user_id', usuario.id)
-      .maybeSingle()
-
-    if (e) {
-      console.error(e)
-      return
-    }
+    const { data, error: e } = await supabase.from('professores').select('id_professor').eq('user_id', usuario.id).maybeSingle()
+    if (e) return
     if (data?.id_professor) setIdProfessor(Number(data.id_professor))
   }, [supabase, usuario?.id])
 
-  const montarProtocolos = useCallback((args: {
-    quantidade: number
-    anoNome: string
-    registros: RegistroAtividade[]
-  }): ProtocoloState[] => {
-    const { quantidade, anoNome, registros } = args
+  const carregarTiposProtocolo = useCallback(async () => {
+    if (!supabase) return
+    const { data, error } = await supabase.from('tipos_protocolo').select('id_tipo_protocolo,nome').order('id_tipo_protocolo')
+    if (!error) setTiposProtocolo((data ?? []) as any)
+  }, [supabase])
 
-    // Escolhe o registro mais recente por (numero_protocolo, id_tipo_protocolo)
-    const map = new Map<string, RegistroAtividade>()
-    for (const r of registros) {
-      const key = `${r.numero_protocolo}-${r.id_tipo_protocolo}`
-      const prev = map.get(key)
-      if (!prev) {
-        map.set(key, r)
-      } else {
-        const tPrev = new Date(prev.updated_at || prev.created_at).getTime()
-        const tNow = new Date(r.updated_at || r.created_at).getTime()
-        if (tNow >= tPrev) map.set(key, r)
-      }
-    }
-
-    const buildAtiv = (numero: number, id_tipo: number): ProtocoloAtividadeState => {
-      const r = map.get(`${numero}-${id_tipo}`)
-      return {
-        id_tipo,
-        registro: r
-          ? {
-              id_atividade: r.id_atividade,
-              id_sessao: r.id_sessao,
-              status: r.status,
-              nota: r.nota,
-              is_adaptada: r.is_adaptada,
-              sintese: r.sintese ?? null,
-            }
-          : null,
-      }
-    }
-
-    const lista: ProtocoloState[] = []
-    for (let n = 1; n <= quantidade; n += 1) {
-      lista.push({
-        numero: n,
-        ano_escolar: anoNome,
-        atividades: {
-          pesquisa: buildAtiv(n, TIPOS.PESQUISA),
-          complementar: buildAtiv(n, TIPOS.COMPLEMENTAR),
-          avaliacao: buildAtiv(n, TIPOS.AVALIACAO),
-          aso: buildAtiv(n, TIPOS.ASO),
-          recuperacao: buildAtiv(n, TIPOS.RECUPERACAO),
-        },
+  const calcularFaixas = useCallback((configs: Array<{ id_ano_escolar: number; nome_ano: string; quantidade_protocolos: number }>) => {
+    const ord = [...configs].sort((a, b) => Number(a.id_ano_escolar) - Number(b.id_ano_escolar))
+    let acc = 0
+    return ord
+      .filter((c) => Number(c.quantidade_protocolos ?? 0) > 0)
+      .map((c) => {
+        const ini = acc + 1
+        const fim = acc + Number(c.quantidade_protocolos)
+        acc = fim
+        return { id_ano_escolar: Number(c.id_ano_escolar), ano_nome: String(c.nome_ano), quantidade: Number(c.quantidade_protocolos), inicio: ini, fim }
       })
-    }
-    return lista
   }, [])
 
-  const montarGrade = useCallback((args: {
-    anoNome: string
-    quantidade: number
-    protocolos: ProtocoloState[]
-    mediaFinalBanco: number | null
-  }): GradeData => {
-    const { anoNome, quantidade, protocolos: protos, mediaFinalBanco } = args
+  const montarProtocolos = useCallback(
+    (args: { total: number; getAnoNome: (numero: number) => string; registros: RegistroAtividade[] }): ProtocoloState[] => {
+      const { total, getAnoNome, registros } = args
 
-    const nums = Array.from({ length: quantidade }, (_, i) => i + 1)
-
-    const notaAtividade = nums.map((n) => {
-      const p = protos.find((x) => x.numero === n)
-      return p ? parseNota(p.atividades.complementar?.registro?.nota) : null
-    })
-
-    const notaAvaliacaoEfetiva = nums.map((n) => {
-      const p = protos.find((x) => x.numero === n)
-      if (!p) return null
-      const aval = parseNota(p.atividades.avaliacao?.registro?.nota)
-      const rec = parseNota(p.atividades.recuperacao?.registro?.nota)
-      if (aval !== null && aval >= 6) return aval
-      if (aval !== null && aval < 6 && rec !== null) return rec
-      return aval
-    })
-
-    const mediaPorProtocolo = nums.map((_n, idx) => {
-
-      const a = notaAtividade[idx]
-      const b = notaAvaliacaoEfetiva[idx]
-      if (a === null || b === null) return null
-      return Number(((a + b) / 2).toFixed(2))
-    })
-
-    let mediaFinal = mediaFinalBanco
-    if (mediaFinal === null) {
-      const vals = mediaPorProtocolo.filter((x) => x !== null) as number[]
-      if (vals.length) {
-        const m = vals.reduce((acc, v) => acc + v, 0) / vals.length
-        mediaFinal = Number(m.toFixed(2))
+      const map = new Map<string, RegistroAtividade>()
+      for (const r of registros) {
+        const key = `${r.numero_protocolo}-${r.id_tipo_protocolo}`
+        const prev = map.get(key)
+        if (!prev) map.set(key, r)
+        else {
+          const tPrev = new Date(prev.updated_at || prev.created_at).getTime()
+          const tNow = new Date(r.updated_at || r.created_at).getTime()
+          if (tNow >= tPrev) map.set(key, r)
+        }
       }
-    }
 
-    return {
-      headers: [{ serie: anoNome, colspan: quantidade }],
-      protocolos: nums,
-      body: [
-        { etapa: 'NOTA ATIVIDADE', notas: notaAtividade },
-        { etapa: 'NOTA AVALIAÇÃO', notas: notaAvaliacaoEfetiva },
-        { etapa: 'MÉDIA', notas: mediaPorProtocolo },
-      ],
-      mediaFinal,
-    }
-  }, [])
+      const buildAtiv = (numero: number, id_tipo: number): ProtocoloAtividadeState => {
+        const r = map.get(`${numero}-${id_tipo}`)
+        return {
+          id_tipo,
+          registro: r
+            ? {
+                id_atividade: r.id_atividade,
+                id_sessao: r.id_sessao,
+                status: r.status,
+                nota: r.nota,
+                is_adaptada: r.is_adaptada,
+                sintese: r.sintese ?? null,
+              }
+            : {
+                status: 'A fazer',
+                nota: null,
+                is_adaptada: false,
+                sintese: null,
+              },
+        }
+      }
+
+      const lista: ProtocoloState[] = []
+      for (let n = 1; n <= total; n += 1) {
+        lista.push({
+          numero: n,
+          ano_escolar: getAnoNome(n),
+          atividades: {
+            pesquisa: buildAtiv(n, TIPOS.PESQUISA),
+            complementar: buildAtiv(n, TIPOS.COMPLEMENTAR),
+            avaliacao: buildAtiv(n, TIPOS.AVALIACAO),
+            aso: buildAtiv(n, TIPOS.ASO),
+            recuperacao: buildAtiv(n, TIPOS.RECUPERACAO),
+          },
+        })
+      }
+      return lista
+    },
+    []
+  )
+
+  const montarGrade = useCallback(
+    (args: { headers: { serie: string; colspan: number }[]; total: number; protocolos: ProtocoloState[]; mediaFinalBanco: number | null }): GradeData => {
+      const { headers, total, protocolos: protos, mediaFinalBanco } = args
+      const nums = Array.from({ length: total }, (_, i) => i + 1)
+
+      const notaAtividade = nums.map((n) => {
+        const p = protos.find((x) => x.numero === n)
+        return p ? parseNota(p.atividades.complementar?.registro?.nota) : null
+      })
+
+      const notaAvaliacaoEfetiva = nums.map((n) => {
+        const p = protos.find((x) => x.numero === n)
+        if (!p) return null
+        const aval = parseNota(p.atividades.avaliacao?.registro?.nota)
+        const rec = parseNota(p.atividades.recuperacao?.registro?.nota)
+        if (aval !== null && aval >= 6) return aval
+        if (aval !== null && aval < 6 && rec !== null) return rec
+        return aval
+      })
+
+      const mediaPorProtocolo = nums.map((_n, idx) => {
+        const a = notaAtividade[idx]
+        const b = notaAvaliacaoEfetiva[idx]
+        if (a === null || b === null) return null
+        return Number(((a + b) / 2).toFixed(2))
+      })
+
+      let mediaFinal = mediaFinalBanco
+      if (mediaFinal === null) {
+        const vals = mediaPorProtocolo.filter((x) => x !== null) as number[]
+        if (vals.length) {
+          const m = vals.reduce((acc, v) => acc + v, 0) / vals.length
+          mediaFinal = Number(m.toFixed(2))
+        }
+      }
+
+      return {
+        headers,
+        protocolos: nums,
+        body: [
+          { etapa: 'NOTA ATIVIDADE', notas: notaAtividade },
+          { etapa: 'NOTA AVALIAÇÃO', notas: notaAvaliacaoEfetiva },
+          { etapa: 'MÉDIA', notas: mediaPorProtocolo },
+        ],
+        mediaFinal,
+      }
+    },
+    []
+  )
 
   const fetchData = useCallback(async () => {
     if (!supabase) return
@@ -1051,7 +1507,7 @@ export default function FichaAcompanhamentoPage() {
 
     setLoading(true)
     try {
-      // 1) Progresso + joins
+      // 1) Progresso + joins (inclui NIS/benefícios/PCD)
       const { data: prog, error: eProg } = await supabase
         .from('progresso_aluno')
         .select(
@@ -1063,16 +1519,20 @@ export default function FichaAcompanhamentoPage() {
           nota_final,
           observacoes,
           disciplinas(id_disciplina,nome_disciplina),
-          anos_escolares(id_ano_escolar,nome_ano),
+          anos_escolares(id_ano_escolar,nome_ano,id_nivel_ensino),
           matriculas(
             id_matricula,
             numero_inscricao,
             modalidade,
             ano_letivo,
             data_matricula,
+            id_nivel_ensino,
             niveis_ensino(nome),
             alunos(
               id_aluno,
+              nis,
+              possui_beneficio_governo,
+              qual_beneficio_governo,
               possui_necessidade_especial,
               qual_necessidade_especial,
               usuarios(name,email,foto_url)
@@ -1088,24 +1548,71 @@ export default function FichaAcompanhamentoPage() {
 
       const progRow = prog as any as ProgressoJoin
       setProgresso(progRow)
-
-      // Observações
       setObservacoes(String(progRow.observacoes ?? ''))
 
-      const anoNome = first(progRow.anos_escolares)?.nome_ano ?? '-'
+      const mat = first(progRow.matriculas)
+      const modalidade = String(mat?.modalidade ?? '')
+      const nivelId =
+        (mat?.id_nivel_ensino != null ? Number(mat.id_nivel_ensino) : null) ??
+        (first(progRow.anos_escolares)?.id_nivel_ensino != null ? Number(first(progRow.anos_escolares)?.id_nivel_ensino) : null)
 
-      // 2) Config: quantidade protocolos
-      const { data: cfg, error: eCfg } = await supabase
-        .from('config_disciplina_ano')
-        .select('quantidade_protocolos')
-        .eq('id_disciplina', Number(progRow.id_disciplina))
-        .eq('id_ano_escolar', Number(progRow.id_ano_escolar))
-        .maybeSingle()
+      // 2) Config protocolos (multi-ano se orientação)
+      let faixasLocal: FaixaAnoProtocolos[] = []
+      let headers: { serie: string; colspan: number }[] = []
 
-      if (eCfg) throw eCfg
-      const quantidade = Number(cfg?.quantidade_protocolos ?? 0)
+      if (isModalidadeOrientacao(modalidade) && nivelId != null) {
+        // busca configs da disciplina e filtra por nível no front (mais robusto)
+        const { data: cfgs, error: eCfgAll } = await supabase
+          .from('config_disciplina_ano')
+          .select(
+            `
+            id_ano_escolar,
+            quantidade_protocolos,
+            anos_escolares ( nome_ano, id_nivel_ensino )
+          `
+          )
+          .eq('id_disciplina', Number(progRow.id_disciplina))
 
-      // 3) Registros do progresso (para montar protocolos/grade)
+        if (eCfgAll) throw eCfgAll
+
+        const configs = (cfgs ?? [])
+          .map((c: any) => {
+            const ano = first(c?.anos_escolares) as any
+            return {
+              id_ano_escolar: Number(c.id_ano_escolar),
+              nome_ano: String(ano?.nome_ano ?? `Ano #${c.id_ano_escolar}`),
+              quantidade_protocolos: Number(c.quantidade_protocolos ?? 0),
+              id_nivel_ensino: ano?.id_nivel_ensino != null ? Number(ano.id_nivel_ensino) : null,
+            }
+          })
+          .filter((x) => Number(x.quantidade_protocolos) > 0 && Number(x.id_nivel_ensino) === Number(nivelId))
+
+        faixasLocal = calcularFaixas(configs)
+        headers = faixasLocal.map((f) => ({ serie: f.ano_nome, colspan: f.quantidade }))
+      } else {
+        const anoNome = first(progRow.anos_escolares)?.nome_ano ?? '-'
+
+        const { data: cfg, error: eCfg } = await supabase
+          .from('config_disciplina_ano')
+          .select('quantidade_protocolos')
+          .eq('id_disciplina', Number(progRow.id_disciplina))
+          .eq('id_ano_escolar', Number(progRow.id_ano_escolar))
+          .maybeSingle()
+
+        if (eCfg) throw eCfg
+
+        const quantidade = Number(cfg?.quantidade_protocolos ?? 0)
+        faixasLocal =
+          quantidade > 0
+            ? [{ id_ano_escolar: Number(progRow.id_ano_escolar), ano_nome: anoNome, quantidade, inicio: 1, fim: quantidade }]
+            : []
+        headers = quantidade > 0 ? [{ serie: anoNome, colspan: quantidade }] : []
+      }
+
+      setFaixas(faixasLocal)
+      const total = faixasLocal.length ? faixasLocal[faixasLocal.length - 1].fim : 0
+
+      // 3) Registros do progresso (todos)
       const { data: regs, error: eRegs } = await supabase
         .from('registros_atendimento')
         .select(
@@ -1138,12 +1645,11 @@ export default function FichaAcompanhamentoPage() {
         .select(
           `
           id_sessao,
+          id_progresso,
           hora_entrada,
           hora_saida,
           resumo_atividades,
-          professores(
-            usuarios(name)
-          ),
+          professores( usuarios(name) ),
           registros_atendimento(
             id_atividade,
             id_sessao,
@@ -1177,6 +1683,7 @@ export default function FichaAcompanhamentoPage() {
 
         return {
           id_sessao: Number(s.id_sessao),
+          id_progresso: Number(s.id_progresso ?? idProgresso),
           hora_entrada: String(s.hora_entrada),
           hora_saida: s.hora_saida ? String(s.hora_saida) : null,
           resumo_atividades: s.resumo_atividades ?? null,
@@ -1188,18 +1695,24 @@ export default function FichaAcompanhamentoPage() {
       setSessoes(sessoesMontadas)
 
       // 5) Protocolos + Grade
-      const protos = montarProtocolos({ quantidade, anoNome, registros })
+      const protos = montarProtocolos({
+        total,
+        getAnoNome: (n: number) => {
+          const f = faixasLocal.find((x) => n >= x.inicio && n <= x.fim)
+          return f?.ano_nome ?? '-'
+        },
+        registros,
+      })
       setProtocolos(protos)
 
       const grade = montarGrade({
-        anoNome,
-        quantidade,
+        headers,
+        total,
         protocolos: protos,
         mediaFinalBanco: progRow.nota_final,
       })
       setGradeData(grade)
 
-      // reset cache da sessão auto quando recarrega (pra evitar usar id antigo sem necessidade)
       sessaoAutoRef.current = null
     } catch (e: any) {
       console.error(e)
@@ -1207,7 +1720,7 @@ export default function FichaAcompanhamentoPage() {
     } finally {
       if (mountedRef.current) setLoading(false)
     }
-  }, [supabase, idProgresso, montarProtocolos, montarGrade, aviso, erro])
+  }, [supabase, idProgresso, calcularFaixas, montarProtocolos, montarGrade, aviso, erro])
 
   const getOrCreateSessaoParaInserir = useCallback(async (): Promise<number | null> => {
     if (!supabase) return null
@@ -1215,13 +1728,11 @@ export default function FichaAcompanhamentoPage() {
 
     if (sessaoAutoRef.current) return sessaoAutoRef.current
 
-    // Se já existem sessões, usa a mais recente como “âncora” para novos inserts (igual backend do ZIP).
     if (sessoes.length > 0) {
       sessaoAutoRef.current = sessoes[0].id_sessao
       return sessaoAutoRef.current
     }
 
-    // Se não existe sessão, cria uma sessão “instantânea” (entrada=saída=agora) para permitir registros.
     if (!usuario?.id) {
       aviso('Usuário não identificado. Faça login novamente.')
       return null
@@ -1229,11 +1740,7 @@ export default function FichaAcompanhamentoPage() {
 
     let profId = idProfessor
     if (!profId) {
-      const { data, error: eProf } = await supabase
-        .from('professores')
-        .select('id_professor')
-        .eq('user_id', usuario.id)
-        .maybeSingle()
+      const { data, error: eProf } = await supabase.from('professores').select('id_professor').eq('user_id', usuario.id).maybeSingle()
       if (eProf) {
         console.error(eProf)
         aviso('Não foi possível identificar o professor para criar sessão automática.')
@@ -1347,29 +1854,75 @@ export default function FichaAcompanhamentoPage() {
     setHistoricoModalOpen(false)
   }
 
-  const handleSaveHistorico = useCallback(
-    async (atividadesEditadas: RegistroAtividade[]) => {
+  const handleSaveHistoricoCompleto = useCallback(
+    async (payload: {
+      sessaoUpdate: { id_sessao: number; hora_entrada: string; hora_saida: string | null; resumo_atividades: string | null }
+      upserts: Array<{
+        id_atividade?: number
+        id_sessao: number
+        id_progresso: number
+        numero_protocolo: number
+        id_tipo_protocolo: number
+        status: string
+        nota: number | null
+        is_adaptada: boolean
+        sintese: string | null
+      }>
+      deletes: number[]
+    }) => {
       if (!supabase) return
-      try {
-        for (const a of atividadesEditadas) {
-          const { error: eUp } = await supabase
-            .from('registros_atendimento')
-            .update({
-              status: String(a.status || 'A fazer'),
-              nota: parseNota(a.nota),
-              is_adaptada: Boolean(a.is_adaptada),
-              updated_at: new Date().toISOString(),
-            })
-            .eq('id_atividade', a.id_atividade)
 
-          if (eUp) throw eUp
+      try {
+        const { error: eSess } = await supabase
+          .from('sessoes_atendimento')
+          .update({
+            hora_entrada: payload.sessaoUpdate.hora_entrada,
+            hora_saida: payload.sessaoUpdate.hora_saida,
+            resumo_atividades: payload.sessaoUpdate.resumo_atividades,
+          })
+          .eq('id_sessao', payload.sessaoUpdate.id_sessao)
+        if (eSess) throw eSess
+
+        if (payload.deletes?.length) {
+          const { error: eDel } = await supabase.from('registros_atendimento').delete().in('id_atividade', payload.deletes)
+          if (eDel) throw eDel
         }
 
-        sucesso('Atendimento do histórico atualizado com sucesso!')
+        for (const a of payload.upserts) {
+          if (a.id_atividade) {
+            const { error: eUp } = await supabase
+              .from('registros_atendimento')
+              .update({
+                numero_protocolo: a.numero_protocolo,
+                id_tipo_protocolo: a.id_tipo_protocolo,
+                status: a.status,
+                nota: a.nota,
+                is_adaptada: a.is_adaptada,
+                sintese: a.sintese,
+                updated_at: new Date().toISOString(),
+              })
+              .eq('id_atividade', a.id_atividade)
+            if (eUp) throw eUp
+          } else {
+            const { error: eIns } = await supabase.from('registros_atendimento').insert({
+              id_sessao: a.id_sessao,
+              id_progresso: a.id_progresso,
+              numero_protocolo: a.numero_protocolo,
+              id_tipo_protocolo: a.id_tipo_protocolo,
+              status: a.status,
+              nota: a.nota,
+              is_adaptada: a.is_adaptada,
+              sintese: a.sintese,
+            })
+            if (eIns) throw eIns
+          }
+        }
+
+        sucesso('Sessão e atividades atualizadas com sucesso!')
         await fetchData()
       } catch (e: any) {
         console.error(e)
-        erro('Ocorreu um erro ao salvar as alterações do histórico.')
+        erro(e?.message || 'Erro ao salvar alterações completas do histórico.')
       }
     },
     [supabase, sucesso, erro, fetchData]
@@ -1386,20 +1939,10 @@ export default function FichaAcompanhamentoPage() {
 
     setIsDeleting(true)
     try {
-      // 1) Apaga atividades da sessão (FK impede deletar sessão direto)
-      const { error: eDelRegs } = await supabase
-        .from('registros_atendimento')
-        .delete()
-        .eq('id_sessao', sessaoParaExcluir.id_sessao)
-
+      const { error: eDelRegs } = await supabase.from('registros_atendimento').delete().eq('id_sessao', sessaoParaExcluir.id_sessao)
       if (eDelRegs) throw eDelRegs
 
-      // 2) Apaga sessão
-      const { error: eDelSess } = await supabase
-        .from('sessoes_atendimento')
-        .delete()
-        .eq('id_sessao', sessaoParaExcluir.id_sessao)
-
+      const { error: eDelSess } = await supabase.from('sessoes_atendimento').delete().eq('id_sessao', sessaoParaExcluir.id_sessao)
       if (eDelSess) throw eDelSess
 
       sucesso('Registro de atendimento excluído com sucesso.')
@@ -1415,16 +1958,11 @@ export default function FichaAcompanhamentoPage() {
   }, [supabase, sessaoParaExcluir, sucesso, erro, fetchData])
 
   const handleSaveObservacoes = useCallback(
-    async (progressoId: number, novasObs: string) => {
+    async (progressoId_: number, novasObs: string) => {
       if (!supabase) return
       try {
-        const { error: eUp } = await supabase
-          .from('progresso_aluno')
-          .update({ observacoes: novasObs })
-          .eq('id_progresso', progressoId)
-
+        const { error: eUp } = await supabase.from('progresso_aluno').update({ observacoes: novasObs }).eq('id_progresso', progressoId_)
         if (eUp) throw eUp
-
         sucesso('Observações salvas com sucesso!')
         await fetchData()
       } catch (e: any) {
@@ -1437,6 +1975,7 @@ export default function FichaAcompanhamentoPage() {
 
   useEffect(() => {
     void carregarIdProfessor()
+    void carregarTiposProtocolo()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [supabase, usuario?.id])
 
@@ -1444,11 +1983,7 @@ export default function FichaAcompanhamentoPage() {
     void fetchData()
   }, [fetchData])
 
-  const anosCursados = useMemo(() => {
-    // No seu banco não existe um campo direto pra isso.
-    // Mantido aqui para ficar “igual ao ZIP” no cabeçalho.
-    return ''
-  }, [])
+  const anosCursados = useMemo(() => '', [])
 
   if (!supabase) {
     return (
@@ -1475,12 +2010,29 @@ export default function FichaAcompanhamentoPage() {
   }
 
   return (
-    <Box sx={{ maxWidth: 1400, mx: 'auto', p: 2 }}>
-      <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+    <Box
+      sx={{
+        maxWidth: 1400,
+        mx: 'auto',
+        p: { xs: 1.5, sm: 2 },
+        width: '100%',
+        minWidth: 0,
+        overflowX: 'hidden', // ✅ evita qualquer “vazamento” lateral no mobile
+      }}
+    >
+      <Box sx={{ display: 'flex', alignItems: 'center', mb: 2, minWidth: 0 }}>
         <IconButton onClick={() => navigate(-1)}>
           <ArrowBackIcon />
         </IconButton>
-        <Typography variant="h4" sx={{ fontWeight: 900, ml: 1 }}>
+        <Typography
+          variant="h4"
+          sx={{
+            fontWeight: 900,
+            ml: 1,
+            minWidth: 0,
+            overflowWrap: 'anywhere',
+          }}
+        >
           Ficha de Acompanhamento
         </Typography>
       </Box>
@@ -1492,41 +2044,49 @@ export default function FichaAcompanhamentoPage() {
           mb: 2,
           borderRadius: 2,
           borderColor: alpha(theme.palette.primary.main, theme.palette.mode === 'light' ? 0.2 : 0.35),
+          width: '100%',
+          minWidth: 0,
+          overflow: 'hidden',
         }}
       >
-        <Typography variant="caption" color="text.secondary">
-          ID Progresso: <b>{progresso.id_progresso}</b> • Atualizado: <b>{formatDateTimeBR(new Date().toISOString())}</b>
-        </Typography>
+        <Stack spacing={0.5} sx={{ minWidth: 0 }}>
+          <Typography
+            variant="caption"
+            color="text.secondary"
+            sx={{ overflowWrap: 'anywhere', wordBreak: 'break-word', whiteSpace: 'normal' }}
+          >
+            ID Progresso: <b>{progresso.id_progresso}</b> • Atualizado: <b>{formatDateTimeBR(new Date().toISOString())}</b>
+          </Typography>
+
+          {faixaResumo ? (
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              sx={{ overflowWrap: 'anywhere', wordBreak: 'break-word', whiteSpace: 'normal' }}
+            >
+              Protocolos por ano: <b>{faixaResumo}</b>
+            </Typography>
+          ) : null}
+        </Stack>
       </Paper>
 
-      <FichaHeader progresso={progresso} anosCursados={anosCursados} />
+      <FichaHeader progresso={progresso} anosCursados={anosCursados} peDeMeiaElegivel={peDeMeiaElegivel} isPCD={isPCD} />
 
       <GradeDeNotas gradeData={gradeData} />
 
-      <ProtocolosDeEstudo
-        protocolos={protocolos}
-        idProgresso={progresso.id_progresso}
-        onSaveAtividade={salvarAtividade}
-        onDataChange={fetchData}
-      />
+      <ProtocolosDeEstudo protocolos={protocolos} idProgresso={progresso.id_progresso} onSaveAtividade={salvarAtividade} onDataChange={fetchData} />
 
-      <HistoricoAtendimentos
-        sessoes={sessoes}
-        onEdit={handleOpenHistoricoModal}
-        onDelete={handleOpenDeleteDialog}
-      />
+      <HistoricoAtendimentos sessoes={sessoes} onEdit={handleOpenHistoricoModal} onDelete={handleOpenDeleteDialog} />
 
-      <ObservacoesEditaveis
-        initialText={observacoes}
-        progressoId={progresso.id_progresso}
-        onSave={handleSaveObservacoes}
-      />
+      <ObservacoesEditaveis initialText={observacoes} progressoId={progresso.id_progresso} onSave={handleSaveObservacoes} />
 
       <EditHistoricoModal
         open={historicoModalOpen}
         onClose={handleCloseHistoricoModal}
         sessao={sessaoParaEditar}
-        onSave={handleSaveHistorico}
+        totalProtocolos={Math.max(1, totalProtocolos || 1)}
+        tipos={tiposProtocolo}
+        onSave={handleSaveHistoricoCompleto}
       />
 
       <Dialog open={deleteDialogOpen} onClose={() => setDeleteDialogOpen(false)} fullScreen={isMobile}>

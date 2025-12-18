@@ -1,19 +1,12 @@
 // src/contextos/SupabaseContext.tsx
-import React, {
-  createContext,
-  useContext,
-  type ReactNode,
-  useMemo,
-} from 'react'
+import React, { createContext, useContext, type ReactNode, useMemo } from 'react'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 
 type SupabaseContextTipo = {
   supabase: SupabaseClient | null
 }
 
-const SupabaseContext = createContext<SupabaseContextTipo | undefined>(
-  undefined,
-)
+const SupabaseContext = createContext<SupabaseContextTipo | undefined>(undefined)
 
 type SupabaseProviderProps = {
   children: ReactNode
@@ -25,11 +18,7 @@ const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
 let supabaseClient: SupabaseClient | null = null
 
 if (!supabaseUrl || !supabaseAnonKey) {
-  // Isso vai aparecer no console do navegador em produção se vc esquecer de setar as envs no Pages
-  console.error(
-    '[SupabaseContext] Variáveis de ambiente do Supabase ausentes. ' +
-      'Defina VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY nas variáveis de ambiente do build.',
-  )
+  
   supabaseClient = null
 } else {
   supabaseClient = createClient(supabaseUrl, supabaseAnonKey, {
@@ -38,23 +27,19 @@ if (!supabaseUrl || !supabaseAnonKey) {
       autoRefreshToken: true,
     },
   })
+
+  
 }
 
-export const SupabaseProvider: React.FC<SupabaseProviderProps> = ({
-  children,
-}) => {
+export const SupabaseProvider: React.FC<SupabaseProviderProps> = ({ children }) => {
   const valor = useMemo<SupabaseContextTipo>(
     () => ({
       supabase: supabaseClient,
     }),
-    [],
+    []
   )
 
-  return (
-    <SupabaseContext.Provider value={valor}>
-      {children}
-    </SupabaseContext.Provider>
-  )
+  return <SupabaseContext.Provider value={valor}>{children}</SupabaseContext.Provider>
 }
 
 export const useSupabase = (): SupabaseContextTipo => {
