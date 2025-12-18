@@ -1,8 +1,8 @@
 // src/paginas/painel-coordenacao/SaspPage.tsx
 // Página SASP: busca de aluno (Nome/RA/CPF) + formulário completo (formulario_sasp)
+// Inclui: histórico de entrevistas e seleção de qual SASP editar
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-
 
 import {
   Accordion,
@@ -272,9 +272,7 @@ export default function SaspPage() {
   const [page, setPage] = useState(0)
   const [rowsPerPage, setRowsPerPage] = useState(10)
 
-  const resetPaginacao = () => {
-    setPage(0)
-  }
+  const resetPaginacao = () => setPage(0)
 
   const escolherMelhorMatricula = useCallback(
     (a: MatriculaMini | null, b: MatriculaMini | null): MatriculaMini | null => {
@@ -284,8 +282,6 @@ export default function SaspPage() {
       const ativaA = idStatusAtiva != null && Number(a.id_status_matricula) === Number(idStatusAtiva)
       const ativaB = idStatusAtiva != null && Number(b.id_status_matricula) === Number(idStatusAtiva)
 
-      // Se estiver em “Somente ativas”, não tem sentido comparar ativa vs não ativa.
-      // Mas mantemos a regra geral (ativa primeiro) para quando o toggle estiver desligado.
       if (!somenteAtivas && ativaA !== ativaB) {
         return ativaB ? b : a
       }
@@ -373,7 +369,6 @@ export default function SaspPage() {
 
         mapa.set(novo.id_aluno, {
           ...existente,
-          // se vier informação melhor, sobrescreve
           nome: novo.nome || existente.nome,
           cpf: novo.cpf ?? existente.cpf,
           email: novo.email ?? existente.email,
@@ -427,7 +422,6 @@ export default function SaspPage() {
 
       // 2) CPF
       if (modosBusca.includes('cpf')) {
-        // CPF costuma precisar de pelo menos alguns dígitos
         if (digitos.length >= 3) {
           const orParts = [
             `usuarios.cpf.ilike.%${t}%`,
@@ -541,9 +535,7 @@ export default function SaspPage() {
       const lista = Array.from(mapa.values()).sort((a, b) => a.nome.localeCompare(b.nome))
       setResultados(lista)
 
-      if (lista.length === 0) {
-        info('Nenhum aluno encontrado para essa busca.')
-      }
+      if (lista.length === 0) info('Nenhum aluno encontrado para essa busca.')
     } catch (e) {
       console.error(e)
       erro('Falha ao buscar alunos. Verifique conexão e tente novamente.')
@@ -573,17 +565,28 @@ export default function SaspPage() {
   const [alunoSelecionado, setAlunoSelecionado] = useState<AlunoResultado | null>(null)
   const [carregandoSasp, setCarregandoSasp] = useState(false)
   const [salvandoSasp, setSalvandoSasp] = useState(false)
+
+  // SASP atual (o selecionado no histórico)
   const [saspIdAtual, setSaspIdAtual] = useState<number | null>(null)
+
+  // Histórico do aluno
+  const [historicoSasp, setHistoricoSasp] = useState<any[]>([])
+  const [saspSelecionadoId, setSaspSelecionadoId] = useState<number | null>(null)
+
   const [form, setForm] = useState<SaspFormState>({ ...FORM_DEFAULT })
 
   const preencherFormComRow = (row: any | null) => {
     if (!row) {
       setSaspIdAtual(null)
+      setSaspSelecionadoId(null)
       setForm({ ...FORM_DEFAULT, data_entrevista: hojeISODate() })
       return
     }
 
-    setSaspIdAtual(row?.id_sasp != null ? Number(row.id_sasp) : null)
+    const id = row?.id_sasp != null ? Number(row.id_sasp) : null
+    setSaspIdAtual(id)
+    setSaspSelecionadoId(id)
+
     setForm({
       data_entrevista: row?.data_entrevista ? String(row.data_entrevista) : hojeISODate(),
       escola_origem: row?.escola_origem ? String(row.escola_origem) : '',
@@ -630,13 +633,16 @@ export default function SaspPage() {
           .select('*')
           .eq('id_aluno', idAluno)
           .order('data_entrevista', { ascending: false })
-          .limit(1)
-          .maybeSingle()
 
         if (error) throw error
-        preencherFormComRow(data ?? null)
 
-        if (!data) {
+        const lista = data ?? []
+        setHistoricoSasp(lista)
+
+        const maisRecente = lista[0] ?? null
+        preencherFormComRow(maisRecente)
+
+        if (!maisRecente) {
           info('Este aluno ainda não tem SASP cadastrado. Preencha e clique em Salvar.')
         }
       } catch (e) {
@@ -683,23 +689,30 @@ export default function SaspPage() {
         ? form.disciplinas_indicadas_aproveitamento.trim()
         : null,
       motivo_retorno_estudos: form.motivo_retorno_estudos.trim() ? form.motivo_retorno_estudos.trim() : null,
+
       trabalha: Boolean(form.trabalha),
       local_trabalho: form.trabalha && form.local_trabalho.trim() ? form.local_trabalho.trim() : null,
       funcao_trabalho: form.trabalha && form.funcao_trabalho.trim() ? form.funcao_trabalho.trim() : null,
+
       repetiu_ano: Boolean(form.repetiu_ano),
       desistiu_estudar: Boolean(form.desistiu_estudar),
       motivos_desistencia: form.desistiu_estudar && form.motivos_desistencia.trim() ? form.motivos_desistencia.trim() : null,
       escolas_desistiu: form.desistiu_estudar && form.escolas_desistiu.trim() ? form.escolas_desistiu.trim() : null,
+
       materias_dificuldade: form.materias_dificuldade.trim() ? form.materias_dificuldade.trim() : null,
       relacao_tecnologia: form.relacao_tecnologia.trim() ? form.relacao_tecnologia.trim() : null,
+
       curso_superior_desejado: form.curso_superior_desejado.trim() ? form.curso_superior_desejado.trim() : null,
       atividade_cultural_interesse: form.atividade_cultural_interesse.trim() ? form.atividade_cultural_interesse.trim() : null,
       esporte_interesse: form.esporte_interesse.trim() ? form.esporte_interesse.trim() : null,
+
       pessoas_residencia: pessoasResid ? Number(pessoasResid) : null,
       parentes_moradia: form.parentes_moradia.trim() ? form.parentes_moradia.trim() : null,
       responsavel_pelos_estudos: form.responsavel_pelos_estudos.trim() ? form.responsavel_pelos_estudos.trim() : null,
+
       tem_filhos: Boolean(form.tem_filhos),
       quantos_filhos: form.tem_filhos && filhos ? Number(filhos) : null,
+
       como_conheceu_ceja: form.como_conheceu_ceja.trim() ? form.como_conheceu_ceja.trim() : null,
       observacoes_sasp: form.observacoes_sasp.trim() ? form.observacoes_sasp.trim() : null,
     }
@@ -716,28 +729,28 @@ export default function SaspPage() {
     setSalvandoSasp(true)
     try {
       let saspIdFinal: number | null = saspIdAtual
+
+      // Se está editando um SASP existente (selecionado no histórico) => UPDATE
       if (saspIdAtual != null) {
-        const { error } = await supabase
-          .from('formulario_sasp')
-          .update(payload)
-          .eq('id_sasp', saspIdAtual)
+        const { error } = await supabase.from('formulario_sasp').update(payload).eq('id_sasp', saspIdAtual)
         if (error) throw error
         sucesso('SASP atualizado com sucesso.')
       } else {
-        const { data, error } = await supabase
-          .from('formulario_sasp')
-          .insert(payload)
-          .select('id_sasp')
-          .single()
-
+        // Se não existe nenhum SASP => INSERT
+        const { data, error } = await supabase.from('formulario_sasp').insert(payload).select('id_sasp').single()
         if (error) throw error
+
         const novoId = data?.id_sasp != null ? Number(data.id_sasp) : null
         saspIdFinal = novoId
         setSaspIdAtual(novoId)
+        setSaspSelecionadoId(novoId)
         sucesso('SASP cadastrado com sucesso.')
       }
 
-      // atualiza “status rápido” no card do aluno selecionado (sem re-buscar lista inteira)
+      // Recarrega histórico para refletir alterações (e pegar o registro atualizado)
+      await carregarSaspDoAluno(alunoSelecionado.id_aluno)
+
+      // Atualiza chip na lista/selecionado
       setAlunoSelecionado((prev) =>
         prev
           ? {
@@ -753,18 +766,13 @@ export default function SaspPage() {
     } finally {
       if (mountedRef.current) setSalvandoSasp(false)
     }
-  }, [
-    supabase,
-    alunoSelecionado,
-    form,
-    saspIdAtual,
-    aviso,
-    sucesso,
-    erro,
-  ])
+  }, [supabase, alunoSelecionado, form, saspIdAtual, aviso, sucesso, erro, carregarSaspDoAluno])
 
   // ======= UI helpers =======
-  const bgSelectedRow = useMemo(() => alpha(theme.palette.primary.main, theme.palette.mode === 'dark' ? 0.18 : 0.10), [theme])
+  const bgSelectedRow = useMemo(
+    () => alpha(theme.palette.primary.main, theme.palette.mode === 'dark' ? 0.18 : 0.1),
+    [theme],
+  )
 
   const resultadosPaginados = useMemo(() => {
     const start = page * rowsPerPage
@@ -849,9 +857,7 @@ export default function SaspPage() {
               <Typography variant="subtitle1" fontWeight={800}>
                 Buscar aluno
               </Typography>
-              {carregandoApoio ? (
-                <Chip size="small" label="Carregando..." />
-              ) : null}
+              {carregandoApoio ? <Chip size="small" label="Carregando..." /> : null}
             </Stack>
 
             <TextField
@@ -1115,6 +1121,35 @@ export default function SaspPage() {
                   </Box>
                 ) : (
                   <>
+                    {/* HISTÓRICO */}
+                    {historicoSasp.length > 0 ? (
+                      <TextField
+                        select
+                        fullWidth
+                        label="Entrevistas SASP (histórico)"
+                        value={saspSelecionadoId ?? ''}
+                        onChange={(e) => {
+                          const id = Number(e.target.value)
+                          setSaspSelecionadoId(id)
+                          setSaspIdAtual(id)
+
+                          const row = historicoSasp.find((x) => Number(x.id_sasp) === id) ?? null
+                          preencherFormComRow(row)
+                        }}
+                        SelectProps={{ native: true }}
+                        sx={{ mb: 2 }}
+                      >
+                        <option value="" disabled>
+                          Selecione...
+                        </option>
+                        {historicoSasp.map((x) => (
+                          <option key={x.id_sasp} value={x.id_sasp}>
+                            {x.data_entrevista ? new Date(x.data_entrevista).toLocaleDateString('pt-BR') : `SASP #${x.id_sasp}`}
+                          </option>
+                        ))}
+                      </TextField>
+                    ) : null}
+
                     {/* Seções */}
                     <Accordion defaultExpanded>
                       <AccordionSummary expandIcon={<ExpandMoreIcon />}>
@@ -1199,11 +1234,21 @@ export default function SaspPage() {
 
                           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
                             <FormControlLabel
-                              control={<Switch checked={form.repetiu_ano} onChange={(e) => setForm((p) => ({ ...p, repetiu_ano: e.target.checked }))} />}
+                              control={
+                                <Switch
+                                  checked={form.repetiu_ano}
+                                  onChange={(e) => setForm((p) => ({ ...p, repetiu_ano: e.target.checked }))}
+                                />
+                              }
                               label="Já repetiu ano?"
                             />
                             <FormControlLabel
-                              control={<Switch checked={form.desistiu_estudar} onChange={(e) => setForm((p) => ({ ...p, desistiu_estudar: e.target.checked }))} />}
+                              control={
+                                <Switch
+                                  checked={form.desistiu_estudar}
+                                  onChange={(e) => setForm((p) => ({ ...p, desistiu_estudar: e.target.checked }))}
+                                />
+                              }
                               label="Já desistiu de estudar?"
                             />
                           </Stack>
