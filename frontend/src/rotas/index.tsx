@@ -29,8 +29,9 @@ import SecretariaImportarMatriculasPage from '../paginas/painel-secretaria/Secre
 
 // Professor
 import ProfessorAtendimentosPage from '../paginas/painel-professor/ProfessorAtendimentosPage'
+import AcompanhamentoPage from '../paginas/painel-professor/AcompanhamentoPage'
 
-// ✅ NOVO: Ficha (rota igual ao ZIP: /fichas/:id_progresso)
+// ✅ Ficha (rota igual ao ZIP: /fichas/:id_progresso)
 import FichaAcompanhamentoPage from '../paginas/painel-professor/FichaAcompanhamentoPage'
 
 export const AppRoutes: React.FC = () => {
@@ -60,9 +61,7 @@ export const AppRoutes: React.FC = () => {
       {/* ROTAS PROTEGIDAS */}
       <Route
         path="/"
-        element={
-          autenticado ? <RootLayout /> : <Navigate to="/login" replace />
-        }
+        element={autenticado ? <RootLayout /> : <Navigate to="/login" replace />}
       >
         {/* Dashboard geral */}
         <Route index element={<DashboardPage />} />
@@ -135,12 +134,12 @@ export const AppRoutes: React.FC = () => {
           path="professores/acompanhamento"
           element={
             <RotaPorPapel papeisPermitidos={['PROFESSOR', 'ADMIN']}>
-              <PaginaSimples titulo="Acompanhamento de alunos" />
+              <AcompanhamentoPage />
             </RotaPorPapel>
           }
         />
 
-        {/* ✅ NOVO: FICHA (igual ZIP) */}
+        {/* ✅ FICHA (igual ZIP) */}
         <Route
           path="fichas/:id_progresso"
           element={
@@ -178,7 +177,7 @@ export const AppRoutes: React.FC = () => {
           path="coordenacao/acompanhamento"
           element={
             <RotaPorPapel papeisPermitidos={['COORDENACAO', 'DIRETOR', 'ADMIN']}>
-              <PaginaSimples titulo="Acompanhamento de alunos" />
+              <AcompanhamentoPage />
             </RotaPorPapel>
           }
         />
@@ -204,7 +203,7 @@ export const AppRoutes: React.FC = () => {
           path="direcao/acompanhamento"
           element={
             <RotaPorPapel papeisPermitidos={['DIRETOR', 'ADMIN']}>
-              <PaginaSimples titulo="Acompanhamento de alunos" />
+              <AcompanhamentoPage />
             </RotaPorPapel>
           }
         />
