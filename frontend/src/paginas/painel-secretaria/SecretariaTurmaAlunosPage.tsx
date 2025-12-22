@@ -43,6 +43,9 @@ import SearchIcon from '@mui/icons-material/Search'
 import { useSupabase } from '../../contextos/SupabaseContext'
 import { useNotificacaoContext } from '../../contextos/NotificacaoContext'
 
+// ✅ Regra unificada do Pé-de-Meia
+import { avaliarPeDeMeia } from '../../utils/peDeMeia'
+
 interface TurmaRow {
   id_turma: number
   nome: string
@@ -149,19 +152,12 @@ const SecretariaTurmaAlunosPage: FC = () => {
     return NaN
   }, [turmaId, location.state])
 
-  // ---- Helpers de idade e elegibilidade Pé de Meia ----
-
-  const calcularIdade = (dataNascStr: string, refDate: Date): number => {
-    const nasc = new Date(dataNascStr)
-    if (Number.isNaN(nasc.getTime())) return -1
-    let idade = refDate.getFullYear() - nasc.getFullYear()
-    const m = refDate.getMonth() - nasc.getMonth()
-    if (m < 0 || (m === 0 && refDate.getDate() < nasc.getDate())) {
-      idade--
-    }
-    return idade
-  }
-
+  // ---- Elegibilidade Pé-de-Meia (regra unificada) ----
+  // Mantemos o comportamento anterior desta tela:
+  // - Exigir CPF
+  // - Exigir idade (EJA 19-24) a partir da data de nascimento
+  // - Aplicar regra interna de prazo de matrícula (2 meses do início do período) como BLOQUEIO
+  // - NÃO exigir CadÚnico aqui (porque esta listagem não carrega NIS/benefício)
   const calcularElegibilidadePeDeMeia = (
     m: MatriculaRow,
     u: UsuarioRow | undefined,
@@ -170,41 +166,39 @@ const SecretariaTurmaAlunosPage: FC = () => {
     if (!turmaAtual) return false
     if (!u) return false
 
-    // CPF preenchido
-    const cpfOk = !!u.cpf && u.cpf.trim() !== ''
-    if (!cpfOk) return false
+    const res: any = avaliarPeDeMeia(
+      {
+        id_nivel_ensino: turmaAtual.id_nivel_ensino,
+        cpf: u.cpf ?? null,
+        data_nascimento: u.data_nascimento ?? null,
+        nis: null,
+        possui_beneficio_governo: null,
+        data_matricula: m.data_matricula ?? null,
+        ano_letivo: turmaAtual.ano_letivo,
+        modalidade: 'EJA',
+      } as any,
+      {
+        exigir_cadunico: false,
+        exigir_cpf: true,
 
-    // Data de matrícula válida
-    if (!m.data_matricula) return false
-    const dataMat = new Date(m.data_matricula)
-    if (Number.isNaN(dataMat.getTime())) return false
+        // ✅ preserva a regra antiga desta tela
+        validar_prazo_matricula: true,
+        prazo_matricula_meses: 2,
+        prazo_matricula_modo: 'BLOQUEAR',
 
-    const anoLetivo = turmaAtual.ano_letivo
+        // Datas padrão que você já usava no sistema:
+        inicio_ano_mes: 1,
+        inicio_ano_dia: 7,
+        inicio_sem2_mes: 7,
+        inicio_sem2_dia: 1,
 
-    const inicioPrimeiro = new Date(anoLetivo, 0, 7) // 07/01
-    const cutoff1 = new Date(inicioPrimeiro)
-    cutoff1.setMonth(cutoff1.getMonth() + 2) // até 07/03
+        // CEJA geralmente semestral
+        periodo_eja: 'SEMESTRAL',
+      } as any,
+    ) as any
 
-    const inicioSegundo = new Date(anoLetivo, 6, 1) // 01/07
-    const cutoff2 = new Date(inicioSegundo)
-    cutoff2.setMonth(cutoff2.getMonth() + 2) // até 01/09
-
-    let corteOk = false
-    if (dataMat <= inicioSegundo) {
-      corteOk = dataMat <= cutoff1
-    } else {
-      corteOk = dataMat <= cutoff2
-    }
-    if (!corteOk) return false
-
-    // Idade entre 19 e 24 em 31/12 do ano letivo
-    if (!u.data_nascimento) return false
-    const dataRef = new Date(anoLetivo, 11, 31)
-    const idade = calcularIdade(u.data_nascimento, dataRef)
-    const idadeOk = idade >= 19 && idade <= 24
-    if (!idadeOk) return false
-
-    return true
+    const classificacao = String(res?.classificacao ?? 'INDETERMINADO')
+    return classificacao.startsWith('ELEGIVEL')
   }
 
   // Carrega turma, nível, matrículas, alunos, usuarios, status
@@ -409,16 +403,14 @@ const SecretariaTurmaAlunosPage: FC = () => {
 
       const matchNome = termo !== '' && nomeLower.includes(termo)
 
-      const matchCpf =
-        termoDigits !== '' && cpfDigits.includes(termoDigits)
+      const matchCpf = termoDigits !== '' && cpfDigits.includes(termoDigits)
 
       const matchMatricula =
         termo !== '' &&
         (matriculaLower.includes(termo) ||
           (termoDigits !== '' && matriculaDigits.includes(termoDigits)))
 
-      const matchBusca =
-        termo === '' || matchNome || matchCpf || matchMatricula
+      const matchBusca = termo === '' || matchNome || matchCpf || matchMatricula
 
       const matchStatus =
         filtroStatus === 'todos' ? true : a.statusId === filtroStatus
@@ -504,8 +496,7 @@ const SecretariaTurmaAlunosPage: FC = () => {
     }
   }
 
-  const turmaNomeHeader =
-    turma?.nome || location.state?.turmaNome || 'Turma'
+  const turmaNomeHeader = turma?.nome || location.state?.turmaNome || 'Turma'
 
   return (
     <Box
@@ -543,8 +534,7 @@ const SecretariaTurmaAlunosPage: FC = () => {
               {turma && (
                 <Typography variant="body2" color="text.secondary">
                   {nivel?.nome ?? 'Nível não informado'} • Ano letivo{' '}
-                  {turma.ano_letivo} •{' '}
-                  {turma.turno ? turma.turno : 'Multiturno'}
+                  {turma.ano_letivo} • {turma.turno ? turma.turno : 'Multiturno'}
                 </Typography>
               )}
             </Box>
@@ -709,9 +699,7 @@ const SecretariaTurmaAlunosPage: FC = () => {
               <InputLabel>Status da matrícula</InputLabel>
               <Select
                 label="Status da matrícula"
-                value={
-                  filtroStatus === 'todos' ? 'todos' : String(filtroStatus)
-                }
+                value={filtroStatus === 'todos' ? 'todos' : String(filtroStatus)}
                 onChange={(e) => handleStatusFilterChange(e.target.value)}
               >
                 <MenuItem value="todos">
@@ -912,7 +900,9 @@ const SecretariaTurmaAlunosPage: FC = () => {
                             </Typography>
                           </TableCell>
                           <TableCell>
-                            <Typography variant="body2">{a.cpf || '—'}</Typography>
+                            <Typography variant="body2">
+                              {a.cpf || '—'}
+                            </Typography>
                           </TableCell>
                           <TableCell>
                             <Chip

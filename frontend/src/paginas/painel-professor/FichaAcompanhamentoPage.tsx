@@ -109,23 +109,6 @@ function isModalidadeOrientacao(modalidade?: string | null): boolean {
   return s.includes('orientacao')
 }
 
-function isElegivelPeDeMeia(opts: {
-  id_nivel_ensino?: number | null
-  nis?: string | null
-  possui_beneficio_governo?: boolean | null
-  qual_beneficio_governo?: string | null
-}): boolean {
-  if (opts.id_nivel_ensino !== 2) return false
-
-  const qual = normalizarTexto(opts.qual_beneficio_governo ?? '')
-  if (qual.includes('pe de meia') || qual.includes('pe-de-meia')) return true
-
-  const nis = (opts.nis ?? '').trim()
-  if (nis.length >= 5) return true
-
-  return Boolean(opts.possui_beneficio_governo)
-}
-
 // datetime-local helpers (ISO <-> input local)
 function formatForInputLocal(iso: string): string {
   const d = new Date(iso)
@@ -146,11 +129,7 @@ function inputLocalToISO(v: string): string {
 function arredondarMediaFinal(n: number | null): number | null {
   if (n === null || !Number.isFinite(n)) return null
 
-  // regra:
-  // < 6,25 -> 6,0 (ou o inteiro abaixo, se você quiser generalizar)
-  // 6,25..6,74 -> 6,5
-  // >= 6,75 -> 7,0
-  // ✅ generalizado por faixas de 0,25/0,75
+  // ✅ regra generalizada por faixas (0,25 / 0,75)
   const inteiro = Math.floor(n)
   const frac = n - inteiro
 
@@ -164,6 +143,306 @@ function formatarBR(n: number): string {
   return Number.isInteger(n) ? String(n) : String(n).replace('.', ',')
 }
 
+// ===================== Pé-de-Meia (triagem local) =====================
+// Observação: regras oficiais podem mudar; aqui é uma TRIAGEM baseada em dados disponíveis no SIGE.
+
+type PeDeMeiaModalidade = 'REGULAR' | 'EJA'
+type PeDeMeiaClassificacao = 'ELEGIVEL' | 'ELEGIVEL_ATE_FIM_DO_PERIODO' | 'NAO_ELEGIVEL' | 'INDETERMINADO'
+
+type PeDeMeiaInput = {
+  id_nivel_ensino?: number | null
+  cpf?: string | null
+  data_nascimento?: string | null
+  ano_letivo?: number | null
+  data_matricula?: string | null
+  nis?: string | null
+  possui_beneficio_governo?: boolean | null
+  qual_beneficio_governo?: string | null
+  modalidade?: PeDeMeiaModalidade | null
+}
+
+type PeDeMeiaResultado = {
+  classificacao: PeDeMeiaClassificacao
+  modalidade: PeDeMeiaModalidade
+  erros: string[]
+  avisos: string[]
+}
+
+type PeDeMeiaConfig = {
+  modalidade_padrao?: PeDeMeiaModalidade
+  tipo_periodo_eja?: 'SEMESTRAL' | 'ANUAL'
+  exigir_cpf?: boolean
+  exigir_cadunico?: boolean
+  validar_prazo_matricula?: boolean
+  prazo_matricula_meses?: number
+  // calendário “padrão” (pode variar por rede/estado)
+  inicio_ano_letivo_mes?: number // 1..12
+  inicio_ano_letivo_dia?: number // 1..31
+  inicio_semestre2_mes?: number
+  inicio_semestre2_dia?: number
+  fim_semestre1_mes?: number
+  fim_semestre1_dia?: number
+  fim_ano_letivo_mes?: number
+  fim_ano_letivo_dia?: number
+}
+
+const PEDEMEIA_DEFAULT: Required<PeDeMeiaConfig> = {
+  modalidade_padrao: 'EJA',
+  tipo_periodo_eja: 'SEMESTRAL',
+  exigir_cpf: true,
+  exigir_cadunico: true,
+  // ⚠️ como o calendário real pode variar, aqui a validação vira “conferir” (não bloqueia automaticamente)
+  validar_prazo_matricula: true,
+  prazo_matricula_meses: 2,
+
+  // calendário base (ajustável depois, se você me passar as datas oficiais do seu CEJA)
+  inicio_ano_letivo_mes: 1,
+  inicio_ano_letivo_dia: 7,
+  inicio_semestre2_mes: 7,
+  inicio_semestre2_dia: 1,
+  fim_semestre1_mes: 7,
+  fim_semestre1_dia: 1,
+  fim_ano_letivo_mes: 12,
+  fim_ano_letivo_dia: 31,
+}
+
+function criarDataUTC(ano: number, mes1a12: number, dia: number): Date {
+  const m = Math.max(1, Math.min(12, Number(mes1a12))) - 1
+  const d = Math.max(1, Math.min(31, Number(dia)))
+  return new Date(Date.UTC(ano, m, d, 12, 0, 0))
+}
+
+function parseDataFlex(valor: string | null | undefined): Date | null {
+  if (!valor) return null
+  const s = String(valor).trim()
+  if (!s) return null
+
+  // YYYY-MM-DD
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+    const [y, m, d] = s.split('-').map((x) => Number(x))
+    if (!y || !m || !d) return null
+    return criarDataUTC(y, m, d)
+  }
+
+  // ISO datetime
+  const dt = new Date(s)
+  if (Number.isNaN(dt.getTime())) return null
+  return new Date(Date.UTC(dt.getUTCFullYear(), dt.getUTCMonth(), dt.getUTCDate(), 12, 0, 0))
+}
+
+function somenteDigitos(valor: string): string {
+  return (valor || '').replace(/\D+/g, '')
+}
+
+function temCpfMinimoOk(cpf: string | null | undefined): boolean {
+  const d = somenteDigitos(String(cpf || ''))
+  return d.length === 11
+}
+
+function calcularIdadeUTC(nasc: Date, ref: Date): number {
+  const an = nasc.getUTCFullYear()
+  const mn = nasc.getUTCMonth()
+  const dn = nasc.getUTCDate()
+
+  const ar = ref.getUTCFullYear()
+  const mr = ref.getUTCMonth()
+  const dr = ref.getUTCDate()
+
+  let idade = ar - an
+  if (mr < mn || (mr === mn && dr < dn)) idade -= 1
+  return idade
+}
+
+function inferirCadUnico(input: PeDeMeiaInput): boolean | null {
+  const nis = somenteDigitos(String(input.nis || ''))
+  if (nis.length >= 8) return true
+
+  if (input.possui_beneficio_governo === true) return true
+  if (input.possui_beneficio_governo === false) return false
+
+  return null
+}
+
+function addMesesUTC(data: Date, meses: number): Date {
+  const d = new Date(data.getTime())
+  const ano = d.getUTCFullYear()
+  const mes = d.getUTCMonth()
+  const dia = d.getUTCDate()
+  return new Date(Date.UTC(ano, mes + meses, dia, 12, 0, 0))
+}
+
+function determinarPeriodo(
+  modalidade: PeDeMeiaModalidade,
+  tipoPeriodoEja: 'SEMESTRAL' | 'ANUAL',
+  dataMatricula: Date | null,
+  anoRef: number,
+  cfg: Required<Pick<
+    PeDeMeiaConfig,
+    | 'inicio_ano_letivo_mes'
+    | 'inicio_ano_letivo_dia'
+    | 'inicio_semestre2_mes'
+    | 'inicio_semestre2_dia'
+    | 'fim_semestre1_mes'
+    | 'fim_semestre1_dia'
+    | 'fim_ano_letivo_mes'
+    | 'fim_ano_letivo_dia'
+  >>
+): { inicio: Date; fim: Date; tipo: 'SEMESTRAL' | 'ANUAL' } {
+  const fimAno = criarDataUTC(anoRef, cfg.fim_ano_letivo_mes, cfg.fim_ano_letivo_dia)
+
+  if (modalidade === 'EJA') {
+    if (tipoPeriodoEja === 'ANUAL') {
+      const inicioAno = criarDataUTC(anoRef, cfg.inicio_ano_letivo_mes, cfg.inicio_ano_letivo_dia)
+      return { inicio: inicioAno, fim: fimAno, tipo: 'ANUAL' }
+    }
+
+    const inicioSem1 = criarDataUTC(anoRef, cfg.inicio_ano_letivo_mes, cfg.inicio_ano_letivo_dia)
+    const inicioSem2 = criarDataUTC(anoRef, cfg.inicio_semestre2_mes, cfg.inicio_semestre2_dia)
+    const fimSem1 = criarDataUTC(anoRef, cfg.fim_semestre1_mes, cfg.fim_semestre1_dia)
+
+    const semestre2 = dataMatricula ? dataMatricula.getUTCMonth() + 1 >= cfg.inicio_semestre2_mes : false
+    if (semestre2) return { inicio: inicioSem2, fim: fimAno, tipo: 'SEMESTRAL' }
+    return { inicio: inicioSem1, fim: fimSem1, tipo: 'SEMESTRAL' }
+  }
+
+  const inicioAno = criarDataUTC(anoRef, cfg.inicio_ano_letivo_mes, cfg.inicio_ano_letivo_dia)
+  return { inicio: inicioAno, fim: fimAno, tipo: 'ANUAL' }
+}
+
+function avaliarPeDeMeia(input: PeDeMeiaInput, config?: PeDeMeiaConfig): PeDeMeiaResultado {
+  const cfg = { ...PEDEMEIA_DEFAULT, ...(config || {}) }
+  const agora = new Date()
+  const anoRef = Number(input.ano_letivo || agora.getUTCFullYear())
+
+  const modalidade: PeDeMeiaModalidade = (input.modalidade || cfg.modalidade_padrao) as PeDeMeiaModalidade
+  const tipoPeriodo = modalidade === 'EJA' ? cfg.tipo_periodo_eja : 'ANUAL'
+
+  const erros: string[] = []
+  const avisos: string[] = []
+
+  // Ensino Médio (programa é para Ensino Médio)
+  if (input.id_nivel_ensino != null && Number(input.id_nivel_ensino) !== 2) {
+    erros.push('Não é Ensino Médio (Pé-de-Meia é para Ensino Médio).')
+  }
+
+  // CPF (mínimo)
+  const cpfOk = temCpfMinimoOk(input.cpf)
+  if (cfg.exigir_cpf && !cpfOk) {
+    avisos.push('CPF ausente/ inválido (sem CPF regular, o pagamento não acontece).')
+  }
+
+  // CadÚnico (inferência por NIS ou benefício informado)
+  const cad = inferirCadUnico(input)
+  if (cfg.exigir_cadunico) {
+    if (cad === false) erros.push('Sem indício de CadÚnico/baixa renda (NIS vazio e sem benefício informado).')
+    if (cad === null) avisos.push('CadÚnico não confirmado (NIS vazio e benefício não informado).')
+  }
+
+  // Datas para idade
+  const dataNascimento = parseDataFlex(input.data_nascimento || null)
+  if (!dataNascimento) avisos.push('Data de nascimento não informada (idade não pode ser confirmada).')
+
+  const dataMatricula = parseDataFlex(input.data_matricula || null)
+  if (!dataMatricula) avisos.push('Data de matrícula não informada (prazo de matrícula não pode ser conferido).')
+
+  const periodo = determinarPeriodo(modalidade, tipoPeriodo, dataMatricula, anoRef, {
+    inicio_ano_letivo_mes: cfg.inicio_ano_letivo_mes,
+    inicio_ano_letivo_dia: cfg.inicio_ano_letivo_dia,
+    inicio_semestre2_mes: cfg.inicio_semestre2_mes,
+    inicio_semestre2_dia: cfg.inicio_semestre2_dia,
+    fim_semestre1_mes: cfg.fim_semestre1_mes,
+    fim_semestre1_dia: cfg.fim_semestre1_dia,
+    fim_ano_letivo_mes: cfg.fim_ano_letivo_mes,
+    fim_ano_letivo_dia: cfg.fim_ano_letivo_dia,
+  })
+
+  const data31 = criarDataUTC(anoRef, 12, 31)
+
+  const idadeInicio = dataNascimento ? calcularIdadeUTC(dataNascimento, periodo.inicio) : null
+  const idadeFim = dataNascimento ? calcularIdadeUTC(dataNascimento, periodo.fim) : null
+  const idade31 = dataNascimento ? calcularIdadeUTC(dataNascimento, data31) : null
+
+  // Regras de idade (baseadas no que o MEC divulga: Regular 14–24; EJA 19–24)
+  if (modalidade === 'REGULAR') {
+    if (idadeInicio != null && (idadeInicio < 14 || idadeInicio > 24)) {
+      erros.push('Fora da faixa etária do Ensino Médio regular (14 a 24 anos).')
+    }
+  } else {
+    // EJA
+    if (idade31 != null && idade31 < 19) erros.push('EJA: precisa ter 19+ até 31/12 do ano de referência.')
+    if (idadeInicio != null && idadeInicio > 24) erros.push('EJA: fora da faixa etária (início do período com mais de 24 anos).')
+
+    // regra operacional: se completa 25 durante o período, tende a desligar ao final do período
+    if (idadeInicio != null && idadeFim != null && idadeInicio < 25 && idadeFim >= 25) {
+      avisos.push('EJA: completa 25 durante o período; tende a ser desligado ao final do período letivo.')
+    }
+  }
+
+  // Prazo matrícula: até X meses do início do período (aqui marcamos como “conferir”, pois calendário real pode variar)
+  if (cfg.validar_prazo_matricula && dataMatricula) {
+    const limite = addMesesUTC(periodo.inicio, cfg.prazo_matricula_meses)
+    const dentro = dataMatricula.getTime() <= limite.getTime()
+    if (!dentro) {
+      avisos.push(`Matrícula parece fora do prazo (após ${cfg.prazo_matricula_meses} meses do início do período). Conferir calendário da rede.`)
+    }
+  }
+
+  // Classificação final (triagem)
+  let classificacao: PeDeMeiaClassificacao = 'ELEGIVEL'
+
+  if (erros.length > 0) {
+    classificacao = 'NAO_ELEGIVEL'
+  } else {
+    const faltaCpf = cfg.exigir_cpf && !cpfOk
+    const faltaIdade = dataNascimento == null
+    const faltaCad = cfg.exigir_cadunico && cad == null
+
+    // Se faltar dado essencial ou existir aviso relevante (ex.: prazo), preferimos “INDETERMINADO”
+    const temAvisoRelevante = avisos.some((a) => normalizarTexto(a).includes('prazo') || normalizarTexto(a).includes('calendario'))
+
+    if (faltaCpf || faltaIdade || faltaCad || temAvisoRelevante) {
+      classificacao = 'INDETERMINADO'
+    }
+  }
+
+  return { classificacao, modalidade, erros, avisos }
+}
+
+function labelPeDeMeia(classificacao: PeDeMeiaClassificacao): string {
+  switch (classificacao) {
+    case 'ELEGIVEL':
+      return 'Elegível'
+    case 'ELEGIVEL_ATE_FIM_DO_PERIODO':
+      return 'Elegível (até fim do período)'
+    case 'NAO_ELEGIVEL':
+      return 'Não elegível'
+    case 'INDETERMINADO':
+    default:
+      return 'Conferir dados'
+  }
+}
+
+function chipColorPeDeMeia(classificacao: PeDeMeiaClassificacao): 'success' | 'warning' | 'error' | 'default' {
+  switch (classificacao) {
+    case 'ELEGIVEL':
+      return 'success'
+    case 'ELEGIVEL_ATE_FIM_DO_PERIODO':
+      return 'warning'
+    case 'NAO_ELEGIVEL':
+      return 'error'
+    case 'INDETERMINADO':
+    default:
+      return 'warning'
+  }
+}
+
+function modalidadePeDeMeiaSugerida(matriculaModalidade: string | null | undefined): PeDeMeiaModalidade {
+  const m = normalizarTexto(matriculaModalidade ?? '')
+  if (m.includes('regular')) return 'REGULAR'
+  if (m.includes('eja')) return 'EJA'
+  // CEJA normalmente é EJA
+  return 'EJA'
+}
 
 // ===================== Constantes =====================
 
@@ -187,6 +466,8 @@ type UsuarioJoin = {
   name?: string
   email?: string
   foto_url?: string | null
+  cpf?: string | null
+  data_nascimento?: string | null
 }
 
 type AlunoJoin = {
@@ -302,10 +583,10 @@ type FaixaAnoProtocolos = {
 function FichaHeader(props: {
   progresso: ProgressoJoin
   anosCursados?: string
-  peDeMeiaElegivel: boolean
+  peDeMeia: PeDeMeiaResultado
   isPCD: boolean
 }) {
-  const { progresso, anosCursados, peDeMeiaElegivel, isPCD } = props
+  const { progresso, anosCursados, peDeMeia, isPCD } = props
 
   const disc = first(progresso.disciplinas)
   const mat = first(progresso.matriculas)
@@ -313,6 +594,20 @@ function FichaHeader(props: {
   const user = first(aluno?.usuarios)
   const nivel = first(mat?.niveis_ensino)?.nome ?? ''
   const modalidade = String(mat?.modalidade ?? '')
+
+  const tooltipPeDeMeia = useMemo(() => {
+    const linhas: string[] = []
+    if (peDeMeia.erros?.length) {
+      linhas.push('Motivos (não elegível):')
+      peDeMeia.erros.forEach((e) => linhas.push(`• ${e}`))
+    }
+    if (peDeMeia.avisos?.length) {
+      if (linhas.length) linhas.push('')
+      linhas.push('Observações:')
+      peDeMeia.avisos.forEach((a) => linhas.push(`• ${a}`))
+    }
+    return linhas.join('\n') || 'Sem detalhes.'
+  }, [peDeMeia])
 
   return (
     <Paper
@@ -349,7 +644,7 @@ function FichaHeader(props: {
             {user?.name ?? 'Aluno'}
           </Typography>
 
-          {/* ✅ chips quebram linha no mobile (não corta) */}
+          {/* chips quebram linha no mobile */}
           <Stack
             direction="row"
             useFlexGap
@@ -365,12 +660,16 @@ function FichaHeader(props: {
           >
             <Chip label={`RA: ${mat?.numero_inscricao ?? '-'}`} size="small" />
             <Chip label={disc?.nome_disciplina ?? '-'} color="primary" size="small" />
-            <Chip
-              label={peDeMeiaElegivel ? 'Pé-de-Meia: Elegível' : 'Pé-de-Meia: Não'}
-              color={peDeMeiaElegivel ? 'success' : 'default'}
-              variant={peDeMeiaElegivel ? 'filled' : 'outlined'}
-              size="small"
-            />
+
+            <Tooltip title={<span style={{ whiteSpace: 'pre-wrap' }}>{tooltipPeDeMeia}</span>} arrow>
+              <Chip
+                label={`Pé-de-Meia: ${labelPeDeMeia(peDeMeia.classificacao)}`}
+                color={chipColorPeDeMeia(peDeMeia.classificacao)}
+                variant={peDeMeia.classificacao === 'ELEGIVEL' ? 'filled' : 'outlined'}
+                size="small"
+              />
+            </Tooltip>
+
             <Chip
               label={isPCD ? 'PCD: Sim' : 'PCD: Não'}
               color={isPCD ? 'info' : 'default'}
@@ -462,7 +761,6 @@ function GradeDeNotas(props: { gradeData: GradeData | null }) {
                 const v = arredondarMediaFinal(gradeData.mediaFinal)
                 return v !== null ? formatarBR(v) : '-'
               })()}
-
             </Typography>
           </Stack>
         </Paper>
@@ -518,7 +816,7 @@ function GradeDeNotas(props: { gradeData: GradeData | null }) {
     )
   }
 
-  // ======= DESKTOP: tabela (normal) =======
+  // ======= DESKTOP: tabela =======
   return (
     <>
       <Typography variant="h6" gutterBottom>
@@ -601,7 +899,6 @@ function GradeDeNotas(props: { gradeData: GradeData | null }) {
                       const v = arredondarMediaFinal(gradeData.mediaFinal)
                       return v !== null ? formatarBR(v) : '-'
                     })()}
-
                   </TableCell>
                 ) : null}
               </TableRow>
@@ -612,8 +909,6 @@ function GradeDeNotas(props: { gradeData: GradeData | null }) {
     </>
   )
 }
-
-
 
 function HistoricoAtendimentos(props: {
   sessoes: SessaoHistorico[]
@@ -626,9 +921,9 @@ function HistoricoAtendimentos(props: {
 
   const hasActivityType = (sessao: SessaoHistorico, type: 'AT' | 'AV' | 'RE') => {
     const typeMap: Record<'AT' | 'AV' | 'RE', number[]> = {
-      AT: [1, 2],
-      AV: [3, 4],
-      RE: [5],
+      AT: [TIPOS.PESQUISA, TIPOS.COMPLEMENTAR],
+      AV: [TIPOS.AVALIACAO, TIPOS.ASO],
+      RE: [TIPOS.RECUPERACAO],
     }
     return (sessao.atividades || []).some((a) => typeMap[type].includes(Number(a.id_tipo_protocolo)))
   }
@@ -650,7 +945,8 @@ function HistoricoAtendimentos(props: {
                 .map((at) => {
                   const tipoNome = first(at.tipos_protocolo)?.nome ?? 'Atividade'
                   const status = at.status || 'N/D'
-                  const nota = at.nota !== null && at.nota !== undefined ? ` (Nota ${Number(at.nota).toFixed(1).replace('.', ',')})` : ''
+                  const nota =
+                    at.nota !== null && at.nota !== undefined ? ` (Nota ${Number(at.nota).toFixed(1).replace('.', ',')})` : ''
                   return `${tipoNome} #${at.numero_protocolo}: ${status}${nota}`
                 })
                 .join('\n')
@@ -664,9 +960,7 @@ function HistoricoAtendimentos(props: {
                   <Stack spacing={1}>
                     <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={2}>
                       <Box sx={{ minWidth: 0 }}>
-                        <Typography sx={{ fontWeight: 900, overflowWrap: 'anywhere' }}>
-                          {formatDateBR(sessao.hora_entrada)}
-                        </Typography>
+                        <Typography sx={{ fontWeight: 900, overflowWrap: 'anywhere' }}>{formatDateBR(sessao.hora_entrada)}</Typography>
                         <Typography variant="caption" color="text.secondary">
                           {formatTimeBR(sessao.hora_entrada)} → {sessao.hora_saida ? formatTimeBR(sessao.hora_saida) : '...'}
                         </Typography>
@@ -692,9 +986,24 @@ function HistoricoAtendimentos(props: {
 
                     <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
                       <Chip size="small" label="OR" variant="outlined" />
-                      <Chip size="small" label="AT" color={hasActivityType(sessao, 'AT') ? 'info' : 'default'} variant={hasActivityType(sessao, 'AT') ? 'filled' : 'outlined'} />
-                      <Chip size="small" label="AV" color={hasActivityType(sessao, 'AV') ? 'info' : 'default'} variant={hasActivityType(sessao, 'AV') ? 'filled' : 'outlined'} />
-                      <Chip size="small" label="RE" color={hasActivityType(sessao, 'RE') ? 'info' : 'default'} variant={hasActivityType(sessao, 'RE') ? 'filled' : 'outlined'} />
+                      <Chip
+                        size="small"
+                        label="AT"
+                        color={hasActivityType(sessao, 'AT') ? 'info' : 'default'}
+                        variant={hasActivityType(sessao, 'AT') ? 'filled' : 'outlined'}
+                      />
+                      <Chip
+                        size="small"
+                        label="AV"
+                        color={hasActivityType(sessao, 'AV') ? 'info' : 'default'}
+                        variant={hasActivityType(sessao, 'AV') ? 'filled' : 'outlined'}
+                      />
+                      <Chip
+                        size="small"
+                        label="RE"
+                        color={hasActivityType(sessao, 'RE') ? 'info' : 'default'}
+                        variant={hasActivityType(sessao, 'RE') ? 'filled' : 'outlined'}
+                      />
                     </Stack>
 
                     <Divider />
@@ -798,7 +1107,6 @@ function HistoricoAtendimentos(props: {
     </>
   )
 }
-
 
 function EditHistoricoModal(props: {
   open: boolean
@@ -1070,9 +1378,8 @@ function EditHistoricoModal(props: {
             ) : (
               <Stack spacing={1}>
                 {atividades.map((a, idx) => {
-                  const tipoNome =
-                    tipos.find((t) => t.id_tipo_protocolo === a.id_tipo_protocolo)?.nome ?? `Tipo #${a.id_tipo_protocolo}`
-                  const showNota = !['Atividade de Pesquisa', 'ASO'].includes(String(tipoNome))
+                  const tipoNome = tipos.find((t) => t.id_tipo_protocolo === a.id_tipo_protocolo)?.nome ?? `Tipo #${a.id_tipo_protocolo}`
+                  const showNota = !(a.id_tipo_protocolo === TIPOS.PESQUISA || a.id_tipo_protocolo === TIPOS.ASO)
                   const maxProt = Math.max(1, totalProtocolos || 1)
 
                   return (
@@ -1085,12 +1392,7 @@ function EditHistoricoModal(props: {
                           </Typography>
                         </Box>
 
-                        <Button
-                          variant="outlined"
-                          color="error"
-                          startIcon={<DeleteIcon />}
-                          onClick={() => handleRemoveAtividade(idx)}
-                        >
+                        <Button variant="outlined" color="error" startIcon={<DeleteIcon />} onClick={() => handleRemoveAtividade(idx)}>
                           Remover
                         </Button>
                       </Stack>
@@ -1130,11 +1432,7 @@ function EditHistoricoModal(props: {
 
                         <FormControl fullWidth size="small">
                           <InputLabel>Status</InputLabel>
-                          <Select
-                            label="Status"
-                            value={String(a.status || 'A fazer')}
-                            onChange={(e) => handleAtividadeChange(idx, { status: String(e.target.value) })}
-                          >
+                          <Select label="Status" value={String(a.status || 'A fazer')} onChange={(e) => handleAtividadeChange(idx, { status: String(e.target.value) })}>
                             <MenuItem value="A fazer">A fazer</MenuItem>
                             <MenuItem value="Em andamento">Em andamento</MenuItem>
                             <MenuItem value="Concluída">Concluída</MenuItem>
@@ -1155,22 +1453,11 @@ function EditHistoricoModal(props: {
 
                       <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} sx={{ mt: 2 }}>
                         <FormControlLabel
-                          control={
-                            <Checkbox
-                              checked={!!a.is_adaptada}
-                              onChange={(e) => handleAtividadeChange(idx, { is_adaptada: e.target.checked })}
-                            />
-                          }
+                          control={<Checkbox checked={!!a.is_adaptada} onChange={(e) => handleAtividadeChange(idx, { is_adaptada: e.target.checked })} />}
                           label="Adaptada"
                         />
 
-                        <TextField
-                          fullWidth
-                          size="small"
-                          label="Síntese"
-                          value={a.sintese ?? ''}
-                          onChange={(e) => handleAtividadeChange(idx, { sintese: e.target.value })}
-                        />
+                        <TextField fullWidth size="small" label="Síntese" value={a.sintese ?? ''} onChange={(e) => handleAtividadeChange(idx, { sintese: e.target.value })} />
                       </Stack>
                     </Paper>
                   )
@@ -1222,7 +1509,12 @@ function ProtocolosDeEstudo(props: {
       setExpanded(isExpanded ? panel : false)
     }
 
-  const handleAtividadeChange = (protocoloIndex: number, atividadeKey: keyof ProtocoloState['atividades'], field: string, value: any) => {
+  const handleAtividadeChange = (
+    protocoloIndex: number,
+    atividadeKey: keyof ProtocoloState['atividades'],
+    field: string,
+    value: any
+  ) => {
     setProtocolos((old) => {
       const next = JSON.parse(JSON.stringify(old)) as ProtocoloState[]
       const reg = next[protocoloIndex].atividades[atividadeKey].registro || {}
@@ -1244,7 +1536,13 @@ function ProtocolosDeEstudo(props: {
 
     if (pesquisaOk && complementarOk && avaliacaoStatus === 'Concluída') {
       if (avaliacaoNota !== null && avaliacaoNota >= 6) return { label: 'Protocolo Concluído', color: 'success' as const }
-      if (avaliacaoNota !== null && avaliacaoNota < 6 && recuperacaoStatus === 'Concluída' && recuperacaoNota !== null && recuperacaoNota >= 6) {
+      if (
+        avaliacaoNota !== null &&
+        avaliacaoNota < 6 &&
+        recuperacaoStatus === 'Concluída' &&
+        recuperacaoNota !== null &&
+        recuperacaoNota >= 6
+      ) {
         return { label: 'Protocolo Concluído', color: 'success' as const }
       }
     }
@@ -1307,10 +1605,7 @@ function ProtocolosDeEstudo(props: {
 
           <FormControlLabel
             control={
-              <Checkbox
-                checked={!!registro.is_adaptada}
-                onChange={(e) => handleAtividadeChange(protoIndex, ativKey, 'is_adaptada', e.target.checked)}
-              />
+              <Checkbox checked={!!registro.is_adaptada} onChange={(e) => handleAtividadeChange(protoIndex, ativKey, 'is_adaptada', e.target.checked)} />
             }
             label="Adaptada"
           />
@@ -1375,8 +1670,15 @@ function ProtocolosDeEstudo(props: {
       <Paper sx={{ p: 2, borderRadius: '12px', overflow: 'hidden' }}>
         {protocolos.map((protocolo, protoIndex) => {
           const atividades = protocolo.atividades
+
           const notaAvaliacao = parseNota(atividades.avaliacao?.registro?.nota)
-          const showRecuperacao = notaAvaliacao !== null && notaAvaliacao < 6
+
+          // ✅ correção: mostrar ASO/Recuperação também quando já existem registros,
+          // mesmo que a nota de avaliação tenha sido alterada depois.
+          const asoExiste = Boolean(atividades.aso?.registro?.id_atividade)
+          const recExiste = Boolean(atividades.recuperacao?.registro?.id_atividade)
+          const showRecuperacao = (notaAvaliacao !== null && notaAvaliacao < 6) || asoExiste || recExiste
+
           const statusInfo = getProtocoloStatus(atividades)
 
           return (
@@ -1483,7 +1785,16 @@ function ObservacoesEditaveis(props: {
         </Typography>
       ) : (
         <>
-          <TextField fullWidth multiline rows={5} value={observacoes} onChange={(e) => setObservacoes(e.target.value)} variant="outlined" autoFocus sx={{ mt: 2 }} />
+          <TextField
+            fullWidth
+            multiline
+            rows={5}
+            value={observacoes}
+            onChange={(e) => setObservacoes(e.target.value)}
+            variant="outlined"
+            autoFocus
+            sx={{ mt: 2 }}
+          />
           <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 2, gap: 1 }}>
             <Button onClick={handleCancel}>Cancelar</Button>
             <Button onClick={() => void handleSave()} variant="contained" disabled={saving}>
@@ -1543,20 +1854,37 @@ export default function FichaAcompanhamentoPage() {
 
   const totalProtocolos = useMemo(() => (faixas?.length ? faixas[faixas.length - 1].fim : 0), [faixas])
 
-  const peDeMeiaElegivel = useMemo(() => {
-    if (!progresso) return false
+  const peDeMeia = useMemo<PeDeMeiaResultado>(() => {
+    if (!progresso) return { classificacao: 'INDETERMINADO', modalidade: 'EJA', erros: [], avisos: ['Ficha ainda não carregada.'] }
+
     const mat = first(progresso.matriculas)
     const aluno = first(mat?.alunos)
+    const user = first(aluno?.usuarios)
+
     const nivelId =
       (mat?.id_nivel_ensino != null ? Number(mat.id_nivel_ensino) : null) ??
       (first(progresso.anos_escolares)?.id_nivel_ensino != null ? Number(first(progresso.anos_escolares)?.id_nivel_ensino) : null)
 
-    return isElegivelPeDeMeia({
-      id_nivel_ensino: nivelId,
-      nis: aluno?.nis ?? null,
-      possui_beneficio_governo: aluno?.possui_beneficio_governo ?? null,
-      qual_beneficio_governo: aluno?.qual_beneficio_governo ?? null,
-    })
+    const modalidadeSug = modalidadePeDeMeiaSugerida(mat?.modalidade ?? null)
+
+    return avaliarPeDeMeia(
+      {
+        id_nivel_ensino: nivelId,
+        cpf: user?.cpf ?? null,
+        data_nascimento: user?.data_nascimento ?? null,
+        ano_letivo: mat?.ano_letivo != null ? Number(mat.ano_letivo) : null,
+        data_matricula: mat?.data_matricula ?? null,
+        nis: aluno?.nis ?? null,
+        possui_beneficio_governo: aluno?.possui_beneficio_governo ?? null,
+        qual_beneficio_governo: aluno?.qual_beneficio_governo ?? null,
+        modalidade: modalidadeSug,
+      },
+      {
+        // Mantém validação de prazo como “conferir” (INDETERMINADO), já que calendário pode variar.
+        validar_prazo_matricula: true,
+        prazo_matricula_meses: 2,
+      }
+    )
   }, [progresso])
 
   const isPCD = useMemo(() => {
@@ -1712,7 +2040,7 @@ export default function FichaAcompanhamentoPage() {
 
     setLoading(true)
     try {
-      // 1) Progresso + joins (inclui NIS/benefícios/PCD)
+      // 1) Progresso + joins (inclui NIS/benefícios/PCD + CPF/DN para triagem do Pé-de-Meia)
       const { data: prog, error: eProg } = await supabase
         .from('progresso_aluno')
         .select(
@@ -1740,7 +2068,7 @@ export default function FichaAcompanhamentoPage() {
               qual_beneficio_governo,
               possui_necessidade_especial,
               qual_necessidade_especial,
-              usuarios(name,email,foto_url)
+              usuarios(name,email,foto_url,cpf,data_nascimento)
             )
           )
         `
@@ -1766,7 +2094,6 @@ export default function FichaAcompanhamentoPage() {
       let headers: { serie: string; colspan: number }[] = []
 
       if (isModalidadeOrientacao(modalidade) && nivelId != null) {
-        // busca configs da disciplina e filtra por nível no front (mais robusto)
         const { data: cfgs, error: eCfgAll } = await supabase
           .from('config_disciplina_ano')
           .select(
@@ -2222,7 +2549,7 @@ export default function FichaAcompanhamentoPage() {
         p: { xs: 1.5, sm: 2 },
         width: '100%',
         minWidth: 0,
-        overflowX: 'hidden', // ✅ evita qualquer “vazamento” lateral no mobile
+        overflowX: 'hidden',
       }}
     >
       <Box sx={{ display: 'flex', alignItems: 'center', mb: 2, minWidth: 0 }}>
@@ -2275,11 +2602,16 @@ export default function FichaAcompanhamentoPage() {
         </Stack>
       </Paper>
 
-      <FichaHeader progresso={progresso} anosCursados={anosCursados} peDeMeiaElegivel={peDeMeiaElegivel} isPCD={isPCD} />
+      <FichaHeader progresso={progresso} anosCursados={anosCursados} peDeMeia={peDeMeia} isPCD={isPCD} />
 
       <GradeDeNotas gradeData={gradeData} />
 
-      <ProtocolosDeEstudo protocolos={protocolos} idProgresso={progresso.id_progresso} onSaveAtividade={salvarAtividade} onDataChange={fetchData} />
+      <ProtocolosDeEstudo
+        protocolos={protocolos}
+        idProgresso={progresso.id_progresso}
+        onSaveAtividade={salvarAtividade}
+        onDataChange={fetchData}
+      />
 
       <HistoricoAtendimentos sessoes={sessoes} onEdit={handleOpenHistoricoModal} onDelete={handleOpenDeleteDialog} />
 
@@ -2298,8 +2630,8 @@ export default function FichaAcompanhamentoPage() {
         <DialogTitle sx={{ fontWeight: 900 }}>Confirmar Exclusão</DialogTitle>
         <DialogContent>
           <DialogContentText>
-            Tem certeza que deseja excluir o registro de atendimento do dia{' '}
-            <b>{sessaoParaExcluir ? formatDateBR(sessaoParaExcluir.hora_entrada) : ''}</b>? Esta ação não pode ser desfeita.
+            Tem certeza que deseja excluir o registro de atendimento do dia <b>{sessaoParaExcluir ? formatDateBR(sessaoParaExcluir.hora_entrada) : ''}</b>?
+            Esta ação não pode ser desfeita.
           </DialogContentText>
         </DialogContent>
         <DialogActions>

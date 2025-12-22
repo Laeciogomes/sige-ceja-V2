@@ -113,6 +113,9 @@ type AlunoBuscaOption = {
   email?: string | null
   foto_url?: string | null
 
+  cpf?: string | null
+  data_nascimento?: string | null
+
   id_matricula?: number | null
   numero_inscricao?: string | null
   id_nivel_ensino?: number | null
@@ -145,7 +148,11 @@ type SessaoView = {
 
   aluno_nome: string
   aluno_foto_url?: string | null
+  aluno_cpf?: string | null
+  aluno_data_nascimento?: string | null
   numero_inscricao?: string | null
+  mat_data_matricula?: string | null
+  mat_ano_letivo?: number | null
 
   id_nivel_ensino?: number | null
   aluno_nis?: string | null
@@ -287,16 +294,132 @@ function formatarCPF(digitos: string): string {
   return `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6, 9)}-${d.slice(9, 11)}`
 }
 
-function isElegivelPeDeMeia(opts: {
+function calcularIdade(dataNascStr: string, refDate: Date): number {
+  const nasc = new Date(dataNascStr)
+  if (Number.isNaN(nasc.getTime())) return -1
+  let idade = refDate.getFullYear() - nasc.getFullYear()
+  const m = refDate.getMonth() - nasc.getMonth()
+  if (m < 0 || (m === 0 && refDate.getDate() < nasc.getDate())) {
+    idade--
+  }
+  return idade
+}
+
+type PeDeMeiaClassificacaoUI = 'ELEGIVEL' | 'NAO_ELEGIVEL' | 'CONFERIR'
+
+function avaliarPeDeMeiaCEJA(opts: {
   id_nivel_ensino?: number | null
+  cpf?: string | null
+  data_nascimento?: string | null
   nis?: string | null
   possui_beneficio_governo?: boolean | null
-}): boolean {
+  data_matricula?: string | null
+  ano_letivo?: number | null
+}): { classificacao: PeDeMeiaClassificacaoUI; motivos: string[] } {
+  const motivos: string[] = []
+
   const nivel = opts.id_nivel_ensino ?? null
-  if (nivel !== 2) return false
-  const nisOk = Boolean(opts.nis?.trim())
-  const benOk = Boolean(opts.possui_beneficio_governo)
-  return nisOk || benOk
+  if (nivel !== 2) {
+    motivos.push('Não é Ensino Médio.')
+    return { classificacao: 'NAO_ELEGIVEL', motivos }
+  }
+
+  const cpfOk = Boolean(opts.cpf && String(opts.cpf).trim() !== '')
+  if (!cpfOk) motivos.push('CPF ausente (cadastro incompleto).')
+
+  const cadOk = Boolean((opts.nis && String(opts.nis).trim() !== '') || opts.possui_beneficio_governo)
+  if (!cadOk) motivos.push('CadÚnico não confirmado (sem NIS e sem benefício informado).')
+
+  const dataMat = opts.data_matricula ? new Date(opts.data_matricula) : null
+  const dataMatOk = Boolean(dataMat && !Number.isNaN(dataMat.getTime()))
+  if (!dataMatOk) motivos.push('Data de matrícula ausente/ inválida.')
+
+  const anoLetivo =
+    opts.ano_letivo != null
+      ? Number(opts.ano_letivo)
+      : dataMatOk && dataMat
+        ? dataMat.getFullYear()
+        : new Date().getFullYear()
+
+  // Regra operacional (CEJA): matrícula precisa estar no “início” do semestre.
+  // 1º semestre: início 07/01, prazo até 07/03
+  // 2º semestre: início 01/07, prazo até 01/09
+  let corteOk: boolean | null = null
+  if (dataMatOk && dataMat) {
+    const inicioPrimeiro = new Date(anoLetivo, 0, 7) // 07/01
+    const cutoff1 = new Date(inicioPrimeiro)
+    cutoff1.setMonth(cutoff1.getMonth() + 2) // até 07/03
+
+    const inicioSegundo = new Date(anoLetivo, 6, 1) // 01/07
+    const cutoff2 = new Date(inicioSegundo)
+    cutoff2.setMonth(cutoff2.getMonth() + 2) // até 01/09
+
+    if (dataMat <= inicioSegundo) {
+      corteOk = dataMat <= cutoff1
+    } else {
+      corteOk = dataMat <= cutoff2
+    }
+
+    if (!corteOk) motivos.push('Matrícula fora do prazo inicial do semestre.')
+  }
+
+  // Idade (EJA): 19 a 24 anos em 31/12 do ano letivo
+  let idadeOk: boolean | null = null
+  if (opts.data_nascimento) {
+    const dataRef = new Date(anoLetivo, 11, 31)
+    const idade = calcularIdade(opts.data_nascimento, dataRef)
+    if (idade < 0) {
+      idadeOk = null
+      motivos.push('Data de nascimento inválida.')
+    } else {
+      idadeOk = idade >= 19 && idade <= 24
+      if (!idadeOk) motivos.push(`Idade fora da faixa 19–24 em 31/12/${anoLetivo} (idade: ${idade}).`)
+    }
+  } else {
+    motivos.push('Data de nascimento ausente (não dá para confirmar a idade).')
+  }
+
+  // Decisão:
+  // - Se falhou em regra “dura” (idade/corte) com dados presentes => NÃO ELEGÍVEL
+  // - Se tudo ok e dados essenciais presentes => ELEGÍVEL
+  // - Se faltam dados (CPF/idade/matrícula/CadÚnico) => CONFERIR
+
+  if (idadeOk === false) return { classificacao: 'NAO_ELEGIVEL', motivos }
+  if (corteOk === false) return { classificacao: 'NAO_ELEGIVEL', motivos }
+
+  const dadosEssenciaisOk = cpfOk && cadOk && idadeOk === true && corteOk === true
+  if (dadosEssenciaisOk) return { classificacao: 'ELEGIVEL', motivos }
+
+  return { classificacao: 'CONFERIR', motivos }
+}
+
+function chipPeDeMeiaUI(opts: {
+  id_nivel_ensino?: number | null
+  cpf?: string | null
+  data_nascimento?: string | null
+  nis?: string | null
+  possui_beneficio_governo?: boolean | null
+  data_matricula?: string | null
+  ano_letivo?: number | null
+}): { label: string; color: 'success' | 'warning' | 'error' | 'default'; variant: 'filled' | 'outlined'; tooltip?: string } {
+  const r = avaliarPeDeMeiaCEJA(opts)
+  const labelBase =
+    r.classificacao === 'ELEGIVEL'
+      ? 'Elegível'
+      : r.classificacao === 'NAO_ELEGIVEL'
+        ? 'Não elegível'
+        : 'Conferir dados'
+
+  const color = r.classificacao === 'ELEGIVEL' ? 'success' : r.classificacao === 'NAO_ELEGIVEL' ? 'error' : 'warning'
+  const variant = r.classificacao === 'NAO_ELEGIVEL' ? 'outlined' : 'filled'
+  const tooltip = r.motivos.length ? r.motivos.join('\n') : undefined
+
+  return {
+    label: `Pé-de-Meia: ${labelBase}`,
+    color,
+    variant,
+    tooltip,
+  }
 }
 
 function escolherProgressoPorDisciplina(lista: ProgressoOption[], idDisciplina: number): ProgressoOption | null {
@@ -762,7 +885,7 @@ export default function ProfessorAtendimentosPage() {
               nis,
               possui_necessidade_especial,
               possui_beneficio_governo,
-              usuarios ( name, foto_url )
+              usuarios ( name, foto_url, cpf, data_nascimento )
             ),
             salas_atendimento (
               id_sala,
@@ -775,7 +898,7 @@ export default function ProfessorAtendimentosPage() {
               id_ano_escolar,
               disciplinas ( nome_disciplina ),
               anos_escolares ( nome_ano, id_nivel_ensino ),
-              matriculas ( numero_inscricao, id_nivel_ensino )
+              matriculas ( numero_inscricao, id_nivel_ensino, data_matricula, ano_letivo )
             )
           `
           )
@@ -814,7 +937,11 @@ export default function ProfessorAtendimentosPage() {
 
             aluno_nome: alunoUser?.name ?? `Aluno #${s.id_aluno}`,
             aluno_foto_url: alunoUser?.foto_url ?? null,
+            aluno_cpf: alunoUser?.cpf ?? null,
+            aluno_data_nascimento: alunoUser?.data_nascimento ?? null,
             numero_inscricao: mat?.numero_inscricao ?? null,
+            mat_data_matricula: mat?.data_matricula ?? null,
+            mat_ano_letivo: mat?.ano_letivo != null ? Number(mat.ano_letivo) : null,
 
             id_nivel_ensino: nivelId,
             aluno_nis: aluno?.nis ?? null,
@@ -1121,7 +1248,7 @@ export default function ProfessorAtendimentosPage() {
               nis,
               possui_necessidade_especial,
               possui_beneficio_governo,
-              usuarios!inner ( name, email, foto_url, cpf ),
+              usuarios!inner ( name, email, foto_url, cpf, data_nascimento ),
               matriculas ( id_matricula, numero_inscricao, ano_letivo, data_matricula, id_nivel_ensino )
             `
             )
@@ -1159,6 +1286,8 @@ export default function ProfessorAtendimentosPage() {
                 nome: u?.name ?? `Aluno #${a.id_aluno}`,
                 email: u?.email ?? null,
                 foto_url: u?.foto_url ?? null,
+                cpf: u?.cpf ?? null,
+                data_nascimento: u?.data_nascimento ?? null,
                 id_matricula: Number(m.id_matricula),
                 numero_inscricao: m.numero_inscricao ?? null,
                 id_nivel_ensino: m.id_nivel_ensino ?? null,
@@ -1197,7 +1326,7 @@ export default function ProfessorAtendimentosPage() {
               nis,
               possui_necessidade_especial,
               possui_beneficio_governo,
-              usuarios!inner ( name, email, foto_url, cpf )
+              usuarios!inner ( name, email, foto_url, cpf, data_nascimento )
             )
           `
           )
@@ -1221,6 +1350,8 @@ export default function ProfessorAtendimentosPage() {
             nome: u?.name ?? `Aluno #${m.id_aluno ?? aluno?.id_aluno}`,
             email: u?.email ?? null,
             foto_url: u?.foto_url ?? null,
+            cpf: u?.cpf ?? null,
+            data_nascimento: u?.data_nascimento ?? null,
             id_matricula: idMat,
             numero_inscricao: m.numero_inscricao ? String(m.numero_inscricao) : null,
             id_nivel_ensino: m?.id_nivel_ensino != null ? Number(m.id_nivel_ensino) : null,
@@ -1233,9 +1364,9 @@ export default function ProfessorAtendimentosPage() {
         // CPF (opcional)
         if (tentarCPF) {
           const orParts = [
-            `usuarios.cpf.ilike.%${t}%`,
-            `usuarios.cpf.ilike.%${digitos}%`,
-            cpfFmt ? `usuarios.cpf.ilike.%${cpfFmt}%` : null,
+            `cpf.ilike.%${t}%`,
+            `cpf.ilike.%${digitos}%`,
+            cpfFmt ? `cpf.ilike.%${cpfFmt}%` : null,
           ].filter(Boolean)
 
           const { data: dataCPF, error: errCPF } = await supabase
@@ -1246,11 +1377,11 @@ export default function ProfessorAtendimentosPage() {
               nis,
               possui_necessidade_especial,
               possui_beneficio_governo,
-              usuarios!inner ( name, email, foto_url, cpf ),
+              usuarios!inner ( name, email, foto_url, cpf, data_nascimento ),
               matriculas ( id_matricula, numero_inscricao, ano_letivo, data_matricula, id_nivel_ensino )
             `
             )
-            .or(orParts.join(','))
+            .or(orParts.join(','), { foreignTable: 'usuarios' })
             .limit(25)
 
           if (errCPF) throw errCPF
@@ -1285,6 +1416,8 @@ export default function ProfessorAtendimentosPage() {
                 nome: u?.name ?? `Aluno #${a.id_aluno}`,
                 email: u?.email ?? null,
                 foto_url: u?.foto_url ?? null,
+                cpf: u?.cpf ?? null,
+                data_nascimento: u?.data_nascimento ?? null,
                 id_matricula: idMat,
                 numero_inscricao: m.numero_inscricao ?? null,
                 id_nivel_ensino: m.id_nivel_ensino ?? null,
@@ -1580,14 +1713,14 @@ export default function ProfessorAtendimentosPage() {
             hora_entrada,
             hora_saida,
             resumo_atividades,
-            alunos ( nis, possui_necessidade_especial, possui_beneficio_governo, usuarios ( name, foto_url ) ),
+            alunos ( nis, possui_necessidade_especial, possui_beneficio_governo, usuarios ( name, foto_url, cpf, data_nascimento ) ),
             salas_atendimento ( nome, tipo_sala ),
             progresso_aluno (
               id_disciplina,
               id_ano_escolar,
               disciplinas ( nome_disciplina ),
               anos_escolares ( nome_ano, id_nivel_ensino ),
-              matriculas ( numero_inscricao, id_nivel_ensino )
+              matriculas ( numero_inscricao, id_nivel_ensino, data_matricula, ano_letivo )
             )
           `
           )
@@ -1631,7 +1764,11 @@ export default function ProfessorAtendimentosPage() {
 
           aluno_nome: alunoUser?.name ?? alunoSelecionado.nome,
           aluno_foto_url: alunoUser?.foto_url ?? null,
+          aluno_cpf: alunoUser?.cpf ?? null,
+          aluno_data_nascimento: alunoUser?.data_nascimento ?? null,
           numero_inscricao: mat?.numero_inscricao ?? alunoSelecionado.numero_inscricao ?? null,
+          mat_data_matricula: mat?.data_matricula ?? null,
+          mat_ano_letivo: mat?.ano_letivo != null ? Number(mat.ano_letivo) : null,
 
           id_nivel_ensino: nivelId,
           aluno_nis: aluno?.nis ?? null,
@@ -1727,7 +1864,7 @@ export default function ProfessorAtendimentosPage() {
           professores (
             id_professor,
             user_id,
-            usuarios ( name, foto_url )
+            usuarios ( name, foto_url, cpf, data_nascimento )
           )
         `
         )
@@ -1957,7 +2094,13 @@ export default function ProfessorAtendimentosPage() {
     carregarRegistrosDaSessao,
   ])
 
-  const pedirExcluirRegistro = useCallback((id: number) => setConfirmDeleteId(id), [])
+  const pedirExcluirRegistro = useCallback(
+    (r: RegistroView) => {
+      abrirEdicaoRegistro(r)
+      setConfirmDeleteId(r.id_atividade)
+    },
+    [abrirEdicaoRegistro]
+  )
   const cancelarExcluirRegistro = useCallback(() => setConfirmDeleteId(null), [])
 
   const confirmarExcluirRegistro = useCallback(async () => {
@@ -2156,10 +2299,14 @@ export default function ProfessorAtendimentosPage() {
             ) : (
               <Box sx={cardGridSx}>
                 {sessoesAbertas.map((s) => {
-                  const elegivelPeDeMeia = isElegivelPeDeMeia({
+                  const pe = chipPeDeMeiaUI({
                     id_nivel_ensino: s.id_nivel_ensino ?? null,
+                    cpf: s.aluno_cpf ?? null,
+                    data_nascimento: s.aluno_data_nascimento ?? null,
                     nis: s.aluno_nis ?? null,
                     possui_beneficio_governo: s.aluno_possui_beneficio_governo ?? null,
+                    data_matricula: s.mat_data_matricula ?? null,
+                    ano_letivo: s.mat_ano_letivo ?? null,
                   })
                   const pcd = Boolean(s.aluno_possui_necessidade_especial)
 
@@ -2211,12 +2358,13 @@ export default function ProfessorAtendimentosPage() {
 
                         <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ mb: 1 }}>
                           <Chip size="small" variant="outlined" label={`Nível: ${nomeNivelEnsinoCurto(s.id_nivel_ensino)}`} />
-                          <Chip
-                            size="small"
-                            color={elegivelPeDeMeia ? 'success' : 'default'}
-                            variant={elegivelPeDeMeia ? 'filled' : 'outlined'}
-                            label={elegivelPeDeMeia ? 'Pé-de-Meia: Elegível' : 'Pé-de-Meia: Não'}
-                          />
+                          {pe.tooltip ? (
+                            <Tooltip title={<span style={{ whiteSpace: 'pre-line' }}>{pe.tooltip}</span>} arrow>
+                              <Chip size="small" color={pe.color} variant={pe.variant} label={pe.label} />
+                            </Tooltip>
+                          ) : (
+                            <Chip size="small" color={pe.color} variant={pe.variant} label={pe.label} />
+                          )}
                           <Chip
                             size="small"
                             color={pcd ? 'info' : 'default'}
@@ -2957,7 +3105,7 @@ export default function ProfessorAtendimentosPage() {
                               </IconButton>
                             </Tooltip>
                             <Tooltip title="Excluir">
-                              <IconButton onClick={() => pedirExcluirRegistro(r.id_atividade)}>
+                              <IconButton onClick={() => pedirExcluirRegistro(r)}>
                                 <DeleteOutlineIcon />
                               </IconButton>
                             </Tooltip>
