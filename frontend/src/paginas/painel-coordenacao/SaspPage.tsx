@@ -33,6 +33,7 @@ import {
   useMediaQuery,
   useTheme,
   Chip,
+  MenuItem,
 } from '@mui/material'
 
 import { alpha } from '@mui/material/styles'
@@ -47,6 +48,8 @@ import WorkIcon from '@mui/icons-material/Work'
 import SchoolIcon from '@mui/icons-material/School'
 import PsychologyIcon from '@mui/icons-material/Psychology'
 import FamilyRestroomIcon from '@mui/icons-material/FamilyRestroom'
+import AddIcon from '@mui/icons-material/Add'
+import CloseIcon from '@mui/icons-material/Close'
 
 import { useSupabase } from '../../contextos/SupabaseContext'
 import { useNotificacaoContext } from '../../contextos/NotificacaoContext'
@@ -83,8 +86,16 @@ function formatarDataBR(iso?: string | null): string {
 }
 
 function hojeISODate(): string {
-  // YYYY-MM-DD
   return new Date().toISOString().slice(0, 10)
+}
+
+function isBuscaNumerica(input: string): boolean {
+  const t = input.trim()
+  return t.length > 0 && /^[\d.\-\s]+$/.test(t)
+}
+
+function cardBorder(theme: any) {
+  return `1px solid ${alpha(theme.palette.primary.main, theme.palette.mode === 'light' ? 0.18 : 0.35)}`
 }
 
 // ===================== Types =====================
@@ -115,6 +126,42 @@ type AlunoResultado = {
   // “status rápido” do SASP
   sasp_id: number | null
   sasp_data_entrevista: string | null
+}
+
+type SaspRow = {
+  id_sasp: number
+  id_aluno: number
+  data_entrevista: string | null
+  escola_origem: string | null
+  cidade_escola_origem: string | null
+  disciplinas_indicadas_aproveitamento: string | null
+  motivo_retorno_estudos: string | null
+
+  trabalha: boolean | null
+  local_trabalho: string | null
+  funcao_trabalho: string | null
+
+  repetiu_ano: boolean | null
+  desistiu_estudar: boolean | null
+  motivos_desistencia: string | null
+  escolas_desistiu: string | null
+
+  materias_dificuldade: string | null
+  relacao_tecnologia: string | null
+
+  curso_superior_desejado: string | null
+  atividade_cultural_interesse: string | null
+  esporte_interesse: string | null
+
+  pessoas_residencia: number | null
+  parentes_moradia: string | null
+  responsavel_pelos_estudos: string | null
+
+  tem_filhos: boolean | null
+  quantos_filhos: number | null
+
+  como_conheceu_ceja: string | null
+  observacoes_sasp: string | null
 }
 
 type SaspFormState = {
@@ -185,6 +232,10 @@ const FORM_DEFAULT: SaspFormState = {
   observacoes_sasp: '',
 }
 
+function buildEmptyForm(): SaspFormState {
+  return { ...FORM_DEFAULT, data_entrevista: hojeISODate() }
+}
+
 // ===================== Page =====================
 
 export default function SaspPage() {
@@ -194,7 +245,7 @@ export default function SaspPage() {
   const { supabase } = useSupabase()
   const { sucesso, aviso, erro, info } = useNotificacaoContext()
 
-  const mountedRef = useRef(true)
+  const mountedRef = useRef<boolean>(true)
   useEffect(() => {
     mountedRef.current = true
     return () => {
@@ -205,7 +256,7 @@ export default function SaspPage() {
   // ======= apoio (níveis/status) =======
   const [niveisEnsino, setNiveisEnsino] = useState<NivelRow[]>([])
   const [statusMatriculas, setStatusMatriculas] = useState<StatusMatRow[]>([])
-  const [carregandoApoio, setCarregandoApoio] = useState(false)
+  const [carregandoApoio, setCarregandoApoio] = useState<boolean>(false)
 
   useEffect(() => {
     if (!supabase) return
@@ -246,31 +297,31 @@ export default function SaspPage() {
 
   const mapaNivel = useMemo(() => {
     const m = new Map<number, string>()
-    niveisEnsino.forEach((n) => m.set(Number(n.id_nivel_ensino), n.nome))
+    niveisEnsino.forEach((n: NivelRow) => m.set(Number(n.id_nivel_ensino), n.nome))
     return m
   }, [niveisEnsino])
 
   const mapaStatus = useMemo(() => {
     const m = new Map<number, string>()
-    statusMatriculas.forEach((s) => m.set(Number(s.id_status_matricula), s.nome))
+    statusMatriculas.forEach((s: StatusMatRow) => m.set(Number(s.id_status_matricula), s.nome))
     return m
   }, [statusMatriculas])
 
   const idStatusAtiva = useMemo(() => {
-    const ativa = statusMatriculas.find((s) => normalizarTexto(s.nome).includes('ativa'))
+    const ativa = statusMatriculas.find((s: StatusMatRow) => normalizarTexto(s.nome).includes('ativa'))
     return ativa ? Number(ativa.id_status_matricula) : null
   }, [statusMatriculas])
 
   // ======= busca =======
-  const [termoBusca, setTermoBusca] = useState('')
+  const [termoBusca, setTermoBusca] = useState<string>('')
   const [modosBusca, setModosBusca] = useState<SearchMode[]>(['nome', 'matricula', 'cpf'])
-  const [somenteAtivas, setSomenteAtivas] = useState(true)
+  const [somenteAtivas, setSomenteAtivas] = useState<boolean>(true)
 
-  const [buscando, setBuscando] = useState(false)
+  const [buscando, setBuscando] = useState<boolean>(false)
   const [resultados, setResultados] = useState<AlunoResultado[]>([])
 
-  const [page, setPage] = useState(0)
-  const [rowsPerPage, setRowsPerPage] = useState(10)
+  const [page, setPage] = useState<number>(0)
+  const [rowsPerPage, setRowsPerPage] = useState<number>(10)
 
   const resetPaginacao = () => setPage(0)
 
@@ -282,9 +333,8 @@ export default function SaspPage() {
       const ativaA = idStatusAtiva != null && Number(a.id_status_matricula) === Number(idStatusAtiva)
       const ativaB = idStatusAtiva != null && Number(b.id_status_matricula) === Number(idStatusAtiva)
 
-      if (!somenteAtivas && ativaA !== ativaB) {
-        return ativaB ? b : a
-      }
+      // se não está filtrando somente ativas, prefere ativa quando existir
+      if (!somenteAtivas && ativaA !== ativaB) return ativaB ? b : a
 
       const anoA = Number(a.ano_letivo ?? 0)
       const anoB = Number(b.ano_letivo ?? 0)
@@ -312,16 +362,16 @@ export default function SaspPage() {
           id_nivel_ensino: m?.id_nivel_ensino != null ? Number(m.id_nivel_ensino) : null,
           id_status_matricula: m?.id_status_matricula != null ? Number(m.id_status_matricula) : null,
         }))
-        .filter((x) => Number.isFinite(Number(x.id_matricula)))
+        .filter((x: MatriculaMini) => Number.isFinite(Number(x.id_matricula)))
 
       const listaFiltrada =
         somenteAtivas && idStatusAtiva != null
-          ? lista.filter((m) => Number(m.id_status_matricula) === Number(idStatusAtiva))
+          ? lista.filter((m: MatriculaMini) => Number(m.id_status_matricula) === Number(idStatusAtiva))
           : lista
 
       if (listaFiltrada.length === 0) return null
 
-      const ordenada = [...listaFiltrada].sort((x, y) => {
+      const ordenada = [...listaFiltrada].sort((x: MatriculaMini, y: MatriculaMini) => {
         const anoX = Number(x.ano_letivo ?? 0)
         const anoY = Number(y.ano_letivo ?? 0)
         if (anoY !== anoX) return anoY - anoX
@@ -337,7 +387,7 @@ export default function SaspPage() {
 
   const buscarAlunos = useCallback(async () => {
     if (!supabase) {
-      aviso('Supabase indisponível. Configure as variáveis de ambiente e o SupabaseContext.')
+      aviso('Supabase indisponível. Configure o SupabaseContext.')
       return
     }
 
@@ -346,7 +396,6 @@ export default function SaspPage() {
       aviso('Digite pelo menos 2 caracteres para buscar.')
       return
     }
-
     if (modosBusca.length === 0) {
       aviso('Marque pelo menos um tipo de busca (Nome, Matrícula, CPF).')
       return
@@ -381,22 +430,17 @@ export default function SaspPage() {
         })
       }
 
+      const baseSelectAluno = `
+        id_aluno,
+        nis,
+        usuarios!inner ( id, name, email, cpf, celular, foto_url ),
+        matriculas ( id_matricula, numero_inscricao, ano_letivo, data_matricula, id_nivel_ensino, id_status_matricula ),
+        formulario_sasp ( id_sasp, data_entrevista )
+      `
+
       // 1) Nome
       if (modosBusca.includes('nome')) {
-        const { data, error } = await supabase
-          .from('alunos')
-          .select(
-            `
-            id_aluno,
-            nis,
-            usuarios!inner ( id, name, email, cpf, celular, foto_url ),
-            matriculas ( id_matricula, numero_inscricao, ano_letivo, data_matricula, id_nivel_ensino, id_status_matricula ),
-            formulario_sasp ( id_sasp, data_entrevista )
-          `,
-          )
-          .ilike('usuarios.name', `%${t}%`)
-          .limit(40)
-
+        const { data, error } = await supabase.from('alunos').select(baseSelectAluno).ilike('usuarios.name', `%${t}%`).limit(40)
         if (error) throw error
 
         ;(data ?? []).forEach((a: any) => {
@@ -420,27 +464,19 @@ export default function SaspPage() {
         })
       }
 
-      // 2) CPF
+      // 2) CPF (filtrando corretamente na tabela aninhada "usuarios")
       if (modosBusca.includes('cpf')) {
         if (digitos.length >= 3) {
-          const orParts = [
-            `usuarios.cpf.ilike.%${t}%`,
-            digitos ? `usuarios.cpf.ilike.%${digitos}%` : null,
-            cpfFmt ? `usuarios.cpf.ilike.%${cpfFmt}%` : null,
+          const parts = [
+            `cpf.ilike.%${t}%`,
+            digitos ? `cpf.ilike.%${digitos}%` : null,
+            cpfFmt ? `cpf.ilike.%${cpfFmt}%` : null,
           ].filter(Boolean)
 
           const { data, error } = await supabase
             .from('alunos')
-            .select(
-              `
-              id_aluno,
-              nis,
-              usuarios!inner ( id, name, email, cpf, celular, foto_url ),
-              matriculas ( id_matricula, numero_inscricao, ano_letivo, data_matricula, id_nivel_ensino, id_status_matricula ),
-              formulario_sasp ( id_sasp, data_entrevista )
-            `,
-            )
-            .or(orParts.join(','))
+            .select(baseSelectAluno)
+            .or(parts.join(','), { foreignTable: 'usuarios' })
             .limit(40)
 
           if (error) throw error
@@ -469,7 +505,7 @@ export default function SaspPage() {
 
       // 3) Matrícula/RA
       if (modosBusca.includes('matricula')) {
-        const termoRA = digitos || t
+        const termoRA = extrairDigitos(t) || t
         if (termoRA.length >= 2) {
           let q = supabase
             .from('matriculas')
@@ -563,62 +599,59 @@ export default function SaspPage() {
 
   // ======= seleção + SASP =======
   const [alunoSelecionado, setAlunoSelecionado] = useState<AlunoResultado | null>(null)
-  const [carregandoSasp, setCarregandoSasp] = useState(false)
-  const [salvandoSasp, setSalvandoSasp] = useState(false)
+  const [carregandoSasp, setCarregandoSasp] = useState<boolean>(false)
+  const [salvandoSasp, setSalvandoSasp] = useState<boolean>(false)
 
-  // SASP atual (o selecionado no histórico)
   const [saspIdAtual, setSaspIdAtual] = useState<number | null>(null)
-
-  // Histórico do aluno
-  const [historicoSasp, setHistoricoSasp] = useState<any[]>([])
+  const [historicoSasp, setHistoricoSasp] = useState<SaspRow[]>([])
   const [saspSelecionadoId, setSaspSelecionadoId] = useState<number | null>(null)
 
-  const [form, setForm] = useState<SaspFormState>({ ...FORM_DEFAULT })
+  const [form, setForm] = useState<SaspFormState>(buildEmptyForm())
 
-  const preencherFormComRow = (row: any | null) => {
+  const preencherFormComRow = (row: SaspRow | null) => {
     if (!row) {
       setSaspIdAtual(null)
       setSaspSelecionadoId(null)
-      setForm({ ...FORM_DEFAULT, data_entrevista: hojeISODate() })
+      setForm(buildEmptyForm())
       return
     }
 
-    const id = row?.id_sasp != null ? Number(row.id_sasp) : null
+    const id = row.id_sasp != null ? Number(row.id_sasp) : null
     setSaspIdAtual(id)
     setSaspSelecionadoId(id)
 
     setForm({
-      data_entrevista: row?.data_entrevista ? String(row.data_entrevista) : hojeISODate(),
-      escola_origem: row?.escola_origem ? String(row.escola_origem) : '',
-      cidade_escola_origem: row?.cidade_escola_origem ? String(row.cidade_escola_origem) : '',
-      disciplinas_indicadas_aproveitamento: row?.disciplinas_indicadas_aproveitamento ? String(row.disciplinas_indicadas_aproveitamento) : '',
-      motivo_retorno_estudos: row?.motivo_retorno_estudos ? String(row.motivo_retorno_estudos) : '',
+      data_entrevista: row.data_entrevista ? String(row.data_entrevista) : hojeISODate(),
+      escola_origem: row.escola_origem ? String(row.escola_origem) : '',
+      cidade_escola_origem: row.cidade_escola_origem ? String(row.cidade_escola_origem) : '',
+      disciplinas_indicadas_aproveitamento: row.disciplinas_indicadas_aproveitamento ? String(row.disciplinas_indicadas_aproveitamento) : '',
+      motivo_retorno_estudos: row.motivo_retorno_estudos ? String(row.motivo_retorno_estudos) : '',
 
-      trabalha: Boolean(row?.trabalha),
-      local_trabalho: row?.local_trabalho ? String(row.local_trabalho) : '',
-      funcao_trabalho: row?.funcao_trabalho ? String(row.funcao_trabalho) : '',
+      trabalha: Boolean(row.trabalha),
+      local_trabalho: row.local_trabalho ? String(row.local_trabalho) : '',
+      funcao_trabalho: row.funcao_trabalho ? String(row.funcao_trabalho) : '',
 
-      repetiu_ano: Boolean(row?.repetiu_ano),
-      desistiu_estudar: Boolean(row?.desistiu_estudar),
-      motivos_desistencia: row?.motivos_desistencia ? String(row.motivos_desistencia) : '',
-      escolas_desistiu: row?.escolas_desistiu ? String(row.escolas_desistiu) : '',
+      repetiu_ano: Boolean(row.repetiu_ano),
+      desistiu_estudar: Boolean(row.desistiu_estudar),
+      motivos_desistencia: row.motivos_desistencia ? String(row.motivos_desistencia) : '',
+      escolas_desistiu: row.escolas_desistiu ? String(row.escolas_desistiu) : '',
 
-      materias_dificuldade: row?.materias_dificuldade ? String(row.materias_dificuldade) : '',
-      relacao_tecnologia: row?.relacao_tecnologia ? String(row.relacao_tecnologia) : '',
+      materias_dificuldade: row.materias_dificuldade ? String(row.materias_dificuldade) : '',
+      relacao_tecnologia: row.relacao_tecnologia ? String(row.relacao_tecnologia) : '',
 
-      curso_superior_desejado: row?.curso_superior_desejado ? String(row.curso_superior_desejado) : '',
-      atividade_cultural_interesse: row?.atividade_cultural_interesse ? String(row.atividade_cultural_interesse) : '',
-      esporte_interesse: row?.esporte_interesse ? String(row.esporte_interesse) : '',
+      curso_superior_desejado: row.curso_superior_desejado ? String(row.curso_superior_desejado) : '',
+      atividade_cultural_interesse: row.atividade_cultural_interesse ? String(row.atividade_cultural_interesse) : '',
+      esporte_interesse: row.esporte_interesse ? String(row.esporte_interesse) : '',
 
-      pessoas_residencia: row?.pessoas_residencia != null ? String(row.pessoas_residencia) : '',
-      parentes_moradia: row?.parentes_moradia ? String(row.parentes_moradia) : '',
-      responsavel_pelos_estudos: row?.responsavel_pelos_estudos ? String(row.responsavel_pelos_estudos) : '',
+      pessoas_residencia: row.pessoas_residencia != null ? String(row.pessoas_residencia) : '',
+      parentes_moradia: row.parentes_moradia ? String(row.parentes_moradia) : '',
+      responsavel_pelos_estudos: row.responsavel_pelos_estudos ? String(row.responsavel_pelos_estudos) : '',
 
-      tem_filhos: Boolean(row?.tem_filhos),
-      quantos_filhos: row?.quantos_filhos != null ? String(row.quantos_filhos) : '',
+      tem_filhos: Boolean(row.tem_filhos),
+      quantos_filhos: row.quantos_filhos != null ? String(row.quantos_filhos) : '',
 
-      como_conheceu_ceja: row?.como_conheceu_ceja ? String(row.como_conheceu_ceja) : '',
-      observacoes_sasp: row?.observacoes_sasp ? String(row.observacoes_sasp) : '',
+      como_conheceu_ceja: row.como_conheceu_ceja ? String(row.como_conheceu_ceja) : '',
+      observacoes_sasp: row.observacoes_sasp ? String(row.observacoes_sasp) : '',
     })
   }
 
@@ -636,7 +669,7 @@ export default function SaspPage() {
 
         if (error) throw error
 
-        const lista = data ?? []
+        const lista = (data ?? []) as unknown as SaspRow[]
         setHistoricoSasp(lista)
 
         const maisRecente = lista[0] ?? null
@@ -663,9 +696,17 @@ export default function SaspPage() {
     [carregarSaspDoAluno],
   )
 
+  const iniciarNovoSasp = useCallback(() => {
+    if (!alunoSelecionado) return aviso('Selecione um aluno primeiro.')
+    setSaspIdAtual(null)
+    setSaspSelecionadoId(null)
+    setForm(buildEmptyForm())
+    info('Novo SASP pronto para preencher. Ao salvar, será criado um novo registro.')
+  }, [alunoSelecionado, aviso, info])
+
   const salvarSasp = useCallback(async () => {
     if (!supabase) {
-      aviso('Supabase indisponível. Configure as variáveis de ambiente e o SupabaseContext.')
+      aviso('Supabase indisponível. Configure o SupabaseContext.')
       return
     }
     if (!alunoSelecionado) {
@@ -680,9 +721,19 @@ export default function SaspPage() {
     const pessoasResid = form.pessoas_residencia.trim()
     const filhos = form.quantos_filhos.trim()
 
-    const payload: any = {
+    if (pessoasResid && Number.isNaN(Number(pessoasResid))) {
+      aviso('“Pessoas na residência” precisa ser um número.')
+      return
+    }
+    if (form.tem_filhos && filhos && Number.isNaN(Number(filhos))) {
+      aviso('“Quantos filhos” precisa ser um número.')
+      return
+    }
+
+    const payload: Partial<SaspRow> & { id_aluno: number; data_entrevista: string } = {
       id_aluno: alunoSelecionado.id_aluno,
       data_entrevista: form.data_entrevista,
+
       escola_origem: form.escola_origem.trim() ? form.escola_origem.trim() : null,
       cidade_escola_origem: form.cidade_escola_origem.trim() ? form.cidade_escola_origem.trim() : null,
       disciplinas_indicadas_aproveitamento: form.disciplinas_indicadas_aproveitamento.trim()
@@ -717,26 +768,15 @@ export default function SaspPage() {
       observacoes_sasp: form.observacoes_sasp.trim() ? form.observacoes_sasp.trim() : null,
     }
 
-    if (pessoasResid && Number.isNaN(Number(pessoasResid))) {
-      aviso('“Pessoas na residência” precisa ser um número.')
-      return
-    }
-    if (form.tem_filhos && filhos && Number.isNaN(Number(filhos))) {
-      aviso('“Quantos filhos” precisa ser um número.')
-      return
-    }
-
     setSalvandoSasp(true)
     try {
       let saspIdFinal: number | null = saspIdAtual
 
-      // Se está editando um SASP existente (selecionado no histórico) => UPDATE
       if (saspIdAtual != null) {
         const { error } = await supabase.from('formulario_sasp').update(payload).eq('id_sasp', saspIdAtual)
         if (error) throw error
         sucesso('SASP atualizado com sucesso.')
       } else {
-        // Se não existe nenhum SASP => INSERT
         const { data, error } = await supabase.from('formulario_sasp').insert(payload).select('id_sasp').single()
         if (error) throw error
 
@@ -747,11 +787,9 @@ export default function SaspPage() {
         sucesso('SASP cadastrado com sucesso.')
       }
 
-      // Recarrega histórico para refletir alterações (e pegar o registro atualizado)
       await carregarSaspDoAluno(alunoSelecionado.id_aluno)
 
-      // Atualiza chip na lista/selecionado
-      setAlunoSelecionado((prev) =>
+      setAlunoSelecionado((prev: AlunoResultado | null) =>
         prev
           ? {
               ...prev,
@@ -780,6 +818,19 @@ export default function SaspPage() {
     return resultados.slice(start, end)
   }, [resultados, page, rowsPerPage])
 
+  const labelBusca = useMemo(() => {
+    const t = termoBusca.trim()
+    if (!t) return ''
+    if (isBuscaNumerica(t)) {
+      const d = extrairDigitos(t)
+      if (d.length >= 11) return 'Parece CPF'
+      return 'Parece RA/Matrícula'
+    }
+    return 'Parece Nome'
+  }, [termoBusca])
+
+  const disabledAcoesAluno = !alunoSelecionado || carregandoSasp || salvandoSasp
+
   return (
     <Box
       sx={{
@@ -789,48 +840,65 @@ export default function SaspPage() {
         mx: 'auto',
         display: 'flex',
         flexDirection: 'column',
-        gap: 3,
+        gap: 2.5,
         overflowX: 'hidden',
         boxSizing: 'border-box',
       }}
     >
       {/* Cabeçalho */}
-      <Stack
-        direction={{ xs: 'column', sm: 'row' }}
-        spacing={2}
-        alignItems="center"
-        justifyContent="space-between"
-        sx={{ textAlign: { xs: 'center', sm: 'left' } }}
+      <Paper
+        elevation={0}
+        sx={{
+          p: 2,
+          borderRadius: 3,
+          border: cardBorder(theme),
+          background:
+            theme.palette.mode === 'light'
+              ? `linear-gradient(135deg, ${alpha(theme.palette.primary.main, 0.08)} 0%, ${alpha(theme.palette.primary.main, 0.02)} 55%, transparent 100%)`
+              : `linear-gradient(135deg, ${alpha(theme.palette.primary.main, 0.18)} 0%, ${alpha(theme.palette.primary.main, 0.06)} 55%, transparent 100%)`,
+        }}
       >
-        <Box>
-          <Typography variant="h5" fontWeight={800}>
-            SASP — Pesquisa e Formulário do Aluno
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
-            Pesquise por <b>Nome</b>, <b>RA/Matrícula</b> ou <b>CPF</b> e preencha o SASP do aluno.
-          </Typography>
-        </Box>
+        <Stack
+          direction={{ xs: 'column', md: 'row' }}
+          spacing={2}
+          alignItems={{ xs: 'stretch', md: 'center' }}
+          justifyContent="space-between"
+        >
+          <Box sx={{ minWidth: 0 }}>
+            <Typography variant="h5" fontWeight={900} sx={{ lineHeight: 1.1 }}>
+              SASP
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Pesquise por <b>Nome</b>, <b>RA/Matrícula</b> ou <b>CPF</b> e registre a entrevista.
+            </Typography>
+          </Box>
 
-        <Stack direction="row" spacing={1} justifyContent="center">
-          <Button
-            variant="outlined"
-            startIcon={<RefreshIcon />}
-            disabled={!alunoSelecionado || carregandoSasp || salvandoSasp}
-            onClick={() => alunoSelecionado && void carregarSaspDoAluno(alunoSelecionado.id_aluno)}
-          >
-            Recarregar
-          </Button>
-          <Button
-            variant="contained"
-            startIcon={salvandoSasp ? <CircularProgress size={18} /> : <SaveIcon />}
-            disabled={!alunoSelecionado || carregandoSasp || salvandoSasp}
-            onClick={() => void salvarSasp()}
-            sx={{ fontWeight: 700, px: 3 }}
-          >
-            Salvar
-          </Button>
+          <Stack direction="row" spacing={1} justifyContent={{ xs: 'flex-start', md: 'flex-end' }} flexWrap="wrap">
+            <Button
+              variant="outlined"
+              startIcon={<RefreshIcon />}
+              disabled={disabledAcoesAluno}
+              onClick={() => alunoSelecionado && void carregarSaspDoAluno(alunoSelecionado.id_aluno)}
+            >
+              Recarregar
+            </Button>
+
+            <Button variant="outlined" startIcon={<AddIcon />} disabled={!alunoSelecionado || carregandoSasp || salvandoSasp} onClick={iniciarNovoSasp}>
+              Novo SASP
+            </Button>
+
+            <Button
+              variant="contained"
+              startIcon={salvandoSasp ? <CircularProgress size={18} /> : <SaveIcon />}
+              disabled={disabledAcoesAluno}
+              onClick={() => void salvarSasp()}
+              sx={{ fontWeight: 800, px: 3 }}
+            >
+              Salvar
+            </Button>
+          </Stack>
         </Stack>
-      </Stack>
+      </Paper>
 
       {!supabase ? (
         <Alert severity="warning">
@@ -846,18 +914,22 @@ export default function SaspPage() {
             sx={{
               p: 2,
               borderRadius: 3,
-              border: `1px solid ${theme.palette.divider}`,
+              border: cardBorder(theme),
               display: 'flex',
               flexDirection: 'column',
               gap: 1.5,
             }}
           >
-            <Stack direction="row" spacing={1} alignItems="center">
-              <PersonSearchIcon color="action" />
-              <Typography variant="subtitle1" fontWeight={800}>
-                Buscar aluno
-              </Typography>
-              {carregandoApoio ? <Chip size="small" label="Carregando..." /> : null}
+            <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between">
+              <Stack direction="row" spacing={1} alignItems="center">
+                <PersonSearchIcon color="action" />
+                <Typography variant="subtitle1" fontWeight={900}>
+                  Buscar aluno
+                </Typography>
+                {carregandoApoio ? <Chip size="small" label="Carregando..." variant="outlined" /> : null}
+              </Stack>
+
+              {labelBusca ? <Chip size="small" label={labelBusca} variant="outlined" /> : null}
             </Stack>
 
             <TextField
@@ -868,6 +940,7 @@ export default function SaspPage() {
               onChange={(e) => setTermoBusca(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') void buscarAlunos()
+                if (e.key === 'Escape') limparBusca()
               }}
               InputProps={{
                 startAdornment: (
@@ -876,6 +949,7 @@ export default function SaspPage() {
                   </InputAdornment>
                 ),
               }}
+              helperText="Dica: Enter para buscar • Esc para limpar"
             />
 
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ xs: 'flex-start', sm: 'center' }}>
@@ -888,8 +962,8 @@ export default function SaspPage() {
                     <Checkbox
                       checked={modosBusca.includes('nome')}
                       onChange={(e) => {
-                        setModosBusca((prev) =>
-                          e.target.checked ? Array.from(new Set([...prev, 'nome'])) : prev.filter((x) => x !== 'nome'),
+                        setModosBusca((prev: SearchMode[]) =>
+                          e.target.checked ? Array.from(new Set<SearchMode>([...prev, 'nome'])) : prev.filter((x: SearchMode) => x !== 'nome'),
                         )
                       }}
                     />
@@ -901,10 +975,10 @@ export default function SaspPage() {
                     <Checkbox
                       checked={modosBusca.includes('matricula')}
                       onChange={(e) => {
-                        setModosBusca((prev) =>
+                        setModosBusca((prev: SearchMode[]) =>
                           e.target.checked
-                            ? Array.from(new Set([...prev, 'matricula']))
-                            : prev.filter((x) => x !== 'matricula'),
+                            ? Array.from(new Set<SearchMode>([...prev, 'matricula']))
+                            : prev.filter((x: SearchMode) => x !== 'matricula'),
                         )
                       }}
                     />
@@ -916,8 +990,8 @@ export default function SaspPage() {
                     <Checkbox
                       checked={modosBusca.includes('cpf')}
                       onChange={(e) => {
-                        setModosBusca((prev) =>
-                          e.target.checked ? Array.from(new Set([...prev, 'cpf'])) : prev.filter((x) => x !== 'cpf'),
+                        setModosBusca((prev: SearchMode[]) =>
+                          e.target.checked ? Array.from(new Set<SearchMode>([...prev, 'cpf'])) : prev.filter((x: SearchMode) => x !== 'cpf'),
                         )
                       }}
                     />
@@ -928,10 +1002,7 @@ export default function SaspPage() {
             </Stack>
 
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ xs: 'flex-start', sm: 'center' }}>
-              <FormControlLabel
-                control={<Switch checked={somenteAtivas} onChange={(e) => setSomenteAtivas(e.target.checked)} />}
-                label="Somente matrículas ativas"
-              />
+              <FormControlLabel control={<Switch checked={somenteAtivas} onChange={(e) => setSomenteAtivas(e.target.checked)} />} label="Somente matrículas ativas" />
               {somenteAtivas && idStatusAtiva == null ? (
                 <Tooltip title="Não encontrei um status contendo 'Ativa' na tabela status_matricula.">
                   <Chip size="small" color="warning" label="Status 'Ativa' não detectado" />
@@ -940,13 +1011,7 @@ export default function SaspPage() {
             </Stack>
 
             <Stack direction="row" spacing={1}>
-              <Button
-                fullWidth
-                variant="contained"
-                onClick={() => void buscarAlunos()}
-                disabled={buscando || !supabase}
-                sx={{ fontWeight: 700 }}
-              >
+              <Button fullWidth variant="contained" onClick={() => void buscarAlunos()} disabled={buscando || !supabase} sx={{ fontWeight: 800 }}>
                 {buscando ? <CircularProgress size={18} /> : 'Pesquisar'}
               </Button>
               <Button fullWidth variant="outlined" onClick={limparBusca} disabled={buscando}>
@@ -956,7 +1021,7 @@ export default function SaspPage() {
           </Paper>
 
           <Box sx={{ mt: 2 }}>
-            <TableContainer component={Paper} elevation={0} variant="outlined" sx={{ borderRadius: 3, overflow: 'hidden' }}>
+            <TableContainer component={Paper} elevation={0} variant="outlined" sx={{ borderRadius: 3, overflow: 'hidden', border: cardBorder(theme) }}>
               <Box
                 sx={{
                   px: 2,
@@ -968,7 +1033,7 @@ export default function SaspPage() {
                   gap: 1,
                 }}
               >
-                <Typography variant="subtitle2" fontWeight={800}>
+                <Typography variant="subtitle2" fontWeight={900}>
                   Resultados ({resultados.length})
                 </Typography>
                 {buscando ? <CircularProgress size={18} /> : null}
@@ -993,12 +1058,12 @@ export default function SaspPage() {
                         <TableCell align="right">Ação</TableCell>
                       </TableRow>
                     </TableHead>
+
                     <TableBody>
-                      {resultadosPaginados.map((r) => {
+                      {resultadosPaginados.map((r: AlunoResultado) => {
                         const selecionado = alunoSelecionado?.id_aluno === r.id_aluno
                         const nomeNivel = r.matricula?.id_nivel_ensino != null ? mapaNivel.get(Number(r.matricula.id_nivel_ensino)) : null
-                        const nomeStatus =
-                          r.matricula?.id_status_matricula != null ? mapaStatus.get(Number(r.matricula.id_status_matricula)) : null
+                        const nomeStatus = r.matricula?.id_status_matricula != null ? mapaStatus.get(Number(r.matricula.id_status_matricula)) : null
 
                         return (
                           <TableRow
@@ -1007,6 +1072,7 @@ export default function SaspPage() {
                             sx={{
                               cursor: 'pointer',
                               backgroundColor: selecionado ? bgSelectedRow : undefined,
+
                             }}
                             onClick={() => void selecionarAluno(r)}
                           >
@@ -1015,10 +1081,11 @@ export default function SaspPage() {
                                 <Avatar src={r.foto_url ?? undefined} sx={{ width: 28, height: 28 }}>
                                   {r.nome?.[0]?.toUpperCase() ?? 'A'}
                                 </Avatar>
-                                <Box>
-                                  <Typography variant="body2" fontWeight={700} noWrap sx={{ maxWidth: 220 }}>
+                                <Box sx={{ minWidth: 0 }}>
+                                  <Typography variant="body2" fontWeight={800} noWrap sx={{ maxWidth: 240 }}>
                                     {r.nome}
                                   </Typography>
+
                                   <Stack direction="row" spacing={0.75} alignItems="center" flexWrap="wrap">
                                     {r.sasp_id ? (
                                       <Chip size="small" color="success" label={`SASP: ${formatarDataBR(r.sasp_data_entrevista)}`} />
@@ -1034,7 +1101,8 @@ export default function SaspPage() {
                             <TableCell>{r.matricula?.numero_inscricao ?? '-'}</TableCell>
                             {!isMobile ? <TableCell>{nomeNivel ?? '-'}</TableCell> : null}
                             {!isMobile ? <TableCell>{nomeStatus ?? '-'}</TableCell> : null}
-                            <TableCell align="right">
+
+                            <TableCell align="right" onClick={(e) => e.stopPropagation()}>
                               <Button size="small" variant={selecionado ? 'contained' : 'outlined'} onClick={() => void selecionarAluno(r)}>
                                 {selecionado ? 'Selecionado' : 'Abrir'}
                               </Button>
@@ -1049,7 +1117,7 @@ export default function SaspPage() {
                     component="div"
                     count={resultados.length}
                     page={page}
-                    onPageChange={(_, newPage) => setPage(newPage)}
+                    onPageChange={(_, newPage: number) => setPage(newPage)}
                     rowsPerPage={rowsPerPage}
                     onRowsPerPageChange={(e) => {
                       setRowsPerPage(parseInt(e.target.value, 10))
@@ -1066,18 +1134,10 @@ export default function SaspPage() {
 
         {/* Coluna DIREITA: Formulário */}
         <Box sx={{ flex: 1, minWidth: 0 }}>
-          <Paper
-            elevation={0}
-            sx={{
-              p: 2,
-              borderRadius: 3,
-              border: `1px solid ${theme.palette.divider}`,
-              minHeight: 420,
-            }}
-          >
+          <Paper elevation={0} sx={{ p: 2, borderRadius: 3, border: cardBorder(theme), minHeight: 420 }}>
             {!alunoSelecionado ? (
               <Box sx={{ p: 1 }}>
-                <Typography variant="subtitle1" fontWeight={800}>
+                <Typography variant="subtitle1" fontWeight={900}>
                   Selecione um aluno
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
@@ -1091,11 +1151,30 @@ export default function SaspPage() {
                   <Avatar src={alunoSelecionado.foto_url ?? undefined} sx={{ width: 56, height: 56 }}>
                     {alunoSelecionado.nome?.[0]?.toUpperCase() ?? 'A'}
                   </Avatar>
+
                   <Box sx={{ flex: 1, minWidth: 0 }}>
-                    <Typography variant="h6" fontWeight={900} noWrap>
-                      {alunoSelecionado.nome}
-                    </Typography>
-                    <Stack direction="row" spacing={1} flexWrap="wrap" alignItems="center">
+                    <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between">
+                      <Typography variant="h6" fontWeight={900} noWrap sx={{ minWidth: 0 }}>
+                        {alunoSelecionado.nome}
+                      </Typography>
+
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        startIcon={<CloseIcon />}
+                        onClick={() => {
+                          setAlunoSelecionado(null)
+                          setHistoricoSasp([])
+                          setSaspIdAtual(null)
+                          setSaspSelecionadoId(null)
+                          setForm(buildEmptyForm())
+                        }}
+                      >
+                        Fechar
+                      </Button>
+                    </Stack>
+
+                    <Stack direction="row" spacing={1} flexWrap="wrap" alignItems="center" sx={{ mt: 0.5 }}>
                       <Chip size="small" label={`CPF: ${alunoSelecionado.cpf ?? '-'}`} />
                       <Chip size="small" label={`RA: ${alunoSelecionado.matricula?.numero_inscricao ?? '-'}`} />
                       {alunoSelecionado.matricula?.id_nivel_ensino != null ? (
@@ -1104,8 +1183,10 @@ export default function SaspPage() {
                       {alunoSelecionado.matricula?.id_status_matricula != null ? (
                         <Chip size="small" label={`Status: ${mapaStatus.get(Number(alunoSelecionado.matricula.id_status_matricula)) ?? '-'}`} />
                       ) : null}
+                      {saspIdAtual ? <Chip size="small" color="info" label={`Editando: SASP #${saspIdAtual}`} /> : <Chip size="small" color="warning" label="Novo SASP" />}
                     </Stack>
-                    <Typography variant="caption" color="text.secondary">
+
+                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
                       {alunoSelecionado.email ? `E-mail: ${alunoSelecionado.email}` : ''}
                       {alunoSelecionado.email && alunoSelecionado.celular ? ' • ' : ''}
                       {alunoSelecionado.celular ? `Celular: ${alunoSelecionado.celular}` : ''}
@@ -1122,40 +1203,63 @@ export default function SaspPage() {
                 ) : (
                   <>
                     {/* HISTÓRICO */}
-                    {historicoSasp.length > 0 ? (
-                      <TextField
-                        select
-                        fullWidth
-                        label="Entrevistas SASP (histórico)"
-                        value={saspSelecionadoId ?? ''}
-                        onChange={(e) => {
-                          const id = Number(e.target.value)
-                          setSaspSelecionadoId(id)
-                          setSaspIdAtual(id)
+                    <Paper variant="outlined" sx={{ p: 1.5, borderRadius: 2, mb: 2 }}>
+                      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems={{ sm: 'center' }}>
+                        <TextField
+                          select
+                          fullWidth
+                          size="small"
+                          label="Entrevistas SASP (histórico)"
+                          value={saspSelecionadoId ?? ''}
+                          onChange={(e) => {
+                            const raw = e.target.value
+                            if (raw === '') return
+                            const id = Number(raw)
+                            setSaspSelecionadoId(id)
+                            setSaspIdAtual(id)
+                            const row = historicoSasp.find((x: SaspRow) => Number(x.id_sasp) === id) ?? null
+                            preencherFormComRow(row)
+                          }}
+                          helperText={historicoSasp.length ? 'Selecione uma entrevista para editar' : 'Sem entrevistas anteriores'}
+                        >
+                          <MenuItem value="">
+                            <em>{historicoSasp.length ? 'Selecione...' : 'Sem histórico'}</em>
+                          </MenuItem>
+                          {historicoSasp.map((x: SaspRow) => (
+                            <MenuItem key={x.id_sasp} value={x.id_sasp}>
+                              {x.data_entrevista ? new Date(x.data_entrevista).toLocaleDateString('pt-BR') : `SASP #${x.id_sasp}`}
+                            </MenuItem>
+                          ))}
+                        </TextField>
 
-                          const row = historicoSasp.find((x) => Number(x.id_sasp) === id) ?? null
-                          preencherFormComRow(row)
-                        }}
-                        SelectProps={{ native: true }}
-                        sx={{ mb: 2 }}
-                      >
-                        <option value="" disabled>
-                          Selecione...
-                        </option>
-                        {historicoSasp.map((x) => (
-                          <option key={x.id_sasp} value={x.id_sasp}>
-                            {x.data_entrevista ? new Date(x.data_entrevista).toLocaleDateString('pt-BR') : `SASP #${x.id_sasp}`}
-                          </option>
-                        ))}
-                      </TextField>
-                    ) : null}
+                        <Stack direction="row" spacing={1} justifyContent="flex-end">
+                          <Button
+                            variant="outlined"
+                            startIcon={<RefreshIcon />}
+                            disabled={carregandoSasp || salvandoSasp}
+                            onClick={() => alunoSelecionado && void carregarSaspDoAluno(alunoSelecionado.id_aluno)}
+                          >
+                            Recarregar
+                          </Button>
+                          <Button
+                            variant="contained"
+                            startIcon={salvandoSasp ? <CircularProgress size={18} /> : <SaveIcon />}
+                            disabled={carregandoSasp || salvandoSasp}
+                            onClick={() => void salvarSasp()}
+                            sx={{ fontWeight: 900 }}
+                          >
+                            Salvar SASP
+                          </Button>
+                        </Stack>
+                      </Stack>
+                    </Paper>
 
                     {/* Seções */}
                     <Accordion defaultExpanded>
                       <AccordionSummary expandIcon={<ExpandMoreIcon />}>
                         <Stack direction="row" spacing={1} alignItems="center">
                           <DescriptionIcon color="action" />
-                          <Typography fontWeight={800}>Entrevista</Typography>
+                          <Typography fontWeight={900}>Entrevista</Typography>
                         </Stack>
                       </AccordionSummary>
                       <AccordionDetails>
@@ -1164,7 +1268,7 @@ export default function SaspPage() {
                             label="Data da entrevista"
                             type="date"
                             value={form.data_entrevista}
-                            onChange={(e) => setForm((p) => ({ ...p, data_entrevista: e.target.value }))}
+                            onChange={(e) => setForm((p: SaspFormState) => ({ ...p, data_entrevista: e.target.value }))}
                             InputLabelProps={{ shrink: true }}
                             fullWidth
                           />
@@ -1172,21 +1276,21 @@ export default function SaspPage() {
                           <TextField
                             label="Escola de origem"
                             value={form.escola_origem}
-                            onChange={(e) => setForm((p) => ({ ...p, escola_origem: e.target.value }))}
+                            onChange={(e) => setForm((p: SaspFormState) => ({ ...p, escola_origem: e.target.value }))}
                             fullWidth
                           />
 
                           <TextField
                             label="Cidade da escola de origem"
                             value={form.cidade_escola_origem}
-                            onChange={(e) => setForm((p) => ({ ...p, cidade_escola_origem: e.target.value }))}
+                            onChange={(e) => setForm((p: SaspFormState) => ({ ...p, cidade_escola_origem: e.target.value }))}
                             fullWidth
                           />
 
                           <TextField
                             label="Como conheceu o CEJA"
                             value={form.como_conheceu_ceja}
-                            onChange={(e) => setForm((p) => ({ ...p, como_conheceu_ceja: e.target.value }))}
+                            onChange={(e) => setForm((p: SaspFormState) => ({ ...p, como_conheceu_ceja: e.target.value }))}
                             fullWidth
                             multiline
                             minRows={2}
@@ -1195,7 +1299,7 @@ export default function SaspPage() {
                           <TextField
                             label="Observações"
                             value={form.observacoes_sasp}
-                            onChange={(e) => setForm((p) => ({ ...p, observacoes_sasp: e.target.value }))}
+                            onChange={(e) => setForm((p: SaspFormState) => ({ ...p, observacoes_sasp: e.target.value }))}
                             fullWidth
                             multiline
                             minRows={3}
@@ -1208,7 +1312,7 @@ export default function SaspPage() {
                       <AccordionSummary expandIcon={<ExpandMoreIcon />}>
                         <Stack direction="row" spacing={1} alignItems="center">
                           <SchoolIcon color="action" />
-                          <Typography fontWeight={800}>Histórico e Motivações</Typography>
+                          <Typography fontWeight={900}>Histórico e Motivações</Typography>
                         </Stack>
                       </AccordionSummary>
                       <AccordionDetails>
@@ -1216,7 +1320,7 @@ export default function SaspPage() {
                           <TextField
                             label="Motivo do retorno aos estudos"
                             value={form.motivo_retorno_estudos}
-                            onChange={(e) => setForm((p) => ({ ...p, motivo_retorno_estudos: e.target.value }))}
+                            onChange={(e) => setForm((p: SaspFormState) => ({ ...p, motivo_retorno_estudos: e.target.value }))}
                             fullWidth
                             multiline
                             minRows={2}
@@ -1225,7 +1329,9 @@ export default function SaspPage() {
                           <TextField
                             label="Disciplinas indicadas para aproveitamento"
                             value={form.disciplinas_indicadas_aproveitamento}
-                            onChange={(e) => setForm((p) => ({ ...p, disciplinas_indicadas_aproveitamento: e.target.value }))}
+                            onChange={(e) =>
+                              setForm((p: SaspFormState) => ({ ...p, disciplinas_indicadas_aproveitamento: e.target.value }))
+                            }
                             fullWidth
                             multiline
                             minRows={2}
@@ -1237,7 +1343,7 @@ export default function SaspPage() {
                               control={
                                 <Switch
                                   checked={form.repetiu_ano}
-                                  onChange={(e) => setForm((p) => ({ ...p, repetiu_ano: e.target.checked }))}
+                                  onChange={(e) => setForm((p: SaspFormState) => ({ ...p, repetiu_ano: e.target.checked }))}
                                 />
                               }
                               label="Já repetiu ano?"
@@ -1246,7 +1352,7 @@ export default function SaspPage() {
                               control={
                                 <Switch
                                   checked={form.desistiu_estudar}
-                                  onChange={(e) => setForm((p) => ({ ...p, desistiu_estudar: e.target.checked }))}
+                                  onChange={(e) => setForm((p: SaspFormState) => ({ ...p, desistiu_estudar: e.target.checked }))}
                                 />
                               }
                               label="Já desistiu de estudar?"
@@ -1258,7 +1364,7 @@ export default function SaspPage() {
                               <TextField
                                 label="Motivos da desistência"
                                 value={form.motivos_desistencia}
-                                onChange={(e) => setForm((p) => ({ ...p, motivos_desistencia: e.target.value }))}
+                                onChange={(e) => setForm((p: SaspFormState) => ({ ...p, motivos_desistencia: e.target.value }))}
                                 fullWidth
                                 multiline
                                 minRows={2}
@@ -1266,7 +1372,7 @@ export default function SaspPage() {
                               <TextField
                                 label="Escolas / séries em que desistiu"
                                 value={form.escolas_desistiu}
-                                onChange={(e) => setForm((p) => ({ ...p, escolas_desistiu: e.target.value }))}
+                                onChange={(e) => setForm((p: SaspFormState) => ({ ...p, escolas_desistiu: e.target.value }))}
                                 fullWidth
                                 multiline
                                 minRows={2}
@@ -1281,13 +1387,13 @@ export default function SaspPage() {
                       <AccordionSummary expandIcon={<ExpandMoreIcon />}>
                         <Stack direction="row" spacing={1} alignItems="center">
                           <WorkIcon color="action" />
-                          <Typography fontWeight={800}>Trabalho</Typography>
+                          <Typography fontWeight={900}>Trabalho</Typography>
                         </Stack>
                       </AccordionSummary>
                       <AccordionDetails>
                         <Stack spacing={2}>
                           <FormControlLabel
-                            control={<Switch checked={form.trabalha} onChange={(e) => setForm((p) => ({ ...p, trabalha: e.target.checked }))} />}
+                            control={<Switch checked={form.trabalha} onChange={(e) => setForm((p: SaspFormState) => ({ ...p, trabalha: e.target.checked }))} />}
                             label="Trabalha atualmente?"
                           />
 
@@ -1296,13 +1402,13 @@ export default function SaspPage() {
                               <TextField
                                 label="Local de trabalho"
                                 value={form.local_trabalho}
-                                onChange={(e) => setForm((p) => ({ ...p, local_trabalho: e.target.value }))}
+                                onChange={(e) => setForm((p: SaspFormState) => ({ ...p, local_trabalho: e.target.value }))}
                                 fullWidth
                               />
                               <TextField
                                 label="Função / cargo"
                                 value={form.funcao_trabalho}
-                                onChange={(e) => setForm((p) => ({ ...p, funcao_trabalho: e.target.value }))}
+                                onChange={(e) => setForm((p: SaspFormState) => ({ ...p, funcao_trabalho: e.target.value }))}
                                 fullWidth
                               />
                             </Stack>
@@ -1315,7 +1421,7 @@ export default function SaspPage() {
                       <AccordionSummary expandIcon={<ExpandMoreIcon />}>
                         <Stack direction="row" spacing={1} alignItems="center">
                           <PsychologyIcon color="action" />
-                          <Typography fontWeight={800}>Dificuldades e Tecnologia</Typography>
+                          <Typography fontWeight={900}>Dificuldades e Tecnologia</Typography>
                         </Stack>
                       </AccordionSummary>
                       <AccordionDetails>
@@ -1323,7 +1429,7 @@ export default function SaspPage() {
                           <TextField
                             label="Matérias em que tem mais dificuldade"
                             value={form.materias_dificuldade}
-                            onChange={(e) => setForm((p) => ({ ...p, materias_dificuldade: e.target.value }))}
+                            onChange={(e) => setForm((p: SaspFormState) => ({ ...p, materias_dificuldade: e.target.value }))}
                             fullWidth
                             multiline
                             minRows={2}
@@ -1331,7 +1437,7 @@ export default function SaspPage() {
                           <TextField
                             label="Relação/uso de tecnologia"
                             value={form.relacao_tecnologia}
-                            onChange={(e) => setForm((p) => ({ ...p, relacao_tecnologia: e.target.value }))}
+                            onChange={(e) => setForm((p: SaspFormState) => ({ ...p, relacao_tecnologia: e.target.value }))}
                             fullWidth
                             multiline
                             minRows={2}
@@ -1345,7 +1451,7 @@ export default function SaspPage() {
                       <AccordionSummary expandIcon={<ExpandMoreIcon />}>
                         <Stack direction="row" spacing={1} alignItems="center">
                           <FamilyRestroomIcon color="action" />
-                          <Typography fontWeight={800}>Família e Rotina</Typography>
+                          <Typography fontWeight={900}>Família e Rotina</Typography>
                         </Stack>
                       </AccordionSummary>
                       <AccordionDetails>
@@ -1353,7 +1459,7 @@ export default function SaspPage() {
                           <TextField
                             label="Pessoas na residência"
                             value={form.pessoas_residencia}
-                            onChange={(e) => setForm((p) => ({ ...p, pessoas_residencia: e.target.value }))}
+                            onChange={(e) => setForm((p: SaspFormState) => ({ ...p, pessoas_residencia: e.target.value }))}
                             type="number"
                             fullWidth
                             inputProps={{ min: 0 }}
@@ -1361,7 +1467,7 @@ export default function SaspPage() {
                           <TextField
                             label="Com quem mora (parentes / composição)"
                             value={form.parentes_moradia}
-                            onChange={(e) => setForm((p) => ({ ...p, parentes_moradia: e.target.value }))}
+                            onChange={(e) => setForm((p: SaspFormState) => ({ ...p, parentes_moradia: e.target.value }))}
                             fullWidth
                             multiline
                             minRows={2}
@@ -1369,19 +1475,21 @@ export default function SaspPage() {
                           <TextField
                             label="Quem é responsável pelos estudos"
                             value={form.responsavel_pelos_estudos}
-                            onChange={(e) => setForm((p) => ({ ...p, responsavel_pelos_estudos: e.target.value }))}
+                            onChange={(e) =>
+                              setForm((p: SaspFormState) => ({ ...p, responsavel_pelos_estudos: e.target.value }))
+                            }
                             fullWidth
                           />
 
                           <FormControlLabel
-                            control={<Switch checked={form.tem_filhos} onChange={(e) => setForm((p) => ({ ...p, tem_filhos: e.target.checked }))} />}
+                            control={<Switch checked={form.tem_filhos} onChange={(e) => setForm((p: SaspFormState) => ({ ...p, tem_filhos: e.target.checked }))} />}
                             label="Tem filhos?"
                           />
                           {form.tem_filhos ? (
                             <TextField
                               label="Quantos filhos"
                               value={form.quantos_filhos}
-                              onChange={(e) => setForm((p) => ({ ...p, quantos_filhos: e.target.value }))}
+                              onChange={(e) => setForm((p: SaspFormState) => ({ ...p, quantos_filhos: e.target.value }))}
                               type="number"
                               fullWidth
                               inputProps={{ min: 0 }}
@@ -1395,7 +1503,7 @@ export default function SaspPage() {
                       <AccordionSummary expandIcon={<ExpandMoreIcon />}>
                         <Stack direction="row" spacing={1} alignItems="center">
                           <DescriptionIcon color="action" />
-                          <Typography fontWeight={800}>Interesses</Typography>
+                          <Typography fontWeight={900}>Interesses</Typography>
                         </Stack>
                       </AccordionSummary>
                       <AccordionDetails>
@@ -1403,13 +1511,15 @@ export default function SaspPage() {
                           <TextField
                             label="Curso superior desejado"
                             value={form.curso_superior_desejado}
-                            onChange={(e) => setForm((p) => ({ ...p, curso_superior_desejado: e.target.value }))}
+                            onChange={(e) => setForm((p: SaspFormState) => ({ ...p, curso_superior_desejado: e.target.value }))}
                             fullWidth
                           />
                           <TextField
                             label="Atividades culturais de interesse"
                             value={form.atividade_cultural_interesse}
-                            onChange={(e) => setForm((p) => ({ ...p, atividade_cultural_interesse: e.target.value }))}
+                            onChange={(e) =>
+                              setForm((p: SaspFormState) => ({ ...p, atividade_cultural_interesse: e.target.value }))
+                            }
                             fullWidth
                             multiline
                             minRows={2}
@@ -1417,7 +1527,7 @@ export default function SaspPage() {
                           <TextField
                             label="Esportes de interesse"
                             value={form.esporte_interesse}
-                            onChange={(e) => setForm((p) => ({ ...p, esporte_interesse: e.target.value }))}
+                            onChange={(e) => setForm((p: SaspFormState) => ({ ...p, esporte_interesse: e.target.value }))}
                             fullWidth
                           />
                         </Stack>
@@ -1440,7 +1550,7 @@ export default function SaspPage() {
                         startIcon={salvandoSasp ? <CircularProgress size={18} /> : <SaveIcon />}
                         disabled={carregandoSasp || salvandoSasp}
                         onClick={() => void salvarSasp()}
-                        sx={{ fontWeight: 800 }}
+                        sx={{ fontWeight: 900 }}
                       >
                         Salvar SASP
                       </Button>
