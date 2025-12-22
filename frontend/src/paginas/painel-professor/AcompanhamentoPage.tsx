@@ -52,7 +52,11 @@ import { useSupabase } from '../../contextos/SupabaseContext'
 import { useNotificacaoContext } from '../../contextos/NotificacaoContext'
 import { useAuth } from '../../contextos/AuthContext'
 
+// ✅ Pé-de-Meia (regra unificada)
+import { avaliarPeDeMeia } from '../../utils/peDeMeia'
+
 type SalaOption = { id_sala: number; nome: string; tipo_sala: string }
+
 type DisciplinaOption = { id_disciplina: number; nome_disciplina: string }
 
 type AusenteItem = {
@@ -62,6 +66,11 @@ type AusenteItem = {
 
   aluno_nome: string
   aluno_foto_url?: string | null
+
+  // dados para regra do Pé-de-Meia
+  data_nascimento?: string | null
+  data_matricula?: string | null
+  ano_letivo?: number | null
 
   email?: string | null
   celular?: string | null
@@ -153,12 +162,104 @@ function nomeNivelEnsinoCurto(idNivel: number | null | undefined): string {
   return '-'
 }
 
-function isElegivelPeDeMeia(opts: { id_nivel_ensino?: number | null; nis?: string | null; possui_beneficio_governo?: boolean | null }): boolean {
-  const nivel = opts.id_nivel_ensino ?? null
-  if (nivel !== 2) return false
-  const nisOk = Boolean(opts.nis?.trim())
-  const benOk = Boolean(opts.possui_beneficio_governo)
-  return nisOk || benOk
+type PeDeMeiaResumoUI = {
+  elegivel: boolean
+  classificacao: string
+  label: string
+  color: 'success' | 'warning' | 'error' | 'default'
+  variant: 'filled' | 'outlined'
+  tooltip: string | null
+}
+
+function coletarMensagensPeDeMeia(res: any): { erros: string[]; avisos: string[] } {
+  const erros: string[] = Array.isArray(res?.erros)
+    ? res.erros
+    : Array.isArray(res?.motivos)
+      ? res.motivos
+      : []
+
+  const avisos: string[] = Array.isArray(res?.avisos) ? res.avisos : []
+
+  return { erros, avisos }
+}
+
+function avaliarPeDeMeiaParaUI(a: AusenteItem): PeDeMeiaResumoUI {
+  // CEJA: normalmente tratamos como EJA (ensino médio EJA)
+  // Obs.: este cálculo é “triagem interna”; elegibilidade real é MEC/Caixa.
+  const res: any = avaliarPeDeMeia(
+    {
+      id_nivel_ensino: a.id_nivel_ensino ?? null,
+      cpf: a.cpf ?? null,
+      data_nascimento: a.data_nascimento ?? null,
+      nis: a.nis ?? null,
+      possui_beneficio_governo: a.possui_beneficio_governo ?? null,
+      data_matricula: a.data_matricula ?? null,
+      ano_letivo: a.ano_letivo ?? null,
+      modalidade: 'EJA',
+    } as any,
+    undefined,
+  ) as any
+
+  const { erros, avisos } = coletarMensagensPeDeMeia(res)
+  const rawClass = String(res?.classificacao ?? 'INDETERMINADO')
+
+  // Não marcamos como elegível sem conseguir checar idade (data_nascimento)
+  const temDataNasc = Boolean((a.data_nascimento ?? '').trim())
+  const classificacao = temDataNasc ? rawClass : rawClass === 'NAO_ELEGIVEL' ? 'NAO_ELEGIVEL' : 'INDETERMINADO'
+
+  const elegivel = temDataNasc && classificacao.startsWith('ELEGIVEL')
+
+  const tooltipParts: string[] = []
+  if (!temDataNasc) {
+    tooltipParts.push('Data de nascimento não informada (não dá para validar a faixa etária EJA 19–24).')
+  }
+  if (erros.length) tooltipParts.push(...erros)
+  if (avisos.length) tooltipParts.push(...avisos)
+
+  const tooltip = tooltipParts.length ? tooltipParts.join('\n') : null
+
+  if (elegivel) {
+    // Se é “ELEGIVEL_...” mostramos um alerta sutil
+    if (classificacao !== 'ELEGIVEL') {
+      return {
+        elegivel: true,
+        classificacao,
+        label: 'Pé-de-Meia: elegível (limite)',
+        color: 'warning',
+        variant: 'filled',
+        tooltip: tooltip ?? 'Elegível, mas com observação (ex.: idade limite durante o período).',
+      }
+    }
+
+    return {
+      elegivel: true,
+      classificacao,
+      label: 'Pé-de-Meia: elegível',
+      color: 'success',
+      variant: 'filled',
+      tooltip,
+    }
+  }
+
+  if (classificacao === 'INDETERMINADO') {
+    return {
+      elegivel: false,
+      classificacao,
+      label: 'Pé-de-Meia: conferir',
+      color: 'warning',
+      variant: 'outlined',
+      tooltip: tooltip ?? 'Dados insuficientes no cadastro para confirmar elegibilidade.',
+    }
+  }
+
+  return {
+    elegivel: false,
+    classificacao,
+    label: 'Pé-de-Meia: não',
+    color: 'default',
+    variant: 'outlined',
+    tooltip,
+  }
 }
 
 function montarLinkWhatsApp(celular: string | null | undefined): string | null {
@@ -217,6 +318,15 @@ export default function AcompanhamentoPage() {
   const [carregandoAusentes, setCarregandoAusentes] = useState(false)
   const [ausentes, setAusentes] = useState<AusenteItem[]>([])
 
+  // ✅ cache da avaliação Pé-de-Meia
+  const peDeMeiaPorAluno = useMemo(() => {
+    const map = new Map<number, PeDeMeiaResumoUI>()
+    for (const a of ausentes) {
+      map.set(a.id_aluno, avaliarPeDeMeiaParaUI(a))
+    }
+    return map
+  }, [ausentes])
+
   // ✅ filtro final (corrigido)
   const listaFiltrada = useMemo(() => {
     const q = normalizarTexto(filtroTexto)
@@ -229,13 +339,8 @@ export default function AcompanhamentoPage() {
         normalizarTexto(a.ultima_sala_nome ?? '').includes(q) ||
         normalizarTexto(a.ultima_disciplina_nome ?? '').includes(q)
 
-      const matchPeDeMeia =
-        !somentePeDeMeia ||
-        isElegivelPeDeMeia({
-          id_nivel_ensino: a.id_nivel_ensino,
-          nis: a.nis,
-          possui_beneficio_governo: a.possui_beneficio_governo,
-        })
+      const pe = peDeMeiaPorAluno.get(a.id_aluno)
+      const matchPeDeMeia = !somentePeDeMeia || Boolean(pe?.elegivel)
 
       const matchSala = filtroSalaId === 'todas' || a.ultima_sala_id === filtroSalaId
       const matchDisc = filtroDisciplinaId === 'todas' || a.ultima_disciplina_id === filtroDisciplinaId
@@ -265,16 +370,16 @@ export default function AcompanhamentoPage() {
     })
 
     return lista
-  }, [ausentes, filtroTexto, somentePeDeMeia, filtroSalaId, filtroDisciplinaId, isProfessor, salasPermitidasIds, incluirSemHistorico])
+  }, [ausentes, filtroTexto, somentePeDeMeia, filtroSalaId, filtroDisciplinaId, isProfessor, salasPermitidasIds, incluirSemHistorico, peDeMeiaPorAluno])
 
   const totalSemContato = useMemo(
     () => listaFiltrada.filter((x) => normalizarTexto(x.ultimo_acompanhamento_status ?? '').includes('sem contato')).length,
-    [listaFiltrada]
+    [listaFiltrada],
   )
 
   const totalComContato = useMemo(
     () => listaFiltrada.filter((x) => normalizarTexto(x.ultimo_acompanhamento_status ?? '').includes('com contato')).length,
-    [listaFiltrada]
+    [listaFiltrada],
   )
 
   // ======= dialogs =======
@@ -382,7 +487,7 @@ export default function AcompanhamentoPage() {
       if (error) throw error
 
       const arr = (data ?? []) as any[]
-      const mapped: AusenteItem[] = arr.map((r) => ({
+      const base: AusenteItem[] = arr.map((r) => ({
         id_aluno: Number(r.id_aluno),
         id_matricula: r.id_matricula != null ? Number(r.id_matricula) : null,
         numero_inscricao: r.numero_inscricao ?? null,
@@ -410,12 +515,11 @@ export default function AcompanhamentoPage() {
         ultima_visita: r.ultima_visita ?? null,
         dias_sem_vir: r.dias_sem_vir != null ? Number(r.dias_sem_vir) : null,
 
-        // ✅ seus campos atuais no TSX:
-        ultima_sala_id: r.ultima_sala_id != null ? Number(r.ultima_sala_id) : (r.id_sala != null ? Number(r.id_sala) : null),
+        ultima_sala_id: r.ultima_sala_id != null ? Number(r.ultima_sala_id) : r.id_sala != null ? Number(r.id_sala) : null,
         ultima_sala_nome: r.ultima_sala_nome ?? (r.sala_nome ?? null),
         ultima_sala_tipo: r.ultima_sala_tipo ?? null,
 
-        ultima_disciplina_id: r.ultima_disciplina_id != null ? Number(r.ultima_disciplina_id) : (r.id_disciplina != null ? Number(r.id_disciplina) : null),
+        ultima_disciplina_id: r.ultima_disciplina_id != null ? Number(r.ultima_disciplina_id) : r.id_disciplina != null ? Number(r.id_disciplina) : null,
         ultima_disciplina_nome: r.ultima_disciplina_nome ?? (r.disciplina_nome ?? null),
 
         ultimo_acompanhamento_data: r.ultimo_acompanhamento_data ?? null,
@@ -424,7 +528,60 @@ export default function AcompanhamentoPage() {
         ultimo_acompanhamento_resumo: r.ultimo_acompanhamento_resumo ?? null,
       }))
 
-      setAusentes(mapped)
+      // ✅ Enriquecer dados necessários para validar Pé-de-Meia (idade e prazo/matrícula)
+      // (sem isso, só daria para “chutar” por NIS/benefício)
+      const idsAluno = Array.from(new Set(base.map((x) => x.id_aluno).filter(Boolean)))
+      const idsMatricula = Array.from(new Set(base.map((x) => x.id_matricula).filter((x): x is number => x != null)))
+
+      const nascPorAluno = new Map<number, string | null>()
+      const matPorId = new Map<number, { data_matricula: string | null; ano_letivo: number | null }>()
+
+      try {
+        if (idsAluno.length > 0) {
+          const { data: alunosData, error: errAlunos } = await supabase
+            .from('alunos')
+            .select('id_aluno, usuarios ( data_nascimento )')
+            .in('id_aluno', idsAluno)
+
+          if (errAlunos) throw errAlunos
+
+          ;(alunosData ?? []).forEach((row: any) => {
+            const u = first(row?.usuarios) as any
+            nascPorAluno.set(Number(row.id_aluno), u?.data_nascimento ? String(u.data_nascimento) : null)
+          })
+        }
+
+        if (idsMatricula.length > 0) {
+          const { data: mats, error: errMats } = await supabase
+            .from('matriculas')
+            .select('id_matricula, data_matricula, ano_letivo')
+            .in('id_matricula', idsMatricula)
+
+          if (errMats) throw errMats
+
+          ;(mats ?? []).forEach((m: any) => {
+            matPorId.set(Number(m.id_matricula), {
+              data_matricula: m.data_matricula ? String(m.data_matricula) : null,
+              ano_letivo: m.ano_letivo != null ? Number(m.ano_letivo) : null,
+            })
+          })
+        }
+      } catch (e) {
+        // Não travamos a tela se faltar permissão/RLS; só fica “indeterminado” no Pé-de-Meia.
+        console.warn('Falha ao enriquecer dados para Pé-de-Meia (data_nascimento/data_matricula).', e)
+      }
+
+      const enriched: AusenteItem[] = base.map((a) => {
+        const matInfo = a.id_matricula != null ? matPorId.get(a.id_matricula) : undefined
+        return {
+          ...a,
+          data_nascimento: nascPorAluno.get(a.id_aluno) ?? a.data_nascimento ?? null,
+          data_matricula: matInfo?.data_matricula ?? a.data_matricula ?? null,
+          ano_letivo: matInfo?.ano_letivo ?? a.ano_letivo ?? null,
+        }
+      })
+
+      setAusentes(enriched)
     } catch (e) {
       console.error(e)
       erro('Falha ao carregar lista de ausentes.')
@@ -434,15 +591,16 @@ export default function AcompanhamentoPage() {
   }, [supabase, diasMinimo, filtroSalaId, filtroDisciplinaId, incluirSemHistorico, erro])
 
   // ======= histórico do aluno =======
-  const carregarHistoricoAluno = useCallback(async (id_aluno: number) => {
-    if (!supabase) return
+  const carregarHistoricoAluno = useCallback(
+    async (id_aluno: number) => {
+      if (!supabase) return
 
-    setCarregandoHistorico(true)
-    try {
-      const { data, error } = await supabase
-        .from('acompanhamento_aluno')
-        .select(
-          `
+      setCarregandoHistorico(true)
+      try {
+        const { data, error } = await supabase
+          .from('acompanhamento_aluno')
+          .select(
+            `
           id_acompanhamento,
           id_aluno,
           id_matricula,
@@ -456,39 +614,41 @@ export default function AcompanhamentoPage() {
           created_at,
           updated_at,
           usuarios ( name )
-        `
-        )
-        .eq('id_aluno', id_aluno)
-        .order('data_evento', { ascending: false })
-        .order('created_at', { ascending: false })
-        .limit(50)
+        `,
+          )
+          .eq('id_aluno', id_aluno)
+          .order('data_evento', { ascending: false })
+          .order('created_at', { ascending: false })
+          .limit(50)
 
-      if (error) throw error
+        if (error) throw error
 
-      const lista: AcompRegistro[] = (data ?? []).map((r: any) => ({
-        id_acompanhamento: Number(r.id_acompanhamento),
-        id_aluno: Number(r.id_aluno),
-        id_matricula: r.id_matricula != null ? Number(r.id_matricula) : null,
-        id_sala: r.id_sala != null ? Number(r.id_sala) : null,
-        id_disciplina: r.id_disciplina != null ? Number(r.id_disciplina) : null,
-        data_evento: String(r.data_evento),
-        tipo: String(r.tipo),
-        status: String(r.status),
-        observacao: r.observacao ?? null,
-        created_by: r.created_by ?? null,
-        created_at: String(r.created_at),
-        updated_at: String(r.updated_at),
-        usuarios: first(r?.usuarios) as any,
-      }))
+        const lista: AcompRegistro[] = (data ?? []).map((r: any) => ({
+          id_acompanhamento: Number(r.id_acompanhamento),
+          id_aluno: Number(r.id_aluno),
+          id_matricula: r.id_matricula != null ? Number(r.id_matricula) : null,
+          id_sala: r.id_sala != null ? Number(r.id_sala) : null,
+          id_disciplina: r.id_disciplina != null ? Number(r.id_disciplina) : null,
+          data_evento: String(r.data_evento),
+          tipo: String(r.tipo),
+          status: String(r.status),
+          observacao: r.observacao ?? null,
+          created_by: r.created_by ?? null,
+          created_at: String(r.created_at),
+          updated_at: String(r.updated_at),
+          usuarios: first(r?.usuarios) as any,
+        }))
 
-      setHistorico(lista)
-    } catch (e) {
-      console.error(e)
-      erro('Falha ao carregar histórico do aluno.')
-    } finally {
-      if (mountedRef.current) setCarregandoHistorico(false)
-    }
-  }, [supabase, erro])
+        setHistorico(lista)
+      } catch (e) {
+        console.error(e)
+        erro('Falha ao carregar histórico do aluno.')
+      } finally {
+        if (mountedRef.current) setCarregandoHistorico(false)
+      }
+    },
+    [supabase, erro],
+  )
 
   const abrirAluno = useCallback(
     async (a: AusenteItem) => {
@@ -512,7 +672,7 @@ export default function AcompanhamentoPage() {
 
       await carregarHistoricoAluno(a.id_aluno)
     },
-    [carregarHistoricoAluno]
+    [carregarHistoricoAluno],
   )
 
   const fecharAluno = useCallback(() => {
@@ -609,7 +769,7 @@ export default function AcompanhamentoPage() {
         md: 'repeat(3, 1fr)',
       },
     }),
-    []
+    [],
   )
 
   return (
@@ -739,16 +899,23 @@ export default function AcompanhamentoPage() {
         ) : (
           <Box sx={cardGridSx}>
             {listaFiltrada.map((a) => {
-              const elegivel = isElegivelPeDeMeia({
-                id_nivel_ensino: a.id_nivel_ensino,
-                nis: a.nis,
-                possui_beneficio_governo: a.possui_beneficio_governo,
-              })
+              const pe = peDeMeiaPorAluno.get(a.id_aluno) ?? {
+                elegivel: false,
+                classificacao: 'INDETERMINADO',
+                label: 'Pé-de-Meia: conferir',
+                color: 'warning' as const,
+                variant: 'outlined' as const,
+                tooltip: null,
+              }
 
               const statusTxt = (a.ultimo_acompanhamento_status ?? '').trim()
               const statusNorm = normalizarTexto(statusTxt)
               const statusColor =
                 statusNorm.includes('sem contato') ? 'warning' : statusNorm.includes('com contato') ? 'info' : statusNorm.includes('retorn') ? 'success' : 'default'
+
+              const peChip = (
+                <Chip size="small" label={pe.label} color={pe.color as any} variant={pe.variant} />
+              )
 
               return (
                 <Card
@@ -793,7 +960,9 @@ export default function AcompanhamentoPage() {
                       ) : (
                         <Chip size="small" label="Sem histórico" variant="outlined" />
                       )}
-                      {elegivel ? <Chip size="small" label="Pé-de-Meia: Elegível" color="success" /> : <Chip size="small" label="Pé-de-Meia" variant="outlined" />}
+
+                      {pe.tooltip ? <Tooltip title={<pre style={{ margin: 0, whiteSpace: 'pre-wrap' }}>{pe.tooltip}</pre>}>{peChip}</Tooltip> : peChip}
+
                       {a.possui_necessidade_especial ? <Chip size="small" label="PCD" color="info" variant="outlined" /> : null}
                     </Stack>
 
@@ -913,11 +1082,17 @@ export default function AcompanhamentoPage() {
                   <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
                     <Chip size="small" icon={<MeetingRoomIcon />} label={alunoAtual.ultima_sala_nome ?? 'Sala: -'} variant="outlined" />
                     <Chip size="small" icon={<SchoolIcon />} label={alunoAtual.ultima_disciplina_nome ?? 'Disciplina: -'} variant="outlined" />
-                    {isElegivelPeDeMeia({ id_nivel_ensino: alunoAtual.id_nivel_ensino, nis: alunoAtual.nis, possui_beneficio_governo: alunoAtual.possui_beneficio_governo }) ? (
-                      <Chip size="small" label="Pé-de-Meia: Elegível" color="success" />
-                    ) : (
-                      <Chip size="small" label="Pé-de-Meia" variant="outlined" />
-                    )}
+
+                    {(() => {
+                      const pe = peDeMeiaPorAluno.get(alunoAtual.id_aluno) ?? avaliarPeDeMeiaParaUI(alunoAtual)
+                      const chip = <Chip size="small" label={pe.label} color={pe.color as any} variant={pe.variant} />
+                      return pe.tooltip ? (
+                        <Tooltip title={<pre style={{ margin: 0, whiteSpace: 'pre-wrap' }}>{pe.tooltip}</pre>}>{chip}</Tooltip>
+                      ) : (
+                        chip
+                      )
+                    })()}
+
                     {alunoAtual.possui_necessidade_especial ? <Chip size="small" label="PCD" color="info" variant="outlined" /> : null}
                   </Stack>
 
