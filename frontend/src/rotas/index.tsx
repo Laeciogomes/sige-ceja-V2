@@ -9,7 +9,6 @@ import { NovaSenhaPage } from '../paginas/Autenticacao/NovaSenhaPage'
 import { DashboardPage } from '../paginas/painel-administracao/DashboardPage'
 
 import { PaginaSimples } from '../paginas/PaginaSimples'
-import AlunoInicioPage from '../paginas/painel-aluno/AlunoInicioPage'
 import AlunoMatriculasPage from '../paginas/painel-aluno/AlunoMatriculasPage'
 import AlunoProgressoPage from '../paginas/painel-aluno/AlunoProgressoPage'
 import PerfilPage from '../paginas/Perfil/PerfilPage'
@@ -70,7 +69,7 @@ export const AppRoutes: React.FC = () => {
         element={autenticado ? <RootLayout /> : <Navigate to="/login" replace />}
       >
         {/* Dashboard geral */}
-        <Route index element={usuario?.papel === 'ALUNO' ? <Navigate to="/alunos" replace /> : <DashboardPage />} />
+        <Route index element={<DashboardPage />} />
 
         {/* SECRETARIA */}
         <Route
@@ -115,7 +114,7 @@ export const AppRoutes: React.FC = () => {
           path="professores"
           element={
             <RotaPorPapel papeisPermitidos={['PROFESSOR', 'ADMIN']}>
-              <PaginaSimples titulo="Painel do Professor" />
+              <DashboardPage />
             </RotaPorPapel>
           }
         />
@@ -213,7 +212,7 @@ export const AppRoutes: React.FC = () => {
           path="alunos"
           element={
             <RotaPorPapel papeisPermitidos={['ALUNO', 'ADMIN']}>
-              <AlunoInicioPage />
+              <Navigate to="/alunos/matriculas" replace />
             </RotaPorPapel>
           }
         />
