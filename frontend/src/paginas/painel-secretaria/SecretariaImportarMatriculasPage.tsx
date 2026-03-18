@@ -2257,12 +2257,11 @@ const SecretariaMatriculasPage: FC = () => {
         foto_url: editAluno.fotoUrl || null,
       }
 
-      const { data: usuarioAtualizado, error: usuarioError } = await supabase
+      const { data: usuariosAtualizados, error: usuarioError } = await supabase
         .from('usuarios')
         .update(usuarioUpdate)
         .eq('id', editUserId)
         .select('id')
-        .maybeSingle()
 
       if (usuarioError) {
         console.error(usuarioError)
@@ -2270,8 +2269,8 @@ const SecretariaMatriculasPage: FC = () => {
         return
       }
 
-      if (!usuarioAtualizado) {
-        erro('Nenhum dado do usuário foi atualizado. Verifique as permissões de UPDATE (RLS) da tabela usuarios.')
+      if (!usuariosAtualizados || usuariosAtualizados.length === 0) {
+        erro('Nenhum dado do usuário foi atualizado. Verifique as permissões de UPDATE/SELECT (RLS) da tabela usuarios.')
         return
       }
 
@@ -2290,12 +2289,11 @@ const SecretariaMatriculasPage: FC = () => {
         observacoes_gerais: editAluno.observacoes.trim() || null,
       }
 
-      const { data: alunoAtualizado, error: alunoError } = await supabase
+      const { data: alunosAtualizados, error: alunoError } = await supabase
         .from('alunos')
         .update(alunoUpdate)
         .eq('id_aluno', editAlunoId)
         .select('id_aluno')
-        .maybeSingle()
 
       if (alunoError) {
         console.error(alunoError)
@@ -2303,8 +2301,8 @@ const SecretariaMatriculasPage: FC = () => {
         return
       }
 
-      if (!alunoAtualizado) {
-        erro('Nenhum dado da tabela alunos foi atualizado. Verifique as permissões de UPDATE (RLS).')
+      if (!alunosAtualizados || alunosAtualizados.length === 0) {
+        erro('Nenhum dado da tabela alunos foi atualizado. Verifique as permissões de UPDATE/SELECT (RLS).')
         return
       }
 
@@ -2325,19 +2323,18 @@ const SecretariaMatriculasPage: FC = () => {
         let idMatricula = bloco.idMatricula
 
         if (idMatricula) {
-          const { data: matriculaAtualizada, error: upErr } = await supabase
+          const { data: matriculasAtualizadas, error: upErr } = await supabase
             .from('matriculas')
             .update(payload)
             .eq('id_matricula', idMatricula)
             .select('id_matricula')
-            .maybeSingle()
           if (upErr) {
             console.error(upErr)
             erro('Erro ao atualizar matrícula.')
             return
           }
-          if (!matriculaAtualizada) {
-            erro('Nenhuma matrícula foi atualizada. Verifique as permissões de UPDATE (RLS) da tabela matriculas.')
+          if (!matriculasAtualizadas || matriculasAtualizadas.length === 0) {
+            erro('Nenhuma matrícula foi atualizada. Verifique as permissões de UPDATE/SELECT (RLS) da tabela matriculas.')
             return
           }
         } else {
