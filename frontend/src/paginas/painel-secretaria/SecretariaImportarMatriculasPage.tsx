@@ -635,64 +635,59 @@ const gerarInsertsProgresso = (args: {
 
   const inserts: Array<Record<string, unknown>> = []
 
-  if (isAproveitamento) {
-    const seriesConcluidasSet = new Set(seriesConcluidasIds)
-    const disciplinasConcluidasSet = new Set(disciplinasAproveitamentoConfigIds)
-    const considerarTodasDisciplinasDasSeriesSelecionadas =
-      disciplinasConcluidasSet.size === 0
+  if (isAproveitamento && seriesConcluidasIds.length > 0) {
+    const seriesSelecionadasSet = new Set(seriesConcluidasIds)
+    const disciplinasACursarSet = new Set(disciplinasAproveitamentoConfigIds)
 
-    anosNivel.forEach((serie) => {
-      const configs = configDisciplinaAnoDisponiveis.filter(
-        (c) => c.id_ano_escolar === serie.id_ano_escolar,
-      )
+    anosNivel
+      .filter((serie) => seriesSelecionadasSet.has(serie.id_ano_escolar))
+      .forEach((serie) => {
+        const configs = configDisciplinaAnoDisponiveis.filter(
+          (c) => c.id_ano_escolar === serie.id_ano_escolar,
+        )
 
-      configs.forEach((c) => {
-        const serieConcluida = seriesConcluidasSet.has(serie.id_ano_escolar)
-        const disciplinaConcluida =
-          serieConcluida &&
-          (considerarTodasDisciplinasDasSeriesSelecionadas ||
-            disciplinasConcluidasSet.has(c.id_config))
+        configs.forEach((c) => {
+          const disciplinaACursar = disciplinasACursarSet.has(c.id_config)
 
-        inserts.push({
-          id_matricula: idMatricula,
-          id_disciplina: c.id_disciplina,
-          id_ano_escolar: serie.id_ano_escolar,
-          id_status_disciplina: disciplinaConcluida
-            ? statusConcluida.id_status_disciplina
-            : statusACursar.id_status_disciplina,
-          nota_final: null,
-          data_conclusao: null,
-          observacoes: disciplinaConcluida
-            ? considerarTodasDisciplinasDasSeriesSelecionadas
-              ? 'Disciplina concluída porque a série foi marcada como concluída por aproveitamento de estudos.'
-              : 'Disciplina concluída por aproveitamento de estudos.'
-            : serieConcluida
-              ? 'Disciplina não aproveitada; mantida como A Cursar.'
-              : 'Disciplina marcada como A Cursar após aproveitamento de estudos.',
+          inserts.push({
+            id_matricula: idMatricula,
+            id_disciplina: c.id_disciplina,
+            id_ano_escolar: serie.id_ano_escolar,
+            id_status_disciplina: disciplinaACursar
+              ? statusACursar.id_status_disciplina
+              : statusConcluida.id_status_disciplina,
+            nota_final: null,
+            data_conclusao: null,
+            observacoes: disciplinaACursar
+              ? 'Disciplina definida como A Cursar no CEJA (Aproveitamento de Estudos).'
+              : 'Disciplina registrada como concluída por aproveitamento, outra escola ou Encceja.',
+          })
         })
       })
-    })
   }
 
   if (isProgressao && serieProgressaoId !== '') {
     const serieIdNum = Number(serieProgressaoId)
-    const considerarTodasDisciplinasDaSerie = disciplinasProgressaoIds.length === 0
-    const configs = configDisciplinaAnoDisponiveis.filter((c) => {
-      if (c.id_ano_escolar !== serieIdNum) return false
-      return considerarTodasDisciplinasDaSerie || disciplinasProgressaoIds.includes(c.id_disciplina)
-    })
+    const disciplinasACursarSet = new Set(disciplinasProgressaoIds)
+    const configs = configDisciplinaAnoDisponiveis.filter(
+      (c) => c.id_ano_escolar === serieIdNum,
+    )
 
     configs.forEach((c) => {
+      const disciplinaACursar = disciplinasACursarSet.has(c.id_disciplina)
+
       inserts.push({
         id_matricula: idMatricula,
         id_disciplina: c.id_disciplina,
         id_ano_escolar: serieIdNum,
-        id_status_disciplina: statusACursar.id_status_disciplina,
+        id_status_disciplina: disciplinaACursar
+          ? statusACursar.id_status_disciplina
+          : statusConcluida.id_status_disciplina,
         nota_final: null,
         data_conclusao: null,
-        observacoes: considerarTodasDisciplinasDaSerie
-          ? 'Todas as disciplinas da série foram definidas como A Cursar na matrícula de Progressão de Estudos.'
-          : 'Disciplina definida como A Cursar na matrícula de Progressão de Estudos.',
+        observacoes: disciplinaACursar
+          ? 'Disciplina definida como A Cursar no CEJA (Progressão de Estudos).'
+          : 'Disciplina registrada como concluída por aproveitamento, outra escola ou Encceja.',
       })
     })
   }
@@ -854,7 +849,6 @@ const MatriculaNivelCard: FC<MatriculaNivelCardProps> = (props) => {
                   disciplinasAproveitamentoConfigIds: [],
                   serieProgressaoId: '',
                   disciplinasProgressaoIds: [],
-                  regenerarProgresso: modo === 'editar' && !!form.idMatricula ? true : form.regenerarProgresso,
                 })
               }
               disabled={desabilitado}
@@ -908,7 +902,6 @@ const MatriculaNivelCard: FC<MatriculaNivelCardProps> = (props) => {
                   disciplinasAproveitamentoConfigIds: [],
                   serieProgressaoId: '',
                   disciplinasProgressaoIds: [],
-                  regenerarProgresso: modo === 'editar' && !!form.idMatricula ? true : form.regenerarProgresso,
                 })
               }}
               disabled={desabilitado || form.nivelId === ''}
@@ -927,18 +920,7 @@ const MatriculaNivelCard: FC<MatriculaNivelCardProps> = (props) => {
               labelId={`status-label-${form.formId}`}
               label="Status"
               value={form.statusId === '' ? '' : String(form.statusId)}
-              onChange={(e) => {
-                const proximoStatusId = e.target.value === '' ? '' : Number(e.target.value)
-                const statusSelecionado = statusDisponiveis.find(
-                  (item) => item.id_status_matricula === Number(proximoStatusId),
-                )
-                const ehConcluido = normalizarTexto(statusSelecionado?.nome ?? '').includes('conclu')
-
-                setForm({
-                  statusId: proximoStatusId,
-                  dataConclusao: ehConcluido && !form.dataConclusao ? hojeISO() : form.dataConclusao,
-                })
-              }}
+              onChange={(e) => setForm({ statusId: e.target.value === '' ? '' : Number(e.target.value) })}
               disabled={desabilitado || form.nivelId === ''}
             >
               <MenuItem value="">
@@ -1011,7 +993,7 @@ const MatriculaNivelCard: FC<MatriculaNivelCardProps> = (props) => {
                   disabled={desabilitado || form.nivelId === ''}
                 />
               }
-              label="Regenerar progresso (progresso_aluno)"
+              label="Regerar progresso (progresso_aluno)"
             />
           )}
         </Stack>
@@ -1020,18 +1002,18 @@ const MatriculaNivelCard: FC<MatriculaNivelCardProps> = (props) => {
         {isAproveitamento && form.nivelId !== '' && (
           <Stack spacing={1.5}>
             <Typography variant="subtitle2" fontWeight={800}>
-              Aproveitamento de Estudos — Séries e disciplinas concluídas
+              Aproveitamento de Estudos — Séries e disciplinas a cursar no CEJA
             </Typography>
             <Typography variant="body2" color="text.secondary">
-              Selecione as séries (anos escolares) já concluídas em outra escola. Se você não marcar disciplinas específicas, o sistema entenderá que todas as disciplinas da série foram concluídas. Marcar disciplinas continua opcional para casos parciais.
+              Selecione as séries e as disciplinas que o aluno ainda vai cursar no CEJA. As demais disciplinas dessas séries serão salvas como concluídas por outra escola, Encceja ou aproveitamento.
             </Typography>
 
             <FormControl fullWidth size="small">
-              <InputLabel id={`series-concluidas-label-${form.formId}`}>Séries concluídas</InputLabel>
+              <InputLabel id={`series-concluidas-label-${form.formId}`}>Séries a cursar no CEJA</InputLabel>
               <Select
                 labelId={`series-concluidas-label-${form.formId}`}
                 multiple
-                label="Séries concluídas"
+                label="Séries a cursar no CEJA"
                 value={form.seriesConcluidasIds}
                 onChange={(e) => {
                   const proximasSeries = parseMultiNumber(e.target.value)
@@ -1046,7 +1028,6 @@ const MatriculaNivelCard: FC<MatriculaNivelCardProps> = (props) => {
                     disciplinasAproveitamentoConfigIds: form.disciplinasAproveitamentoConfigIds.filter((id) =>
                       configIdsValidos.has(id),
                     ),
-                    regenerarProgresso: modo === 'editar' && !!form.idMatricula ? true : form.regenerarProgresso,
                   })
                 }}
                 renderValue={(selected) => {
@@ -1068,21 +1049,19 @@ const MatriculaNivelCard: FC<MatriculaNivelCardProps> = (props) => {
             </FormControl>
 
             <FormControl fullWidth size="small">
-              <InputLabel id={`disciplinas-aproveitamento-label-${form.formId}`}>Disciplinas concluídas</InputLabel>
+              <InputLabel id={`disciplinas-aproveitamento-label-${form.formId}`}>Disciplinas a cursar no CEJA</InputLabel>
               <Select
                 labelId={`disciplinas-aproveitamento-label-${form.formId}`}
                 multiple
-                label="Disciplinas concluídas"
+                label="Disciplinas a cursar no CEJA"
                 value={form.disciplinasAproveitamentoConfigIds}
                 onChange={(e) =>
                   setForm({
                     disciplinasAproveitamentoConfigIds: parseMultiNumber(e.target.value),
-                    regenerarProgresso: modo === 'editar' && !!form.idMatricula ? true : form.regenerarProgresso,
                   })
                 }
                 renderValue={(selected) => {
                   const ids = selected as number[]
-                  if (ids.length === 0) return 'Todas as disciplinas das séries selecionadas'
                   const nomes = disciplinasAproveitamentoOptions
                     .filter((disc) => ids.includes(disc.id_config))
                     .map((disc) => `${disc.nome_ano} — ${disc.nome_disciplina}`)
@@ -1104,7 +1083,7 @@ const MatriculaNivelCard: FC<MatriculaNivelCardProps> = (props) => {
                 ))}
               </Select>
               <FormHelperText>
-                Opcional. Se nada for marcado, o sistema considerará todas as disciplinas das séries selecionadas como concluídas. Use esta lista apenas quando o aproveitamento for parcial.
+                Marque somente as disciplinas que o aluno vai cursar no CEJA. As não marcadas serão registradas como concluídas.
               </FormHelperText>
             </FormControl>
           </Stack>
@@ -1114,10 +1093,10 @@ const MatriculaNivelCard: FC<MatriculaNivelCardProps> = (props) => {
         {isProgressao && form.nivelId !== '' && (
           <Stack spacing={1.5}>
             <Typography variant="subtitle2" fontWeight={800}>
-              Progressão de Estudos — Série e disciplinas
+              Progressão de Estudos — Série e disciplinas a cursar no CEJA
             </Typography>
             <Typography variant="body2" color="text.secondary">
-              Selecione a série (ano escolar). Se você não marcar disciplinas específicas, o sistema colocará todas as disciplinas da série como &quot;A Cursar&quot;. Use a seleção de disciplinas apenas quando a progressão for parcial.
+              Selecione a série (ano escolar) e as disciplinas que o aluno vai cursar no CEJA. As disciplinas não marcadas nessa série serão registradas como concluídas.
             </Typography>
 
             <FormControl fullWidth size="small">
@@ -1130,7 +1109,6 @@ const MatriculaNivelCard: FC<MatriculaNivelCardProps> = (props) => {
                   setForm({
                     serieProgressaoId: e.target.value === '' ? '' : Number(e.target.value),
                     disciplinasProgressaoIds: [],
-                    regenerarProgresso: modo === 'editar' && !!form.idMatricula ? true : form.regenerarProgresso,
                   })
                 }
                 disabled={desabilitado || seriesDoNivel.length === 0}
@@ -1147,21 +1125,15 @@ const MatriculaNivelCard: FC<MatriculaNivelCardProps> = (props) => {
             </FormControl>
 
             <FormControl fullWidth size="small">
-              <InputLabel id={`disciplinas-progressao-label-${form.formId}`}>Disciplinas a cursar</InputLabel>
+              <InputLabel id={`disciplinas-progressao-label-${form.formId}`}>Disciplinas a cursar no CEJA</InputLabel>
               <Select
                 labelId={`disciplinas-progressao-label-${form.formId}`}
                 multiple
-                label="Disciplinas a cursar"
+                label="Disciplinas a cursar no CEJA"
                 value={form.disciplinasProgressaoIds}
-                onChange={(e) =>
-                  setForm({
-                    disciplinasProgressaoIds: parseMultiNumber(e.target.value),
-                    regenerarProgresso: modo === 'editar' && !!form.idMatricula ? true : form.regenerarProgresso,
-                  })
-                }
+                onChange={(e) => setForm({ disciplinasProgressaoIds: parseMultiNumber(e.target.value) })}
                 renderValue={(selected) => {
                   const ids = selected as number[]
-                  if (ids.length === 0) return 'Todas as disciplinas da série selecionada'
                   const nomes = disciplinasDaSerieProgressao
                     .filter((d) => ids.includes(d.id_disciplina))
                     .map((d) => d.nome_disciplina)
@@ -1176,9 +1148,6 @@ const MatriculaNivelCard: FC<MatriculaNivelCardProps> = (props) => {
                   </MenuItem>
                 ))}
               </Select>
-              <FormHelperText>
-                Opcional. Se nada for marcado, o sistema considerará todas as disciplinas da série como A Cursar. Use esta lista apenas quando a progressão for parcial.
-              </FormHelperText>
             </FormControl>
           </Stack>
         )}
@@ -1284,13 +1253,13 @@ const SecretariaMatriculasPage: FC = () => {
         if (rows.length === 0) return bloco
 
         if (bloco.modalidade === 'Aproveitamento de Estudos') {
-          const concluidas = rows.filter((row) => idsStatusDisciplinaConcluida.has(Number(row.id_status_disciplina)))
           const seriesConcluidasIds = Array.from(
-            new Set(concluidas.map((row) => Number(row.id_ano_escolar)).filter(Number.isFinite)),
+            new Set(rows.map((row) => Number(row.id_ano_escolar)).filter(Number.isFinite)),
           )
           const disciplinasAproveitamentoConfigIds = Array.from(
             new Set(
-              concluidas
+              rows
+                .filter((row) => !idsStatusDisciplinaConcluida.has(Number(row.id_status_disciplina)))
                 .map((row) => {
                   const config = configDisciplinaAnoDisponiveis.find(
                     (item) =>
@@ -1313,7 +1282,12 @@ const SecretariaMatriculasPage: FC = () => {
         if (bloco.modalidade === 'Progressão de Estudos') {
           const serieProgressaoId = rows[0]?.id_ano_escolar ? Number(rows[0].id_ano_escolar) : ''
           const disciplinasProgressaoIds = Array.from(
-            new Set(rows.map((row) => Number(row.id_disciplina)).filter(Number.isFinite)),
+            new Set(
+              rows
+                .filter((row) => !idsStatusDisciplinaConcluida.has(Number(row.id_status_disciplina)))
+                .map((row) => Number(row.id_disciplina))
+                .filter(Number.isFinite),
+            ),
           )
 
           return {
@@ -1350,215 +1324,6 @@ const SecretariaMatriculasPage: FC = () => {
     const ativo = statusDisponiveis.find((s) => s.nome.toLowerCase().includes('ativo'))
     return ativo?.id_status_matricula ?? statusDisponiveis[0]?.id_status_matricula ?? null
   }, [statusDisponiveis])
-
-  const statusMatriculaConcluidaId = useMemo(() => {
-    const concluido = statusDisponiveis.find((status) => normalizarTexto(status.nome).includes('conclu'))
-    return concluido?.id_status_matricula ?? null
-  }, [statusDisponiveis])
-
-  const statusDisciplinaAprovadoId = useMemo(() => {
-    const aprovado = statusDisciplinaDisponiveis.find((status) => {
-      const nome = normalizarTexto(status.nome)
-      return nome.includes('aprov') && !nome.includes('reprov')
-    })
-    return aprovado?.id_status_disciplina ?? null
-  }, [statusDisciplinaDisponiveis])
-
-  const statusDisciplinaAproveitamentoId = useMemo(() => {
-    const aproveitamento = statusDisciplinaDisponiveis.find((status) =>
-      normalizarTexto(status.nome).includes('aproveit'),
-    )
-    return aproveitamento?.id_status_disciplina ?? null
-  }, [statusDisciplinaDisponiveis])
-
-  const idsStatusDisciplinaAbertos = useMemo(() => {
-    return new Set(
-      statusDisciplinaDisponiveis
-        .filter((status) => {
-          const nome = normalizarTexto(status.nome)
-          return nome.includes('a cursar') || nome.includes('em curso') || nome.includes('pend')
-        })
-        .map((status) => Number(status.id_status_disciplina)),
-    )
-  }, [statusDisciplinaDisponiveis])
-
-  const sincronizarProgressoMatricula = useCallback(
-    async (idMatricula: number, bloco: MatriculaFormState): Promise<{ ok: true } | { ok: false; msg: string }> => {
-      if (!supabase) return { ok: false, msg: 'Supabase indisponível para sincronizar o progresso.' }
-
-      const precisaSincronizar =
-        bloco.modalidade === 'Aproveitamento de Estudos' ||
-        bloco.modalidade === 'Progressão de Estudos' ||
-        !!bloco.regenerarProgresso
-
-      if (!precisaSincronizar) return { ok: true }
-
-      const desejadosBase = gerarInsertsProgresso({
-        idMatricula,
-        nivelId: Number(bloco.nivelId),
-        modalidade: bloco.modalidade,
-        seriesConcluidasIds: bloco.seriesConcluidasIds,
-        disciplinasAproveitamentoConfigIds: bloco.disciplinasAproveitamentoConfigIds,
-        serieProgressaoId: bloco.serieProgressaoId,
-        disciplinasProgressaoIds: bloco.disciplinasProgressaoIds,
-        anosEscolaresDisponiveis,
-        statusDisciplinaDisponiveis,
-        configDisciplinaAnoDisponiveis,
-      })
-
-      const matriculaConcluida =
-        statusMatriculaConcluidaId != null && Number(bloco.statusId) === Number(statusMatriculaConcluidaId)
-      const dataConclusaoPadrao = bloco.dataConclusao.trim() || hojeISO()
-
-      const desejados = desejadosBase.map((item) => {
-        const statusAtual = Number(item.id_status_disciplina ?? 0)
-        const isAproveitamento =
-          statusDisciplinaAproveitamentoId != null &&
-          statusAtual === Number(statusDisciplinaAproveitamentoId)
-        const isAberto = idsStatusDisciplinaAbertos.has(statusAtual)
-
-        if (matriculaConcluida && !isAproveitamento && isAberto && statusDisciplinaAprovadoId != null) {
-          return {
-            ...item,
-            id_status_disciplina: Number(statusDisciplinaAprovadoId),
-            data_conclusao: dataConclusaoPadrao,
-            observacoes: 'Disciplina marcada como concluída automaticamente porque a matrícula foi encerrada.',
-          }
-        }
-
-        return item
-      })
-
-      const { data: atuaisData, error: atuaisError } = await supabase
-        .from('progresso_aluno')
-        .select('id_progresso, id_matricula, id_ano_escolar, id_disciplina, id_status_disciplina, observacoes, data_conclusao')
-        .eq('id_matricula', idMatricula)
-
-      if (atuaisError) {
-        console.error(atuaisError)
-        return { ok: false, msg: 'Não foi possível ler o progresso atual da matrícula.' }
-      }
-
-      const atuais = (atuaisData ?? []) as Array<
-        ProgressoAlunoRow & { id_progresso: number; observacoes?: string | null; data_conclusao?: string | null }
-      >
-
-      const keyOf = (row: { id_ano_escolar: number; id_disciplina: number }) =>
-        `${Number(row.id_ano_escolar)}::${Number(row.id_disciplina)}`
-
-      const atualByKey = new Map(atuais.map((row) => [keyOf(row), row]))
-      const desejadoByKey = new Map(
-        desejados.map((row) => [keyOf(row as { id_ano_escolar: number; id_disciplina: number }), row]),
-      )
-
-      for (const [key, desejado] of desejadoByKey.entries()) {
-        const atual = atualByKey.get(key)
-        if (!atual) continue
-
-        const mudouStatus = Number(atual.id_status_disciplina) !== Number(desejado.id_status_disciplina)
-        const mudouObservacao = String(atual.observacoes ?? '') !== String(desejado.observacoes ?? '')
-        const mudouConclusao = String(atual.data_conclusao ?? '') !== String(desejado.data_conclusao ?? '')
-
-        if (!mudouStatus && !mudouObservacao && !mudouConclusao) continue
-
-        const { data: upData, error: upError } = await supabase
-          .from('progresso_aluno')
-          .update({
-            id_status_disciplina: desejado.id_status_disciplina,
-            observacoes: desejado.observacoes ?? null,
-            data_conclusao: desejado.data_conclusao ?? null,
-          })
-          .eq('id_progresso', atual.id_progresso)
-          .select('id_progresso')
-          .maybeSingle()
-
-        if (upError) {
-          console.error(upError)
-          return { ok: false, msg: 'Falha ao atualizar o progresso das disciplinas da matrícula.' }
-        }
-
-        if (!upData) {
-          return {
-            ok: false,
-            msg: 'Nenhum item de progresso foi atualizado. Verifique as permissões de UPDATE (RLS) da tabela progresso_aluno.',
-          }
-        }
-      }
-
-      const inserts = desejados.filter((row) => !atualByKey.has(keyOf(row as { id_ano_escolar: number; id_disciplina: number })))
-      if (inserts.length > 0) {
-        const { data: insData, error: insError } = await supabase
-          .from('progresso_aluno')
-          .insert(inserts)
-          .select('id_progresso')
-
-        if (insError) {
-          console.error(insError)
-          return { ok: false, msg: 'Falha ao inserir o progresso das disciplinas da matrícula.' }
-        }
-
-        if (!insData || insData.length !== inserts.length) {
-          return {
-            ok: false,
-            msg: 'O Supabase não confirmou todos os inserts em progresso_aluno. Verifique permissões de INSERT/RLS.',
-          }
-        }
-      }
-
-      const obsoletos = atuais.filter((row) => !desejadoByKey.has(keyOf(row)))
-      if (obsoletos.length > 0) {
-        const idsObsoletos = obsoletos.map((row) => row.id_progresso)
-
-        const { data: vinculosData, error: vinculosError } = await supabase
-          .from('registros_atendimento')
-          .select('id_progresso')
-          .in('id_progresso', idsObsoletos)
-          .limit(1)
-
-        if (vinculosError) {
-          console.error(vinculosError)
-          return { ok: false, msg: 'Não foi possível validar os vínculos do progresso antes de remover disciplinas antigas.' }
-        }
-
-        if ((vinculosData ?? []).length > 0) {
-          return {
-            ok: false,
-            msg: 'As disciplinas antigas não puderam ser removidas porque já existem atendimentos/protocolos vinculados a elas. Nesse caso, não é seguro trocar a composição da matrícula existente.',
-          }
-        }
-
-        const { data: delData, error: delError } = await supabase
-          .from('progresso_aluno')
-          .delete()
-          .in('id_progresso', idsObsoletos)
-          .select('id_progresso')
-
-        if (delError) {
-          console.error(delError)
-          return { ok: false, msg: 'Falha ao remover disciplinas antigas do progresso da matrícula.' }
-        }
-
-        if (!delData || delData.length !== idsObsoletos.length) {
-          return {
-            ok: false,
-            msg: 'O Supabase não confirmou a remoção das disciplinas antigas. Verifique permissões de DELETE/RLS em progresso_aluno.',
-          }
-        }
-      }
-
-      return { ok: true }
-    },
-    [
-      supabase,
-      anosEscolaresDisponiveis,
-      configDisciplinaAnoDisponiveis,
-      statusDisciplinaDisponiveis,
-      statusMatriculaConcluidaId,
-      statusDisciplinaAprovadoId,
-      statusDisciplinaAproveitamentoId,
-      idsStatusDisciplinaAbertos,
-    ],
-  )
 
   // ===== Upload foto (genérico) =====
   const uploadFotoAluno = async (file: File, alvo: 'novo' | 'edit') => {
@@ -1921,14 +1686,40 @@ const SecretariaMatriculasPage: FC = () => {
       if (!b.modalidade.trim()) return { ok: false, msg: `Selecione a modalidade no bloco ${idx + 1}.` }
       if (!b.dataMatricula.trim()) return { ok: false, msg: `Informe a data de matrícula no bloco ${idx + 1}.` }
 
+      if (b.modalidade === 'Aproveitamento de Estudos') {
+        const precisaDefinirAproveitamento =
+          opts.modo === 'novo' || !b.idMatricula || b.regenerarProgresso
+        if (precisaDefinirAproveitamento) {
+          if (b.seriesConcluidasIds.length === 0) {
+            return {
+              ok: false,
+              msg: `Selecione ao menos uma série no bloco ${idx + 1} (Aproveitamento).`,
+            }
+          }
+          if (b.disciplinasAproveitamentoConfigIds.length === 0) {
+            return {
+              ok: false,
+              msg: `Selecione ao menos uma disciplina que o aluno vai cursar no CEJA no bloco ${idx + 1} (Aproveitamento).`,
+            }
+          }
+        }
+      }
+
       if (b.modalidade === 'Progressão de Estudos') {
         const precisaDefinirProgressao =
           opts.modo === 'novo' || !b.idMatricula || b.regenerarProgresso
-        if (precisaDefinirProgressao && b.serieProgressaoId === '')
-          return {
-            ok: false,
-            msg: `Selecione a série (ano escolar) no bloco ${idx + 1} (Progressão).`,
-          }
+        if (precisaDefinirProgressao) {
+          if (b.serieProgressaoId === '')
+            return {
+              ok: false,
+              msg: `Selecione a série (ano escolar) no bloco ${idx + 1} (Progressão).`,
+            }
+          if (b.disciplinasProgressaoIds.length === 0)
+            return {
+              ok: false,
+              msg: `Selecione ao menos uma disciplina que o aluno vai cursar no CEJA no bloco ${idx + 1} (Progressão).`,
+            }
+        }
       }
     }
 
@@ -2246,21 +2037,11 @@ const SecretariaMatriculasPage: FC = () => {
         foto_url: editAluno.fotoUrl || null,
       }
 
-      const { data: usuarioAtualizado, error: usuarioError } = await supabase
-        .from('usuarios')
-        .update(usuarioUpdate)
-        .eq('id', editUserId)
-        .select('id')
-        .maybeSingle()
+      const { error: usuarioError } = await supabase.from('usuarios').update(usuarioUpdate).eq('id', editUserId)
 
       if (usuarioError) {
         console.error(usuarioError)
         erro('Erro ao atualizar dados do usuário (aluno).')
-        return
-      }
-
-      if (!usuarioAtualizado) {
-        erro('Nenhum dado do usuário foi atualizado. Verifique as permissões de UPDATE (RLS) da tabela usuarios.')
         return
       }
 
@@ -2279,12 +2060,7 @@ const SecretariaMatriculasPage: FC = () => {
         observacoes_gerais: editAluno.observacoes.trim() || null,
       }
 
-      const { data: alunoAtualizado, error: alunoError } = await supabase
-        .from('alunos')
-        .update(alunoUpdate)
-        .eq('id_aluno', editAlunoId)
-        .select('id_aluno')
-        .maybeSingle()
+      const { error: alunoError } = await supabase.from('alunos').update(alunoUpdate).eq('id_aluno', editAlunoId)
 
       if (alunoError) {
         console.error(alunoError)
@@ -2292,12 +2068,8 @@ const SecretariaMatriculasPage: FC = () => {
         return
       }
 
-      if (!alunoAtualizado) {
-        erro('Nenhum dado da tabela alunos foi atualizado. Verifique as permissões de UPDATE (RLS).')
-        return
-      }
-
       // 3) Atualiza/insere matriculas
+      const insertsProgressoTotal: Array<Record<string, unknown>> = []
 
       for (const bloco of editBlocosMatricula) {
         const payload = {
@@ -2314,19 +2086,10 @@ const SecretariaMatriculasPage: FC = () => {
         let idMatricula = bloco.idMatricula
 
         if (idMatricula) {
-          const { data: matriculaAtualizada, error: upErr } = await supabase
-            .from('matriculas')
-            .update(payload)
-            .eq('id_matricula', idMatricula)
-            .select('id_matricula')
-            .maybeSingle()
+          const { error: upErr } = await supabase.from('matriculas').update(payload).eq('id_matricula', idMatricula)
           if (upErr) {
             console.error(upErr)
             erro('Erro ao atualizar matrícula.')
-            return
-          }
-          if (!matriculaAtualizada) {
-            erro('Nenhuma matrícula foi atualizada. Verifique as permissões de UPDATE (RLS) da tabela matriculas.')
             return
           }
         } else {
@@ -2344,12 +2107,45 @@ const SecretariaMatriculasPage: FC = () => {
           idMatricula = ins.id_matricula
         }
 
-        if (idMatricula) {
-          const sync = await sincronizarProgressoMatricula(idMatricula, bloco)
-          if (!sync.ok) {
-            erro(sync.msg)
-            return
+        const isPrecisaProgresso =
+          bloco.modalidade === 'Aproveitamento de Estudos' || bloco.modalidade === 'Progressão de Estudos'
+
+        if (isPrecisaProgresso && idMatricula) {
+          // Só gera/insere progresso em 2 cenários:
+          // (1) matrícula nova (não existia idMatricula antes), ou
+          // (2) usuário marcou “Regerar progresso”.
+          if (!bloco.idMatricula || bloco.regenerarProgresso) {
+            const { error: delProgErr } = await supabase
+              .from('progresso_aluno')
+              .delete()
+              .eq('id_matricula', idMatricula)
+            if (delProgErr) {
+              console.error(delProgErr)
+              aviso('Não foi possível limpar o progresso anterior (progresso_aluno).')
+            }
+
+            const inserts = gerarInsertsProgresso({
+              idMatricula,
+              nivelId: Number(bloco.nivelId),
+              modalidade: bloco.modalidade,
+              seriesConcluidasIds: bloco.seriesConcluidasIds,
+              disciplinasAproveitamentoConfigIds: bloco.disciplinasAproveitamentoConfigIds,
+              serieProgressaoId: bloco.serieProgressaoId,
+              disciplinasProgressaoIds: bloco.disciplinasProgressaoIds,
+              anosEscolaresDisponiveis,
+              statusDisciplinaDisponiveis,
+              configDisciplinaAnoDisponiveis,
+            })
+            insertsProgressoTotal.push(...inserts)
           }
+        }
+      }
+
+      if (insertsProgressoTotal.length > 0) {
+        const { error: progError } = await supabase.from('progresso_aluno').insert(insertsProgressoTotal)
+        if (progError) {
+          console.error(progError)
+          aviso('Alterações salvas, mas houve erro ao registrar o progresso das disciplinas.')
         }
       }
 
