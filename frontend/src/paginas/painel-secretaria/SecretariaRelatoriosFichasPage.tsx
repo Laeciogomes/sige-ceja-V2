@@ -39,7 +39,6 @@ import {
   type AnaliticoRelatoriosFichas,
   type PeriodoAnaliticoDias,
 } from './relatorios-fichas/analytics'
-import { gerarFichaAcompanhamentoCompartilhada } from './relatorios-fichas/gerarFichaAcompanhamentoCompartilhada'
 
 type UsuarioJoin = {
   name?: string | null
@@ -240,6 +239,7 @@ const SecretariaRelatoriosFichasPage: React.FC = () => {
 
     setGerandoPdf(true)
     try {
+      const { gerarFichaAcompanhamentoCompartilhada } = await import('./relatorios-fichas/gerarFichaAcompanhamentoCompartilhada')
       const resultado = await gerarFichaAcompanhamentoCompartilhada({
         supabase,
         alunoId: alunoSelecionado.id_aluno,

@@ -53,7 +53,6 @@ import { useSupabase } from '../../contextos/SupabaseContext'
 import { useNotificacaoContext } from '../../contextos/NotificacaoContext'
 import { useAuth } from '../../contextos/AuthContext'
 import AvatarAlunoFicha from './ficha-acompanhamento/components/AvatarAlunoFicha'
-import { baixarFichaAcompanhamentoPdf, montarEnderecoPdf, montarHistoricoPdfRows } from './ficha-acompanhamento/pdf/gerarFichaAcompanhamentoPdf'
 import {
   carregarFotoAlunoDataUrl,
   formatarRegistroAtividadeLinha,
@@ -2562,6 +2561,11 @@ export default function FichaAcompanhamentoPage() {
     try {
       const fotoResolvida = await resolverFotoAlunoUrl(supabase as any, aluno?.id_aluno ?? null, user?.foto_url ?? null)
       const fotoDataUrl = await carregarFotoAlunoDataUrl(supabase as any, aluno?.id_aluno ?? null, user?.foto_url ?? null)
+      const {
+        baixarFichaAcompanhamentoPdf,
+        montarEnderecoPdf,
+        montarHistoricoPdfRows,
+      } = await import('./ficha-acompanhamento/pdf/gerarFichaAcompanhamentoPdf')
 
       await baixarFichaAcompanhamentoPdf(
         {

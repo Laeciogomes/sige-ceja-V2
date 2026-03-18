@@ -9,6 +9,8 @@ import { NovaSenhaPage } from '../paginas/Autenticacao/NovaSenhaPage'
 import { DashboardPage } from '../paginas/painel-administracao/DashboardPage'
 
 import { PaginaSimples } from '../paginas/PaginaSimples'
+import AlunoMatriculasPage from '../paginas/painel-aluno/AlunoMatriculasPage'
+import AlunoProgressoPage from '../paginas/painel-aluno/AlunoProgressoPage'
 import PerfilPage from '../paginas/Perfil/PerfilPage'
 import ConfiguracoesPage from '../paginas/Configuracoes/ConfiguracoesPage'
 import { useAuth } from '../contextos/AuthContext'
@@ -210,7 +212,7 @@ export const AppRoutes: React.FC = () => {
           path="alunos"
           element={
             <RotaPorPapel papeisPermitidos={['ALUNO', 'ADMIN']}>
-              <PaginaSimples titulo="Painel do Aluno" />
+              <Navigate to="/alunos/matriculas" replace />
             </RotaPorPapel>
           }
         />
@@ -218,7 +220,7 @@ export const AppRoutes: React.FC = () => {
           path="alunos/matriculas"
           element={
             <RotaPorPapel papeisPermitidos={['ALUNO', 'ADMIN']}>
-              <PaginaSimples titulo="Minhas matrículas" />
+              <AlunoMatriculasPage />
             </RotaPorPapel>
           }
         />
@@ -226,7 +228,7 @@ export const AppRoutes: React.FC = () => {
           path="alunos/progresso"
           element={
             <RotaPorPapel papeisPermitidos={['ALUNO', 'ADMIN']}>
-              <PaginaSimples titulo="Meu progresso" />
+              <AlunoProgressoPage />
             </RotaPorPapel>
           }
         />
