@@ -4,17 +4,22 @@ import react from '@vitejs/plugin-react-swc'
 export default defineConfig({
   plugins: [react()],
   build: {
+    chunkSizeWarningLimit: 700,
     rollupOptions: {
       output: {
         manualChunks(id) {
           if (!id.includes('node_modules')) return undefined
 
-          if (id.includes('jspdf') || id.includes('html2canvas')) {
+          // Keep only truly isolated heavy dependencies in dedicated chunks.
+          // React/MUI/emotion/router are intentionally left to Vite/Rollup default
+          // chunking to avoid runtime circular dependencies between vendor chunks.
+          if (
+            id.includes('jspdf')
+            || id.includes('html2canvas')
+            || id.includes('canvg')
+            || id.includes('dompurify')
+          ) {
             return 'vendor-pdf'
-          }
-
-          if (id.includes('@mui') || id.includes('@emotion')) {
-            return 'vendor-mui'
           }
 
           if (id.includes('@supabase')) {
@@ -25,15 +30,7 @@ export default defineConfig({
             return 'vendor-csv'
           }
 
-          if (
-            id.includes('react-router')
-            || id.includes('react-dom')
-            || /node_modules\/react(\/|\\)|node_modules\\react(\/|\\)/.test(id)
-          ) {
-            return 'vendor-react'
-          }
-
-          return 'vendor-misc'
+          return undefined
         },
       },
     },
