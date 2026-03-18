@@ -1,21 +1,24 @@
-// src/paginas/painel-administracao/DashboardPage.tsx
 import React from 'react'
 import {
+  Alert,
+  Avatar,
   Box,
+  Button,
   Card,
   CardContent,
-  Typography,
-  Stack,
-  IconButton,
-  Button,
-  Avatar,
   Chip,
-  useTheme,
-  alpha,
+  CircularProgress,
+  IconButton,
   Paper,
+  Stack,
+  Typography,
+  alpha,
+  useTheme,
 } from '@mui/material'
+import { useQuery } from '@tanstack/react-query'
+import { useNavigate } from 'react-router-dom'
+import type { SupabaseClient } from '@supabase/supabase-js'
 
-// Ícones
 import InsightsRoundedIcon from '@mui/icons-material/InsightsRounded'
 import PeopleAltRoundedIcon from '@mui/icons-material/PeopleAltRounded'
 import AssignmentTurnedInRoundedIcon from '@mui/icons-material/AssignmentTurnedInRounded'
@@ -24,18 +27,1336 @@ import MoreVertIcon from '@mui/icons-material/MoreVert'
 import CalendarTodayIcon from '@mui/icons-material/CalendarToday'
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward'
 import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline'
-import NotificationsActiveIcon from '@mui/icons-material/NotificationsActive'
 import MeetingRoomIcon from '@mui/icons-material/MeetingRoom'
+import RefreshRoundedIcon from '@mui/icons-material/RefreshRounded'
+import DoorFrontRoundedIcon from '@mui/icons-material/DoorFrontRounded'
+import Groups2RoundedIcon from '@mui/icons-material/Groups2Rounded'
+import AssignmentIndRoundedIcon from '@mui/icons-material/AssignmentIndRounded'
+import DescriptionRoundedIcon from '@mui/icons-material/DescriptionRounded'
+import MenuBookRoundedIcon from '@mui/icons-material/MenuBookRounded'
 
-import { useAuth } from '../../contextos/AuthContext'
+import { useAuth, type PapelUsuario } from '../../contextos/AuthContext'
+import { useSupabase } from '../../contextos/SupabaseContext'
+import MonitorOperacionalSection from './dashboard/MonitorOperacionalSection'
+import {
+  PAPEIS_COM_MONITOR_AO_VIVO,
+  carregarMonitorOperacionalAoVivo,
+  type MonitorOperacionalData,
+} from './dashboard/monitorOperacional'
 
-// --- Componente de Card Estatístico ---
-interface StatCardProps {
+type StatCardProps = {
   titulo: string
   valor: string
   tendencia?: string
   cor: string
   icone: React.ReactNode
+}
+
+type QuickAction = {
+  label: string
+  path: string
+}
+
+type ActivityItem = {
+  id: string
+  user: string
+  action: string
+  time: string
+  color: string
+  path?: string
+}
+
+type DashboardData = {
+  tituloPagina: string
+  subtitulo: string
+  stats: StatCardProps[]
+  bannerTitulo: string
+  bannerDescricao: string
+  bannerBotaoLabel: string
+  bannerBotaoPath: string | null
+  acessoRapido: QuickAction[]
+  mostrarBotaoPrincipal: boolean
+  textoBotaoPrincipal: string
+  botaoPrincipalPath: string | null
+  atividadesRecentes: ActivityItem[]
+  nomeExibicao: string
+  monitorOperacional?: MonitorOperacionalData | null
+}
+
+type UsuarioDashboard = {
+  id: string
+  email: string | null
+  papel?: PapelUsuario
+}
+
+const STATUS_MATRICULA_ATIVA = 1
+const STATUS_MATRICULA_CONCLUIDA = 2
+const STATUS_DISCIPLINA_A_CURSAR = 1
+const STATUS_DISCIPLINA_EM_CURSO = 2
+const STATUS_DISCIPLINA_APROVADO = 3
+const STATUS_DISCIPLINA_APROVEITAMENTO = 5
+
+const COR_AZUL = '#2196F3'
+const COR_VERDE = '#4CAF50'
+const COR_LARANJA = '#FF9800'
+const COR_VERMELHA = '#F44336'
+
+const asOne = <T,>(value: T | T[] | null | undefined): T | null => {
+  if (Array.isArray(value)) return value[0] ?? null
+  return value ?? null
+}
+
+const primeiroNome = (nome: string | null | undefined): string => {
+  const texto = String(nome ?? '').trim()
+  if (!texto) return 'Usuário'
+  return texto.split(/\s+/)[0] ?? 'Usuário'
+}
+
+const formatarNumero = (valor: number): string =>
+  new Intl.NumberFormat('pt-BR').format(valor)
+
+const formatarMedia = (valor: number | null): string => {
+  if (valor == null || Number.isNaN(valor)) return '—'
+  return valor.toLocaleString('pt-BR', {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  })
+}
+
+const formatarPercentual = (valor: number | null): string => {
+  if (valor == null || Number.isNaN(valor)) return '0%'
+  return `${Math.round(valor)}%`
+}
+
+const mediaNumerica = (valores: Array<number | null | undefined>): number | null => {
+  const notas = valores
+    .map(valor => (valor == null ? null : Number(valor)))
+    .filter((valor): valor is number => valor != null && Number.isFinite(valor))
+
+  if (!notas.length) return null
+  const soma = notas.reduce((acc, valor) => acc + valor, 0)
+  return soma / notas.length
+}
+
+const formatarMomento = (valor: string | null | undefined): string => {
+  if (!valor) return 'Sem data'
+  const data = new Date(valor)
+  if (Number.isNaN(data.getTime())) return 'Sem data'
+
+  const agora = new Date()
+  const mesmoDia =
+    data.getDate() === agora.getDate() &&
+    data.getMonth() === agora.getMonth() &&
+    data.getFullYear() === agora.getFullYear()
+
+  if (mesmoDia) {
+    return data.toLocaleTimeString('pt-BR', {
+      hour: '2-digit',
+      minute: '2-digit',
+    })
+  }
+
+  return data.toLocaleDateString('pt-BR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: '2-digit',
+  })
+}
+
+const contar = async (
+  query: PromiseLike<{ count: number | null; error: unknown }>,
+): Promise<number> => {
+  const { count, error } = await query
+  if (error) throw error
+  return count ?? 0
+}
+
+const carregarNomeUsuario = async (
+  supabase: SupabaseClient,
+  userId: string,
+): Promise<string> => {
+  const { data, error } = await supabase
+    .from('usuarios')
+    .select('name')
+    .eq('id', userId)
+    .maybeSingle<{ name: string | null }>()
+
+  if (error) throw error
+  return data?.name?.trim() || 'Usuário'
+}
+
+const carregarProfessorId = async (
+  supabase: SupabaseClient,
+  userId: string,
+): Promise<number | null> => {
+  const { data, error } = await supabase
+    .from('professores')
+    .select('id_professor')
+    .eq('user_id', userId)
+    .maybeSingle<{ id_professor: number | null }>()
+
+  if (error) throw error
+  return data?.id_professor ?? null
+}
+
+const carregarAlunoId = async (
+  supabase: SupabaseClient,
+  userId: string,
+): Promise<number | null> => {
+  const { data, error } = await supabase
+    .from('alunos')
+    .select('id_aluno')
+    .eq('user_id', userId)
+    .maybeSingle<{ id_aluno: number | null }>()
+
+  if (error) throw error
+  return data?.id_aluno ?? null
+}
+
+const carregarAtividadesMatriculas = async (
+  supabase: SupabaseClient,
+  path: string,
+): Promise<ActivityItem[]> => {
+  const { data, error } = await supabase
+    .from('matriculas')
+    .select(
+      `
+      id_matricula,
+      numero_inscricao,
+      data_matricula,
+      alunos!inner(
+        id_aluno,
+        usuarios!inner(name)
+      )
+    `,
+    )
+    .order('data_matricula', { ascending: false })
+    .limit(5)
+
+  if (error) throw error
+
+  return ((data ?? []) as any[]).map(row => {
+    const aluno = asOne<any>(row.alunos)
+    const usuario = asOne<any>(aluno?.usuarios)
+    const nomeAluno = String(usuario?.name ?? `Aluno #${row.id_matricula}`)
+    const ra = row?.numero_inscricao ? ` • RA ${String(row.numero_inscricao)}` : ''
+
+    return {
+      id: `matricula-${String(row.id_matricula)}`,
+      user: 'Matrícula',
+      action: `${nomeAluno}${ra}`,
+      time: formatarMomento(row?.data_matricula ? `${String(row.data_matricula)}T00:00:00` : null),
+      color: COR_AZUL,
+      path,
+    }
+  })
+}
+
+const carregarAtividadesProfessor = async (
+  supabase: SupabaseClient,
+  professorId: number,
+): Promise<ActivityItem[]> => {
+  const { data, error } = await supabase
+    .from('sessoes_atendimento')
+    .select(
+      `
+      id_sessao,
+      hora_entrada,
+      hora_saida,
+      alunos!inner(
+        id_aluno,
+        usuarios!inner(name)
+      ),
+      progresso_aluno(
+        id_progresso,
+        disciplinas(nome_disciplina)
+      )
+    `,
+    )
+    .eq('id_professor', professorId)
+    .order('hora_entrada', { ascending: false })
+    .limit(5)
+
+  if (error) throw error
+
+  return ((data ?? []) as any[]).map(row => {
+    const aluno = asOne<any>(row.alunos)
+    const usuario = asOne<any>(aluno?.usuarios)
+    const progresso = asOne<any>(row.progresso_aluno)
+    const disciplina = asOne<any>(progresso?.disciplinas)
+    const nomeAluno = String(usuario?.name ?? `Aluno #${row.id_sessao}`)
+    const textoSessao = row?.hora_saida ? 'Sessão finalizada' : 'Sessão em andamento'
+
+    return {
+      id: `sessao-prof-${String(row.id_sessao)}`,
+      user: nomeAluno,
+      action: disciplina?.nome_disciplina
+        ? `${textoSessao} • ${String(disciplina.nome_disciplina)}`
+        : textoSessao,
+      time: formatarMomento(row?.hora_entrada ? String(row.hora_entrada) : null),
+      color: row?.hora_saida ? COR_VERDE : COR_LARANJA,
+      path: '/professores/atendimentos',
+    }
+  })
+}
+
+const carregarAtividadesAcompanhamento = async (
+  supabase: SupabaseClient,
+  path: string,
+): Promise<ActivityItem[]> => {
+  const { data, error } = await supabase
+    .from('acompanhamento_aluno')
+    .select(
+      `
+      id_acompanhamento,
+      tipo,
+      status,
+      data_evento,
+      alunos!inner(
+        id_aluno,
+        usuarios!inner(name)
+      )
+    `,
+    )
+    .order('data_evento', { ascending: false })
+    .limit(5)
+
+  if (error) throw error
+
+  return ((data ?? []) as any[]).map(row => {
+    const aluno = asOne<any>(row.alunos)
+    const usuario = asOne<any>(aluno?.usuarios)
+    const nomeAluno = String(usuario?.name ?? `Aluno #${row.id_acompanhamento}`)
+    const tipo = row?.tipo ? String(row.tipo) : 'Registro'
+    const status = row?.status ? String(row.status) : 'Sem status'
+
+    return {
+      id: `acomp-${String(row.id_acompanhamento)}`,
+      user: nomeAluno,
+      action: `${tipo} • ${status}`,
+      time: formatarMomento(row?.data_evento ? String(row.data_evento) : null),
+      color: status === 'Retornou' ? COR_VERDE : COR_VERMELHA,
+      path,
+    }
+  })
+}
+
+const carregarAtividadesAluno = async (
+  supabase: SupabaseClient,
+  alunoId: number,
+): Promise<ActivityItem[]> => {
+  const { data, error } = await supabase
+    .from('sessoes_atendimento')
+    .select(
+      `
+      id_sessao,
+      hora_entrada,
+      hora_saida,
+      professores(
+        id_professor,
+        usuarios(name)
+      ),
+      progresso_aluno(
+        id_progresso,
+        disciplinas(nome_disciplina)
+      )
+    `,
+    )
+    .eq('id_aluno', alunoId)
+    .order('hora_entrada', { ascending: false })
+    .limit(5)
+
+  if (error) throw error
+
+  return ((data ?? []) as any[]).map(row => {
+    const professor = asOne<any>(row.professores)
+    const usuarioProfessor = asOne<any>(professor?.usuarios)
+    const progresso = asOne<any>(row.progresso_aluno)
+    const disciplina = asOne<any>(progresso?.disciplinas)
+    const professorNome = String(usuarioProfessor?.name ?? 'Professor')
+    const textoSessao = row?.hora_saida ? 'Atendimento registrado' : 'Atendimento em aberto'
+
+    return {
+      id: `sessao-aluno-${String(row.id_sessao)}`,
+      user: professorNome,
+      action: disciplina?.nome_disciplina
+        ? `${textoSessao} • ${String(disciplina.nome_disciplina)}`
+        : textoSessao,
+      time: formatarMomento(row?.hora_entrada ? String(row.hora_entrada) : null),
+      color: row?.hora_saida ? COR_VERDE : COR_LARANJA,
+      path: '/alunos/progresso',
+    }
+  })
+}
+
+const criarDashboardPadrao = (papel?: PapelUsuario): DashboardData => {
+  const papelAtual = papel ?? 'AVALIADOR'
+
+  switch (papelAtual) {
+    case 'ADMIN':
+      return {
+        tituloPagina: 'Dashboard Administração',
+        subtitulo:
+          'Visão consolidada do sistema com indicadores gerais de cadastros, matrículas e atendimentos.',
+        stats: [
+          {
+            titulo: 'Alunos cadastrados',
+            valor: '—',
+            cor: COR_AZUL,
+            icone: <PeopleAltRoundedIcon />,
+          },
+          {
+            titulo: 'Matrículas ativas',
+            valor: '—',
+            cor: COR_VERDE,
+            icone: <SchoolRoundedIcon />,
+          },
+          {
+            titulo: 'Professores',
+            valor: '—',
+            cor: COR_LARANJA,
+            icone: <AssignmentIndRoundedIcon />,
+          },
+          {
+            titulo: 'Atendimentos',
+            valor: '—',
+            cor: COR_VERMELHA,
+            icone: <MeetingRoomIcon />,
+          },
+        ],
+        bannerTitulo: 'Carregando indicadores da administração',
+        bannerDescricao:
+          'Assim que a consulta no banco terminar, os números gerais do SIGE-CEJA serão exibidos aqui.',
+        bannerBotaoLabel: 'Abrir administração',
+        bannerBotaoPath: '/admin',
+        acessoRapido: [
+          { label: 'Usuários', path: '/secretaria/usuarios' },
+          { label: 'Matrículas', path: '/secretaria/matriculas' },
+          { label: 'Turmas', path: '/secretaria/turmas' },
+          { label: 'Salas', path: '/secretaria/salas' },
+          { label: 'SASP', path: '/coordenacao/sasp' },
+          { label: 'Acompanhamento', path: '/coordenacao/acompanhamento' },
+        ],
+        mostrarBotaoPrincipal: true,
+        textoBotaoPrincipal: 'Abrir matrículas',
+        botaoPrincipalPath: '/secretaria/matriculas',
+        atividadesRecentes: [],
+        nomeExibicao: 'Usuário',
+      }
+
+    case 'SECRETARIA':
+      return {
+        tituloPagina: 'Dashboard Secretaria',
+        subtitulo:
+          'Indicadores operacionais da secretaria escolar, centralizados diretamente no banco de dados.',
+        stats: [
+          {
+            titulo: 'Matrículas ativas',
+            valor: '—',
+            cor: COR_VERDE,
+            icone: <SchoolRoundedIcon />,
+          },
+          {
+            titulo: 'Alunos cadastrados',
+            valor: '—',
+            cor: COR_AZUL,
+            icone: <PeopleAltRoundedIcon />,
+          },
+          {
+            titulo: 'Turmas ativas',
+            valor: '—',
+            cor: COR_LARANJA,
+            icone: <Groups2RoundedIcon />,
+          },
+          {
+            titulo: 'Salas ativas',
+            valor: '—',
+            cor: COR_VERMELHA,
+            icone: <DoorFrontRoundedIcon />,
+          },
+        ],
+        bannerTitulo: 'Carregando rotina da secretaria',
+        bannerDescricao:
+          'Os totais de matrículas, turmas, salas e cadastros serão lidos do banco assim que a consulta terminar.',
+        bannerBotaoLabel: 'Ir para matrículas',
+        bannerBotaoPath: '/secretaria/matriculas',
+        acessoRapido: [
+          { label: 'Matrículas', path: '/secretaria/matriculas' },
+          { label: 'Usuários', path: '/secretaria/usuarios' },
+          { label: 'Turmas', path: '/secretaria/turmas' },
+          { label: 'Salas', path: '/secretaria/salas' },
+          { label: 'Disciplinas', path: '/secretaria/disciplinas' },
+          { label: 'Protocolos', path: '/secretaria/protocolos' },
+        ],
+        mostrarBotaoPrincipal: true,
+        textoBotaoPrincipal: 'Nova matrícula',
+        botaoPrincipalPath: '/secretaria/matriculas',
+        atividadesRecentes: [],
+        nomeExibicao: 'Usuário',
+      }
+
+    case 'PROFESSOR':
+      return {
+        tituloPagina: 'Dashboard Professor',
+        subtitulo:
+          'Resumo pedagógico com atendimentos, atividades pendentes e médias lançadas pelo próprio professor.',
+        stats: [
+          {
+            titulo: 'Atendimentos realizados',
+            valor: '—',
+            cor: COR_AZUL,
+            icone: <MeetingRoomIcon />,
+          },
+          {
+            titulo: 'Sessões em aberto',
+            valor: '—',
+            cor: COR_LARANJA,
+            icone: <CalendarTodayIcon />,
+          },
+          {
+            titulo: 'Atividades pendentes',
+            valor: '—',
+            cor: COR_VERMELHA,
+            icone: <AssignmentTurnedInRoundedIcon />,
+          },
+          {
+            titulo: 'Média das notas',
+            valor: '—',
+            cor: COR_VERDE,
+            icone: <InsightsRoundedIcon />,
+          },
+        ],
+        bannerTitulo: 'Carregando dados pedagógicos',
+        bannerDescricao:
+          'Os indicadores do seu trabalho docente serão montados a partir das sessões e dos registros de atendimento.',
+        bannerBotaoLabel: 'Abrir atendimentos',
+        bannerBotaoPath: '/professores/atendimentos',
+        acessoRapido: [
+          { label: 'Meus atendimentos', path: '/professores/atendimentos' },
+          { label: 'Acompanhamento', path: '/professores/acompanhamento' },
+          { label: 'Minha ficha', path: '/professores/atendimentos' },
+          { label: 'Registrar atendimento', path: '/professores/atendimentos' },
+          { label: 'Consultar aluno', path: '/professores/atendimentos' },
+          { label: 'Pendências', path: '/professores/acompanhamento' },
+        ],
+        mostrarBotaoPrincipal: true,
+        textoBotaoPrincipal: 'Novo atendimento',
+        botaoPrincipalPath: '/professores/atendimentos',
+        atividadesRecentes: [],
+        nomeExibicao: 'Usuário',
+      }
+
+    case 'COORDENACAO':
+      return {
+        tituloPagina: 'Dashboard Coordenação',
+        subtitulo:
+          'Painel consolidado com SASP, acompanhamento pedagógico e andamento dos protocolos.',
+        stats: [
+          {
+            titulo: 'SASP preenchidos',
+            valor: '—',
+            cor: COR_AZUL,
+            icone: <DescriptionRoundedIcon />,
+          },
+          {
+            titulo: 'Atendimentos',
+            valor: '—',
+            cor: COR_VERDE,
+            icone: <MeetingRoomIcon />,
+          },
+          {
+            titulo: 'Acompanhamentos abertos',
+            valor: '—',
+            cor: COR_VERMELHA,
+            icone: <AssignmentTurnedInRoundedIcon />,
+          },
+          {
+            titulo: 'Protocolos concluídos',
+            valor: '—',
+            cor: COR_LARANJA,
+            icone: <InsightsRoundedIcon />,
+          },
+        ],
+        bannerTitulo: 'Carregando visão da coordenação',
+        bannerDescricao:
+          'Os dados do SASP, dos acompanhamentos e dos protocolos serão consolidados automaticamente.',
+        bannerBotaoLabel: 'Abrir SASP',
+        bannerBotaoPath: '/coordenacao/sasp',
+        acessoRapido: [
+          { label: 'SASP', path: '/coordenacao/sasp' },
+          { label: 'Acompanhamento', path: '/coordenacao/acompanhamento' },
+          { label: 'Matrículas', path: '/secretaria/matriculas' },
+          { label: 'Turmas', path: '/secretaria/turmas' },
+          { label: 'Relatórios', path: '/secretaria/relatorios-fichas' },
+          { label: 'Protocolos', path: '/secretaria/protocolos' },
+        ],
+        mostrarBotaoPrincipal: true,
+        textoBotaoPrincipal: 'Abrir SASP',
+        botaoPrincipalPath: '/coordenacao/sasp',
+        atividadesRecentes: [],
+        nomeExibicao: 'Usuário',
+      }
+
+    case 'DIRETOR':
+      return {
+        tituloPagina: 'Dashboard Direção',
+        subtitulo:
+          'Painel estratégico da unidade com foco em matrículas, turmas, atendimentos e taxa de conclusão.',
+        stats: [
+          {
+            titulo: 'Matrículas ativas',
+            valor: '—',
+            cor: COR_AZUL,
+            icone: <SchoolRoundedIcon />,
+          },
+          {
+            titulo: 'Turmas ativas',
+            valor: '—',
+            cor: COR_VERDE,
+            icone: <Groups2RoundedIcon />,
+          },
+          {
+            titulo: 'Atendimentos',
+            valor: '—',
+            cor: COR_LARANJA,
+            icone: <MeetingRoomIcon />,
+          },
+          {
+            titulo: 'Conclusão de matrículas',
+            valor: '—',
+            cor: COR_VERMELHA,
+            icone: <InsightsRoundedIcon />,
+          },
+        ],
+        bannerTitulo: 'Carregando panorama institucional',
+        bannerDescricao:
+          'Os principais indicadores da unidade serão montados diretamente do banco de dados.',
+        bannerBotaoLabel: 'Abrir direção',
+        bannerBotaoPath: '/direcao',
+        acessoRapido: [
+          { label: 'Acompanhamento', path: '/direcao/acompanhamento' },
+          { label: 'SASP', path: '/direcao/sasp' },
+          { label: 'Matrículas', path: '/secretaria/matriculas' },
+          { label: 'Turmas', path: '/secretaria/turmas' },
+          { label: 'Relatórios', path: '/secretaria/relatorios-fichas' },
+          { label: 'Usuários', path: '/secretaria/usuarios' },
+        ],
+        mostrarBotaoPrincipal: true,
+        textoBotaoPrincipal: 'Ver relatórios',
+        botaoPrincipalPath: '/secretaria/relatorios-fichas',
+        atividadesRecentes: [],
+        nomeExibicao: 'Usuário',
+      }
+
+    case 'ALUNO':
+      return {
+        tituloPagina: 'Minha área',
+        subtitulo:
+          'Resumo individual com matrículas, disciplinas, atividades pendentes e média geral.',
+        stats: [
+          {
+            titulo: 'Matrículas ativas',
+            valor: '—',
+            cor: COR_AZUL,
+            icone: <SchoolRoundedIcon />,
+          },
+          {
+            titulo: 'Disciplinas em andamento',
+            valor: '—',
+            cor: COR_LARANJA,
+            icone: <MenuBookRoundedIcon />,
+          },
+          {
+            titulo: 'Atividades pendentes',
+            valor: '—',
+            cor: COR_VERMELHA,
+            icone: <AssignmentTurnedInRoundedIcon />,
+          },
+          {
+            titulo: 'Média geral',
+            valor: '—',
+            cor: COR_VERDE,
+            icone: <InsightsRoundedIcon />,
+          },
+        ],
+        bannerTitulo: 'Carregando sua vida escolar',
+        bannerDescricao:
+          'Seu progresso individual será lido do banco para exibir matrículas, disciplinas e atendimentos.',
+        bannerBotaoLabel: 'Ver meu progresso',
+        bannerBotaoPath: '/alunos/progresso',
+        acessoRapido: [
+          { label: 'Minhas matrículas', path: '/alunos/matriculas' },
+          { label: 'Meu progresso', path: '/alunos/progresso' },
+          { label: 'Meus dados', path: '/perfil' },
+          { label: 'Configurações', path: '/config' },
+          { label: 'Ajuda', path: '/alunos' },
+          { label: 'Suporte', path: '/alunos' },
+        ],
+        mostrarBotaoPrincipal: false,
+        textoBotaoPrincipal: 'Ver meu progresso',
+        botaoPrincipalPath: '/alunos/progresso',
+        atividadesRecentes: [],
+        nomeExibicao: 'Usuário',
+      }
+
+    case 'AVALIADOR':
+    default:
+      return {
+        tituloPagina: 'Dashboard',
+        subtitulo:
+          'O sistema está aguardando a identificação do seu perfil para carregar a visão correta.',
+        stats: [
+          {
+            titulo: 'Indicadores',
+            valor: '—',
+            cor: COR_AZUL,
+            icone: <PeopleAltRoundedIcon />,
+          },
+          {
+            titulo: 'Registros',
+            valor: '—',
+            cor: COR_LARANJA,
+            icone: <AssignmentTurnedInRoundedIcon />,
+          },
+          {
+            titulo: 'Métricas',
+            valor: '—',
+            cor: COR_VERDE,
+            icone: <InsightsRoundedIcon />,
+          },
+          {
+            titulo: 'Alertas',
+            valor: '—',
+            cor: COR_VERMELHA,
+            icone: <CalendarTodayIcon />,
+          },
+        ],
+        bannerTitulo: 'Bem-vindo ao SIGE-CEJA',
+        bannerDescricao:
+          'Assim que o seu perfil estiver identificado, a dashboard será ajustada automaticamente.',
+        bannerBotaoLabel: 'Atualizar',
+        bannerBotaoPath: null,
+        acessoRapido: [
+          { label: 'Perfil', path: '/perfil' },
+          { label: 'Configurações', path: '/config' },
+          { label: 'Ajuda', path: '/' },
+          { label: 'Suporte', path: '/' },
+          { label: 'Documentação', path: '/' },
+          { label: 'Sistema', path: '/' },
+        ],
+        mostrarBotaoPrincipal: false,
+        textoBotaoPrincipal: 'Atualizar',
+        botaoPrincipalPath: null,
+        atividadesRecentes: [],
+        nomeExibicao: 'Usuário',
+      }
+  }
+}
+
+const carregarDashboardAdmin = async (
+  supabase: SupabaseClient,
+  usuario: UsuarioDashboard,
+): Promise<DashboardData> => {
+  const base = criarDashboardPadrao('ADMIN')
+
+  const [
+    nome,
+    totalAlunos,
+    matriculasAtivas,
+    totalProfessores,
+    totalTurmas,
+    totalSalas,
+    atividadesRecentes,
+    monitorOperacional,
+  ] = await Promise.all([
+    carregarNomeUsuario(supabase, usuario.id),
+    contar(
+      supabase
+        .from('alunos')
+        .select('id_aluno', { count: 'exact', head: true }),
+    ),
+    contar(
+      supabase
+        .from('matriculas')
+        .select('id_matricula', { count: 'exact', head: true })
+        .eq('id_status_matricula', STATUS_MATRICULA_ATIVA),
+    ),
+    contar(
+      supabase
+        .from('professores')
+        .select('id_professor', { count: 'exact', head: true }),
+    ),
+    contar(
+      supabase
+        .from('turmas')
+        .select('id_turma', { count: 'exact', head: true })
+        .eq('is_ativa', true),
+    ),
+    contar(
+      supabase
+        .from('salas_atendimento')
+        .select('id_sala', { count: 'exact', head: true })
+        .eq('is_ativa', true),
+    ),
+    carregarAtividadesMatriculas(supabase, '/secretaria/matriculas'),
+    carregarMonitorOperacionalAoVivo(supabase),
+  ])
+
+  return {
+    ...base,
+    nomeExibicao: nome,
+    monitorOperacional,
+    stats: [
+      {
+        titulo: 'Alunos cadastrados',
+        valor: formatarNumero(totalAlunos),
+        cor: COR_AZUL,
+        icone: <PeopleAltRoundedIcon />,
+      },
+      {
+        titulo: 'Matrículas ativas',
+        valor: formatarNumero(matriculasAtivas),
+        cor: COR_VERDE,
+        icone: <SchoolRoundedIcon />,
+      },
+      {
+        titulo: 'Abertos agora',
+        valor: formatarNumero(monitorOperacional.totalAbertos),
+        cor: COR_LARANJA,
+        icone: <MeetingRoomIcon />,
+      },
+      {
+        titulo: 'Professores em atendimento',
+        valor: formatarNumero(monitorOperacional.professoresAtivos),
+        cor: COR_VERMELHA,
+        icone: <AssignmentIndRoundedIcon />,
+      },
+    ],
+    bannerTitulo: 'Visão consolidada do SIGE-CEJA',
+    bannerDescricao: `${formatarNumero(totalAlunos)} alunos cadastrados, ${formatarNumero(matriculasAtivas)} matrículas ativas, ${formatarNumero(totalProfessores)} professores, ${formatarNumero(totalTurmas)} turmas ativas, ${formatarNumero(totalSalas)} salas em funcionamento e ${formatarNumero(monitorOperacional.totalAbertos)} atendimentos abertos agora.`,
+    atividadesRecentes,
+  }
+}
+
+const carregarDashboardSecretaria = async (
+  supabase: SupabaseClient,
+  usuario: UsuarioDashboard,
+): Promise<DashboardData> => {
+  const base = criarDashboardPadrao('SECRETARIA')
+
+  const [
+    nome,
+    matriculasAtivas,
+    totalAlunos,
+    totalTurmas,
+    totalSalas,
+    totalUsuarios,
+    atividadesRecentes,
+    monitorOperacional,
+  ] = await Promise.all([
+    carregarNomeUsuario(supabase, usuario.id),
+    contar(
+      supabase
+        .from('matriculas')
+        .select('id_matricula', { count: 'exact', head: true })
+        .eq('id_status_matricula', STATUS_MATRICULA_ATIVA),
+    ),
+    contar(
+      supabase
+        .from('alunos')
+        .select('id_aluno', { count: 'exact', head: true }),
+    ),
+    contar(
+      supabase
+        .from('turmas')
+        .select('id_turma', { count: 'exact', head: true })
+        .eq('is_ativa', true),
+    ),
+    contar(
+      supabase
+        .from('salas_atendimento')
+        .select('id_sala', { count: 'exact', head: true })
+        .eq('is_ativa', true),
+    ),
+    contar(
+      supabase
+        .from('usuarios')
+        .select('id', { count: 'exact', head: true }),
+    ),
+    carregarAtividadesMatriculas(supabase, '/secretaria/matriculas'),
+    carregarMonitorOperacionalAoVivo(supabase),
+  ])
+
+  return {
+    ...base,
+    nomeExibicao: nome,
+    monitorOperacional,
+    stats: [
+      {
+        titulo: 'Matrículas ativas',
+        valor: formatarNumero(matriculasAtivas),
+        cor: COR_VERDE,
+        icone: <SchoolRoundedIcon />,
+      },
+      {
+        titulo: 'Abertos agora',
+        valor: formatarNumero(monitorOperacional.totalAbertos),
+        cor: COR_LARANJA,
+        icone: <MeetingRoomIcon />,
+      },
+      {
+        titulo: 'Salas ocupadas',
+        valor: formatarNumero(monitorOperacional.salasOcupadas),
+        cor: COR_VERMELHA,
+        icone: <DoorFrontRoundedIcon />,
+      },
+      {
+        titulo: 'Professores em atendimento',
+        valor: formatarNumero(monitorOperacional.professoresAtivos),
+        cor: COR_AZUL,
+        icone: <AssignmentIndRoundedIcon />,
+      },
+    ],
+    bannerTitulo: 'Rotina operacional da secretaria',
+    bannerDescricao: `${formatarNumero(totalUsuarios)} usuários cadastrados, ${formatarNumero(totalAlunos)} alunos, ${formatarNumero(matriculasAtivas)} matrículas ativas, ${formatarNumero(totalTurmas)} turmas em andamento, ${formatarNumero(totalSalas)} salas cadastradas e ${formatarNumero(monitorOperacional.totalAbertos)} atendimentos abertos neste momento.`,
+    atividadesRecentes,
+  }
+}
+
+const carregarDashboardProfessor = async (
+  supabase: SupabaseClient,
+  usuario: UsuarioDashboard,
+): Promise<DashboardData> => {
+  const base = criarDashboardPadrao('PROFESSOR')
+  const [nome, professorId] = await Promise.all([
+    carregarNomeUsuario(supabase, usuario.id),
+    carregarProfessorId(supabase, usuario.id),
+  ])
+
+  if (!professorId) {
+    return {
+      ...base,
+      nomeExibicao: nome,
+      bannerTitulo: 'Professor ainda não vinculado',
+      bannerDescricao:
+        'Não encontramos um vínculo em public.professores para este usuário. Depois que o vínculo for criado, os indicadores serão exibidos aqui.',
+    }
+  }
+
+  const [totalAtendimentos, sessoesAbertas, atividadesPendentes, notasRows, sessoesRows, atividadesRecentes] =
+    await Promise.all([
+      contar(
+        supabase
+          .from('sessoes_atendimento')
+          .select('id_sessao', { count: 'exact', head: true })
+          .eq('id_professor', professorId),
+      ),
+      contar(
+        supabase
+          .from('sessoes_atendimento')
+          .select('id_sessao', { count: 'exact', head: true })
+          .eq('id_professor', professorId)
+          .is('hora_saida', null),
+      ),
+      contar(
+        supabase
+          .from('registros_atendimento')
+          .select(
+            'id_atividade, sessoes_atendimento!inner(id_professor)',
+            { count: 'exact', head: true },
+          )
+          .eq('sessoes_atendimento.id_professor', professorId)
+          .neq('status', 'Concluída'),
+      ),
+      supabase
+        .from('registros_atendimento')
+        .select('nota, sessoes_atendimento!inner(id_professor)')
+        .eq('sessoes_atendimento.id_professor', professorId)
+        .not('nota', 'is', null),
+      supabase
+        .from('sessoes_atendimento')
+        .select('id_aluno')
+        .eq('id_professor', professorId),
+      carregarAtividadesProfessor(supabase, professorId),
+    ])
+
+  if (notasRows.error) throw notasRows.error
+  if (sessoesRows.error) throw sessoesRows.error
+
+  const mediaNotas = mediaNumerica(
+    ((notasRows.data ?? []) as Array<{ nota: number | null }>).map(row => row.nota),
+  )
+  const alunosAtendidos = new Set(
+    ((sessoesRows.data ?? []) as Array<{ id_aluno: number | null }>).map(row => row.id_aluno).filter((id): id is number => typeof id === 'number'),
+  ).size
+
+  return {
+    ...base,
+    nomeExibicao: nome,
+    stats: [
+      {
+        titulo: 'Atendimentos realizados',
+        valor: formatarNumero(totalAtendimentos),
+        cor: COR_AZUL,
+        icone: <MeetingRoomIcon />,
+      },
+      {
+        titulo: 'Sessões em aberto',
+        valor: formatarNumero(sessoesAbertas),
+        cor: COR_LARANJA,
+        icone: <CalendarTodayIcon />,
+      },
+      {
+        titulo: 'Atividades pendentes',
+        valor: formatarNumero(atividadesPendentes),
+        cor: COR_VERMELHA,
+        icone: <AssignmentTurnedInRoundedIcon />,
+      },
+      {
+        titulo: 'Média das notas',
+        valor: formatarMedia(mediaNotas),
+        cor: COR_VERDE,
+        icone: <InsightsRoundedIcon />,
+      },
+    ],
+    bannerTitulo: 'Resumo do seu trabalho docente',
+    bannerDescricao: `${formatarNumero(totalAtendimentos)} atendimentos registrados para ${formatarNumero(alunosAtendidos)} alunos, com ${formatarNumero(atividadesPendentes)} atividades pendentes neste momento.`,
+    atividadesRecentes,
+  }
+}
+
+const carregarDashboardCoordenacao = async (
+  supabase: SupabaseClient,
+  usuario: UsuarioDashboard,
+): Promise<DashboardData> => {
+  const base = criarDashboardPadrao('COORDENACAO')
+
+  const [
+    nome,
+    totalSasp,
+    acompanhamentosAbertos,
+    totalProtocolos,
+    protocolosConcluidos,
+    atividadesRecentes,
+    monitorOperacional,
+  ] = await Promise.all([
+    carregarNomeUsuario(supabase, usuario.id),
+    contar(
+      supabase
+        .from('formulario_sasp')
+        .select('id_sasp', { count: 'exact', head: true }),
+    ),
+    contar(
+      supabase
+        .from('acompanhamento_aluno')
+        .select('id_acompanhamento', { count: 'exact', head: true })
+        .neq('status', 'Retornou'),
+    ),
+    contar(
+      supabase
+        .from('registros_atendimento')
+        .select('id_atividade', { count: 'exact', head: true }),
+    ),
+    contar(
+      supabase
+        .from('registros_atendimento')
+        .select('id_atividade', { count: 'exact', head: true })
+        .eq('status', 'Concluída'),
+    ),
+    carregarAtividadesAcompanhamento(supabase, '/coordenacao/acompanhamento'),
+    carregarMonitorOperacionalAoVivo(supabase),
+  ])
+
+  const taxaProtocolos = totalProtocolos
+    ? (protocolosConcluidos / totalProtocolos) * 100
+    : 0
+
+  return {
+    ...base,
+    nomeExibicao: nome,
+    monitorOperacional,
+    stats: [
+      {
+        titulo: 'SASP preenchidos',
+        valor: formatarNumero(totalSasp),
+        cor: COR_AZUL,
+        icone: <DescriptionRoundedIcon />,
+      },
+      {
+        titulo: 'Abertos agora',
+        valor: formatarNumero(monitorOperacional.totalAbertos),
+        cor: COR_VERDE,
+        icone: <MeetingRoomIcon />,
+      },
+      {
+        titulo: 'Acompanhamentos abertos',
+        valor: formatarNumero(acompanhamentosAbertos),
+        cor: COR_VERMELHA,
+        icone: <AssignmentTurnedInRoundedIcon />,
+      },
+      {
+        titulo: 'Professores em atendimento',
+        valor: formatarNumero(monitorOperacional.professoresAtivos),
+        cor: COR_LARANJA,
+        icone: <AssignmentIndRoundedIcon />,
+      },
+    ],
+    bannerTitulo: 'Visão pedagógica consolidada',
+    bannerDescricao: `${formatarNumero(totalSasp)} formulários SASP preenchidos, ${formatarNumero(acompanhamentosAbertos)} acompanhamentos em aberto, ${formatarNumero(monitorOperacional.totalAbertos)} atendimentos acontecendo agora e taxa de ${formatarPercentual(taxaProtocolos)} de protocolos concluídos.`,
+    atividadesRecentes,
+  }
+}
+
+const carregarDashboardDirecao = async (
+  supabase: SupabaseClient,
+  usuario: UsuarioDashboard,
+): Promise<DashboardData> => {
+  const base = criarDashboardPadrao('DIRETOR')
+
+  const [
+    nome,
+    matriculasAtivas,
+    turmasAtivas,
+    totalMatriculas,
+    matriculasConcluidas,
+    totalSasp,
+    acompanhamentosAbertos,
+    atividadesRecentes,
+    monitorOperacional,
+  ] = await Promise.all([
+    carregarNomeUsuario(supabase, usuario.id),
+    contar(
+      supabase
+        .from('matriculas')
+        .select('id_matricula', { count: 'exact', head: true })
+        .eq('id_status_matricula', STATUS_MATRICULA_ATIVA),
+    ),
+    contar(
+      supabase
+        .from('turmas')
+        .select('id_turma', { count: 'exact', head: true })
+        .eq('is_ativa', true),
+    ),
+    contar(
+      supabase
+        .from('matriculas')
+        .select('id_matricula', { count: 'exact', head: true }),
+    ),
+    contar(
+      supabase
+        .from('matriculas')
+        .select('id_matricula', { count: 'exact', head: true })
+        .eq('id_status_matricula', STATUS_MATRICULA_CONCLUIDA),
+    ),
+    contar(
+      supabase
+        .from('formulario_sasp')
+        .select('id_sasp', { count: 'exact', head: true }),
+    ),
+    contar(
+      supabase
+        .from('acompanhamento_aluno')
+        .select('id_acompanhamento', { count: 'exact', head: true })
+        .neq('status', 'Retornou'),
+    ),
+    carregarAtividadesMatriculas(supabase, '/secretaria/matriculas'),
+    carregarMonitorOperacionalAoVivo(supabase),
+  ])
+
+  const taxaConclusao = totalMatriculas
+    ? (matriculasConcluidas / totalMatriculas) * 100
+    : 0
+
+  return {
+    ...base,
+    nomeExibicao: nome,
+    monitorOperacional,
+    stats: [
+      {
+        titulo: 'Matrículas ativas',
+        valor: formatarNumero(matriculasAtivas),
+        cor: COR_AZUL,
+        icone: <SchoolRoundedIcon />,
+      },
+      {
+        titulo: 'Abertos agora',
+        valor: formatarNumero(monitorOperacional.totalAbertos),
+        cor: COR_LARANJA,
+        icone: <MeetingRoomIcon />,
+      },
+      {
+        titulo: 'Salas ocupadas',
+        valor: formatarNumero(monitorOperacional.salasOcupadas),
+        cor: COR_VERDE,
+        icone: <DoorFrontRoundedIcon />,
+      },
+      {
+        titulo: 'Conclusão de matrículas',
+        valor: formatarPercentual(taxaConclusao),
+        cor: COR_VERMELHA,
+        icone: <InsightsRoundedIcon />,
+      },
+    ],
+    bannerTitulo: 'Panorama institucional da unidade',
+    bannerDescricao: `${formatarNumero(turmasAtivas)} turmas ativas, ${formatarNumero(totalSasp)} SASP preenchidos, ${formatarNumero(acompanhamentosAbertos)} acompanhamentos em aberto e ${formatarNumero(monitorOperacional.totalAbertos)} atendimentos em execução agora, distribuídos em ${formatarNumero(monitorOperacional.salasOcupadas)} sala(s).`,
+    atividadesRecentes,
+  }
+}
+
+const carregarDashboardAluno = async (
+  supabase: SupabaseClient,
+  usuario: UsuarioDashboard,
+): Promise<DashboardData> => {
+  const base = criarDashboardPadrao('ALUNO')
+  const [nome, alunoId] = await Promise.all([
+    carregarNomeUsuario(supabase, usuario.id),
+    carregarAlunoId(supabase, usuario.id),
+  ])
+
+  if (!alunoId) {
+    return {
+      ...base,
+      nomeExibicao: nome,
+      bannerTitulo: 'Aluno ainda não vinculado',
+      bannerDescricao:
+        'Não encontramos um vínculo em public.alunos para este usuário. Depois que o vínculo existir, as informações acadêmicas aparecerão aqui.',
+    }
+  }
+
+  const matriculasQuery = await supabase
+    .from('matriculas')
+    .select('id_matricula, id_status_matricula')
+    .eq('id_aluno', alunoId)
+
+  if (matriculasQuery.error) throw matriculasQuery.error
+
+  const matriculas = (matriculasQuery.data ?? []) as Array<{
+    id_matricula: number | null
+    id_status_matricula: number | null
+  }>
+
+  const idsMatriculas = matriculas
+    .map(row => row.id_matricula)
+    .filter((id): id is number => typeof id === 'number')
+
+  const matriculasAtivas = matriculas.filter(
+    row => row.id_status_matricula === STATUS_MATRICULA_ATIVA,
+  ).length
+
+  let disciplinasEmAndamento = 0
+  let atividadesPendentes = 0
+  let mediaGeral: number | null = null
+  let disciplinasConcluidas = 0
+
+  if (idsMatriculas.length) {
+    const progressoQuery = await supabase
+      .from('progresso_aluno')
+      .select('id_progresso, id_status_disciplina, nota_final')
+      .in('id_matricula', idsMatriculas)
+
+    if (progressoQuery.error) throw progressoQuery.error
+
+    const progressos = (progressoQuery.data ?? []) as Array<{
+      id_progresso: number | null
+      id_status_disciplina: number | null
+      nota_final: number | null
+    }>
+
+    const idsProgressos = progressos
+      .map(row => row.id_progresso)
+      .filter((id): id is number => typeof id === 'number')
+
+    disciplinasEmAndamento = progressos.filter(
+      row =>
+        row.id_status_disciplina === STATUS_DISCIPLINA_A_CURSAR ||
+        row.id_status_disciplina === STATUS_DISCIPLINA_EM_CURSO,
+    ).length
+
+    disciplinasConcluidas = progressos.filter(
+      row =>
+        row.id_status_disciplina === STATUS_DISCIPLINA_APROVADO ||
+        row.id_status_disciplina === STATUS_DISCIPLINA_APROVEITAMENTO,
+    ).length
+
+    mediaGeral = mediaNumerica(progressos.map(row => row.nota_final))
+
+    if (idsProgressos.length) {
+      const pendentesQuery = await supabase
+        .from('registros_atendimento')
+        .select('id_atividade', { count: 'exact', head: true })
+        .in('id_progresso', idsProgressos)
+        .neq('status', 'Concluída')
+
+      if (pendentesQuery.error) throw pendentesQuery.error
+      atividadesPendentes = pendentesQuery.count ?? 0
+    }
+  }
+
+  const [totalAtendimentos, atividadesRecentes] = await Promise.all([
+    contar(
+      supabase
+        .from('sessoes_atendimento')
+        .select('id_sessao', { count: 'exact', head: true })
+        .eq('id_aluno', alunoId),
+    ),
+    carregarAtividadesAluno(supabase, alunoId),
+  ])
+
+  return {
+    ...base,
+    nomeExibicao: nome,
+    stats: [
+      {
+        titulo: 'Matrículas ativas',
+        valor: formatarNumero(matriculasAtivas),
+        cor: COR_AZUL,
+        icone: <SchoolRoundedIcon />,
+      },
+      {
+        titulo: 'Disciplinas em andamento',
+        valor: formatarNumero(disciplinasEmAndamento),
+        cor: COR_LARANJA,
+        icone: <MenuBookRoundedIcon />,
+      },
+      {
+        titulo: 'Atividades pendentes',
+        valor: formatarNumero(atividadesPendentes),
+        cor: COR_VERMELHA,
+        icone: <AssignmentTurnedInRoundedIcon />,
+      },
+      {
+        titulo: 'Média geral',
+        valor: formatarMedia(mediaGeral),
+        cor: COR_VERDE,
+        icone: <InsightsRoundedIcon />,
+      },
+    ],
+    bannerTitulo: 'Resumo da sua vida escolar',
+    bannerDescricao: `${formatarNumero(disciplinasConcluidas)} disciplinas concluídas, ${formatarNumero(totalAtendimentos)} atendimentos registrados e ${formatarNumero(atividadesPendentes)} atividades pendentes no momento.`,
+    atividadesRecentes,
+  }
+}
+
+const carregarDashboard = async (
+  supabase: SupabaseClient,
+  usuario: UsuarioDashboard,
+): Promise<DashboardData> => {
+  switch (usuario.papel) {
+    case 'ADMIN':
+      return carregarDashboardAdmin(supabase, usuario)
+    case 'SECRETARIA':
+      return carregarDashboardSecretaria(supabase, usuario)
+    case 'PROFESSOR':
+      return carregarDashboardProfessor(supabase, usuario)
+    case 'COORDENACAO':
+      return carregarDashboardCoordenacao(supabase, usuario)
+    case 'DIRETOR':
+      return carregarDashboardDirecao(supabase, usuario)
+    case 'ALUNO':
+      return carregarDashboardAluno(supabase, usuario)
+    default:
+      return criarDashboardPadrao(usuario.papel)
+  }
 }
 
 const StatCard: React.FC<StatCardProps> = ({
@@ -95,7 +1416,7 @@ const StatCard: React.FC<StatCardProps> = ({
           <Typography variant="body2" color="text.secondary" fontWeight={500}>
             {titulo}
           </Typography>
-          {tendencia && (
+          {tendencia ? (
             <Chip
               label={tendencia}
               size="small"
@@ -107,380 +1428,45 @@ const StatCard: React.FC<StatCardProps> = ({
                 fontWeight: 700,
               }}
             />
-          )}
+          ) : null}
         </Stack>
       </CardContent>
     </Card>
   )
 }
 
-// --- Página de Dashboard ---
 const DashboardPage: React.FC = () => {
   const { usuario } = useAuth()
+  const { supabase } = useSupabase()
   const theme = useTheme()
+  const navigate = useNavigate()
 
-  // Papel do usuário (ADMIN, SECRETARIA, PROFESSOR, COORDENACAO, DIRETOR, ALUNO...)
-  const papel = (usuario as any)?.papel || 'DESCONHECIDO'
+  const papel = usuario?.papel
+  const base = React.useMemo(() => criarDashboardPadrao(papel), [papel])
+  const usarMonitorOperacional = React.useMemo(
+    () => Boolean(papel && PAPEIS_COM_MONITOR_AO_VIVO.includes(papel)),
+    [papel],
+  )
 
-  type ConteudoDashboard = {
-    tituloPagina: string
-    subtitulo: string
-    stats: StatCardProps[]
-    bannerTitulo: string
-    bannerDescricao: string
-    bannerBotaoLabel: string
-    acessoRapido: string[]
-    mostrarBotaoPrincipal: boolean
-    textoBotaoPrincipal: string
-  }
+  const {
+    data: conteudo,
+    error,
+    isLoading,
+    isFetching,
+    refetch,
+  } = useQuery({
+    queryKey: ['dashboard-page', usuario?.id, usuario?.papel],
+    enabled: !!usuario?.id && !!usuario?.papel && !!supabase,
+    staleTime: usarMonitorOperacional ? 1000 * 15 : 1000 * 60,
+    refetchInterval: usarMonitorOperacional ? 1000 * 15 : false,
+    refetchOnWindowFocus: usarMonitorOperacional,
+    queryFn: async () => {
+      if (!usuario || !supabase) return base
+      return carregarDashboard(supabase, usuario)
+    },
+    initialData: base,
+  })
 
-  const getConteudoPorPapel = (): ConteudoDashboard => {
-    switch (papel) {
-      case 'ADMIN':
-        return {
-          tituloPagina: 'Dashboard Administração',
-          subtitulo:
-            'Visão geral do SIGE-CEJA para administração: acesso rápido aos painéis de Secretaria, Professores, Coordenação, Direção e Alunos.',
-          stats: [
-            {
-              titulo: 'Alunos Ativos',
-              valor: '1.248',
-              tendencia: '+12%',
-              cor: '#2196F3',
-              icone: <PeopleAltRoundedIcon />,
-            },
-            {
-              titulo: 'Novas Matrículas',
-              valor: '86',
-              tendencia: '+5%',
-              cor: '#4CAF50',
-              icone: <SchoolRoundedIcon />,
-            },
-            {
-              titulo: 'Turmas Abertas',
-              valor: '42',
-              cor: '#FF9800',
-              icone: <AssignmentTurnedInRoundedIcon />,
-            },
-            {
-              titulo: 'Taxa de Freq.',
-              valor: '94%',
-              tendencia: '-1%',
-              cor: '#F44336',
-              icone: <InsightsRoundedIcon />,
-            },
-          ],
-          bannerTitulo: 'Visão geral da rede CEJA',
-          bannerDescricao:
-            'Use o menu lateral para navegar entre os painéis da Secretaria, Professores, Coordenação, Direção e Alunos. Em breve, esta área trará indicadores consolidados da escola.',
-          bannerBotaoLabel: 'Ver relatórios gerenciais',
-          acessoRapido: [
-            'Painel da Secretaria',
-            'Painel dos Professores',
-            'Painel da Coordenação',
-            'Painel da Direção',
-            'Painel dos Alunos',
-            'Configurações do sistema',
-          ],
-          mostrarBotaoPrincipal: true,
-          textoBotaoPrincipal: 'Novo atendimento',
-        }
-
-      case 'SECRETARIA':
-        return {
-          tituloPagina: 'Dashboard Secretaria',
-          subtitulo:
-            'Rotina da Secretaria: matrículas, turmas, salas, disciplinas e protocolos.',
-          stats: [
-            {
-              titulo: 'Matrículas ativas',
-              valor: '732',
-              tendencia: '+18',
-              cor: '#4CAF50',
-              icone: <SchoolRoundedIcon />,
-            },
-            {
-              titulo: 'Renovações pendentes',
-              valor: '21',
-              cor: '#FF9800',
-              icone: <AssignmentTurnedInRoundedIcon />,
-            },
-            {
-              titulo: 'Turmas em andamento',
-              valor: '36',
-              cor: '#2196F3',
-              icone: <PeopleAltRoundedIcon />,
-            },
-            {
-              titulo: 'Protocolos em aberto',
-              valor: '9',
-              cor: '#F44336',
-              icone: <InsightsRoundedIcon />,
-            },
-          ],
-          bannerTitulo: 'Período letivo 2025.1 em andamento',
-          bannerDescricao:
-            'Faltam poucos dias para o fechamento das matrículas e renovações. Verifique a situação de cada aluno e das turmas antes do encerramento.',
-          bannerBotaoLabel: 'Ir para matrículas',
-          acessoRapido: [
-            'Cadastrar aluno',
-            'Matricular aluno',
-            'Renovar matrícula',
-            'Gerenciar turmas',
-            'Gerenciar salas',
-            'Gerenciar disciplinas',
-          ],
-          mostrarBotaoPrincipal: true,
-          textoBotaoPrincipal: 'Nova matrícula',
-        }
-
-      case 'PROFESSOR':
-        return {
-          tituloPagina: 'Dashboard Professor',
-          subtitulo:
-            'Foco nos atendimentos e no acompanhamento pedagógico dos alunos.',
-          stats: [
-            {
-              titulo: 'Meus alunos',
-              valor: '156',
-              tendencia: '+2',
-              cor: '#2196F3',
-              icone: <PeopleAltRoundedIcon />,
-            },
-            {
-              titulo: 'Atendimentos hoje',
-              valor: '4',
-              cor: '#FF9800',
-              icone: <CalendarTodayIcon />,
-            },
-            {
-              titulo: 'Atividades pendentes',
-              valor: '3',
-              cor: '#F44336',
-              icone: <AssignmentTurnedInRoundedIcon />,
-            },
-            {
-              titulo: 'Desempenho médio',
-              valor: '7,8',
-              tendencia: '+0,5',
-              cor: '#4CAF50',
-              icone: <InsightsRoundedIcon />,
-            },
-          ],
-          bannerTitulo: 'Agenda de atendimentos do dia',
-          bannerDescricao:
-            'Revise os atendimentos previstos e os registros pendentes antes do fim do turno. Manter os lançamentos em dia facilita o acompanhamento dos alunos.',
-          bannerBotaoLabel: 'Ver agenda de atendimentos',
-          acessoRapido: [
-            'Registrar atendimento',
-            'Lançar notas',
-            'Consultar turma',
-            'Planejar aula',
-            'Relatório de turma',
-            'Comunicações com a coordenação',
-          ],
-          mostrarBotaoPrincipal: true,
-          textoBotaoPrincipal: 'Novo atendimento',
-        }
-
-      case 'COORDENACAO':
-        return {
-          tituloPagina: 'Dashboard Coordenação',
-          subtitulo:
-            'Tudo da Secretaria, com foco adicional em SASP e acompanhamento pedagógico.',
-          stats: [
-            {
-              titulo: 'Alunos com SASP preenchido',
-              valor: '428',
-              tendencia: '+32',
-              cor: '#2196F3',
-              icone: <PeopleAltRoundedIcon />,
-            },
-            {
-              titulo: 'Atendimentos na semana',
-              valor: '73',
-              cor: '#4CAF50',
-              icone: <MeetingRoomIcon />,
-            },
-            {
-              titulo: 'Turmas críticas',
-              valor: '5',
-              cor: '#F44336',
-              icone: <AssignmentTurnedInRoundedIcon />,
-            },
-            {
-              titulo: 'Protocolos concluídos',
-              valor: '61%',
-              tendencia: '+4%',
-              cor: '#FF9800',
-              icone: <InsightsRoundedIcon />,
-            },
-          ],
-          bannerTitulo: 'Visão consolidada SASP e atendimentos',
-          bannerDescricao:
-            'Analise as informações do SASP e dos atendimentos para apoiar decisões pedagógicas e intervenções junto às turmas.',
-          bannerBotaoLabel: 'Abrir módulo SASP',
-          acessoRapido: [
-            'Painel SASP',
-            'Acompanhamento de alunos',
-            'Relatórios por turma',
-            'Protocolos por disciplina',
-            'Matrículas e renovações',
-            'Agenda de reuniões',
-          ],
-          mostrarBotaoPrincipal: true,
-          textoBotaoPrincipal: 'Novo atendimento',
-        }
-
-      case 'DIRETOR':
-        return {
-          tituloPagina: 'Dashboard Direção',
-          subtitulo:
-            'Visão estratégica da escola: indicadores consolidados de matrículas, atendimentos e resultados.',
-          stats: [
-            {
-              titulo: 'Alunos ativos',
-              valor: '1.248',
-              tendencia: '+12%',
-              cor: '#2196F3',
-              icone: <PeopleAltRoundedIcon />,
-            },
-            {
-              titulo: 'Atendimentos no mês',
-              valor: '312',
-              tendencia: '+8%',
-              cor: '#4CAF50',
-              icone: <SchoolRoundedIcon />,
-            },
-            {
-              titulo: 'Taxa de conclusão',
-              valor: '78%',
-              tendencia: '+3%',
-              cor: '#FF9800',
-              icone: <InsightsRoundedIcon />,
-            },
-            {
-              titulo: 'Solicitações pendentes',
-              valor: '7',
-              cor: '#F44336',
-              icone: <AssignmentTurnedInRoundedIcon />,
-            },
-          ],
-          bannerTitulo: 'Panorama geral da unidade',
-          bannerDescricao:
-            'Acompanhe matrículas, atendimentos, desempenho e solicitações críticas para tomar decisões estratégicas ao longo do período letivo.',
-          bannerBotaoLabel: 'Ver relatórios estratégicos',
-          acessoRapido: [
-            'Relatórios consolidados',
-            'Acompanhamento de turmas',
-            'Solicitações pendentes',
-            'Agenda da direção',
-            'Painel de atendimentos',
-            'Configurações institucionais',
-          ],
-          mostrarBotaoPrincipal: true,
-          textoBotaoPrincipal: 'Nova solicitação',
-        }
-
-      case 'ALUNO':
-        return {
-          tituloPagina: 'Minha área',
-          subtitulo:
-            'Resumo das suas matrículas, do seu progresso por disciplina e dos próximos atendimentos.',
-          stats: [
-            {
-              titulo: 'Matrículas ativas',
-              valor: '2',
-              cor: '#2196F3',
-              icone: <SchoolRoundedIcon />,
-            },
-            {
-              titulo: 'Atividades pendentes',
-              valor: '4',
-              cor: '#FF9800',
-              icone: <AssignmentTurnedInRoundedIcon />,
-            },
-            {
-              titulo: 'Média geral',
-              valor: '8,1',
-              cor: '#4CAF50',
-              icone: <InsightsRoundedIcon />,
-            },
-            {
-              titulo: 'Atendimentos agendados',
-              valor: '1',
-              cor: '#9C27B0',
-              icone: <CalendarTodayIcon />,
-            },
-          ],
-          bannerTitulo: 'Acompanhe seus estudos',
-          bannerDescricao:
-            'Veja suas matrículas, notas e atendimentos. Mantenha seus dados atualizados e acompanhe seu progresso ao longo do período letivo.',
-          bannerBotaoLabel: 'Ver meu progresso',
-          acessoRapido: [
-            'Ver minhas matrículas',
-            'Ver meu boletim',
-            'Próximos atendimentos',
-            'Atualizar meus dados',
-            'Documentos da escola',
-            'Ajuda / suporte',
-          ],
-          mostrarBotaoPrincipal: false,
-          textoBotaoPrincipal: 'Novo atendimento',
-        }
-
-      default:
-        return {
-          tituloPagina: 'Dashboard',
-          subtitulo:
-            'Carregando informações do seu perfil. Assim que o papel for identificado, a dashboard é adaptada automaticamente.',
-          stats: [
-            {
-              titulo: 'Usuários online',
-              valor: '—',
-              cor: '#2196F3',
-              icone: <PeopleAltRoundedIcon />,
-            },
-            {
-              titulo: 'Ações recentes',
-              valor: '—',
-              cor: '#FF9800',
-              icone: <AssignmentTurnedInRoundedIcon />,
-            },
-            {
-              titulo: 'Indicadores',
-              valor: '—',
-              cor: '#4CAF50',
-              icone: <InsightsRoundedIcon />,
-            },
-            {
-              titulo: 'Alertas',
-              valor: '—',
-              cor: '#F44336',
-              icone: <NotificationsActiveIcon />,
-            },
-          ],
-          bannerTitulo: 'Bem-vindo ao SIGE-CEJA',
-          bannerDescricao:
-            'Estamos carregando os dados do seu perfil para montar a visão correta da sua função no sistema.',
-          bannerBotaoLabel: 'Atualizar',
-          acessoRapido: [
-            'Meus dados',
-            'Ajuda',
-            'Configurações',
-            'Suporte',
-            'Documentação',
-            'Sobre o sistema',
-          ],
-          mostrarBotaoPrincipal: false,
-          textoBotaoPrincipal: 'Novo atendimento',
-        }
-    }
-  }
-
-  const conteudo = getConteudoPorPapel()
-
-  // Data formatada
   const dataHoje = new Date().toLocaleDateString('pt-BR', {
     weekday: 'long',
     day: 'numeric',
@@ -488,13 +1474,23 @@ const DashboardPage: React.FC = () => {
     year: 'numeric',
   })
 
-  // Nome do usuário com fallback
-  const nomeCompleto = (usuario as any)?.name || 'Usuário'
-  const primeiroNome = nomeCompleto.split(' ')[0]
+  const nomeCompleto = conteudo?.nomeExibicao || base.nomeExibicao || 'Usuário'
+  const nomeCurto = primeiroNome(nomeCompleto)
+  const atividades = conteudo?.atividadesRecentes ?? []
+
+  const irPara = (path: string | null | undefined) => {
+    if (!path) return
+    navigate(path)
+  }
 
   return (
     <Box sx={{ maxWidth: 1600, mx: 'auto', p: { xs: 0, md: 1 } }}>
-      {/* 1. Cabeçalho de Boas-vindas */}
+      {error ? (
+        <Alert severity="warning" sx={{ mb: 3, borderRadius: 2 }}>
+          Não foi possível atualizar todos os indicadores da dashboard agora. Os dados exibidos podem estar parciais.
+        </Alert>
+      ) : null}
+
       <Box
         sx={{
           display: 'flex',
@@ -511,9 +1507,18 @@ const DashboardPage: React.FC = () => {
             fontWeight={800}
             sx={{ color: 'text.primary', mb: 0.5 }}
           >
-            Olá, {primeiroNome}
+            Olá, {nomeCurto}
           </Typography>
-          <Stack direction="row" alignItems="center" spacing={1}>
+
+          <Typography variant="body1" color="text.primary" fontWeight={700}>
+            {conteudo?.tituloPagina ?? base.tituloPagina}
+          </Typography>
+
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+            {conteudo?.subtitulo ?? base.subtitulo}
+          </Typography>
+
+          <Stack direction="row" alignItems="center" spacing={1} sx={{ mt: 1 }}>
             <CalendarTodayIcon sx={{ fontSize: 16, color: 'text.secondary' }} />
             <Typography
               variant="body2"
@@ -525,19 +1530,25 @@ const DashboardPage: React.FC = () => {
           </Stack>
         </Box>
 
-        <Box sx={{ display: 'flex', gap: 2 }}>
+        <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
           <Button
             variant="outlined"
-            startIcon={<NotificationsActiveIcon />}
+            startIcon={
+              isFetching ? <CircularProgress size={16} /> : <RefreshRoundedIcon />
+            }
+            onClick={() => {
+              void refetch()
+            }}
             sx={{ borderRadius: 2, textTransform: 'none' }}
           >
-            Avisos (3)
+            {isLoading || isFetching ? 'Atualizando dados' : 'Atualizar dados'}
           </Button>
 
-          {conteudo.mostrarBotaoPrincipal && (
+          {conteudo?.mostrarBotaoPrincipal && conteudo.botaoPrincipalPath ? (
             <Button
               variant="contained"
               startIcon={<AddCircleOutlineIcon />}
+              onClick={() => irPara(conteudo.botaoPrincipalPath)}
               sx={{
                 borderRadius: 2,
                 textTransform: 'none',
@@ -549,11 +1560,10 @@ const DashboardPage: React.FC = () => {
             >
               {conteudo.textoBotaoPrincipal}
             </Button>
-          )}
+          ) : null}
         </Box>
       </Box>
 
-      {/* 2. Área de Cards Estatísticos */}
       <Box
         sx={{
           display: 'grid',
@@ -566,12 +1576,15 @@ const DashboardPage: React.FC = () => {
           mb: 4,
         }}
       >
-        {conteudo.stats.map((stat, index) => (
-          <StatCard key={index} {...stat} />
+        {(conteudo?.stats ?? base.stats).map((stat, index) => (
+          <StatCard key={`${stat.titulo}-${index}`} {...stat} />
         ))}
       </Box>
 
-      {/* 3. Seção Principal (Conteúdo Dividido) */}
+      {conteudo?.monitorOperacional ? (
+        <MonitorOperacionalSection data={conteudo.monitorOperacional} />
+      ) : null}
+
       <Box
         sx={{
           display: 'grid',
@@ -579,9 +1592,7 @@ const DashboardPage: React.FC = () => {
           gap: 3,
         }}
       >
-        {/* Lado Esquerdo: Banner + Acesso Rápido */}
         <Box>
-          {/* Banner de Status */}
           <Paper
             elevation={0}
             sx={{
@@ -600,7 +1611,6 @@ const DashboardPage: React.FC = () => {
               overflow: 'hidden',
             }}
           >
-            {/* Elemento decorativo de fundo */}
             <SchoolRoundedIcon
               sx={{
                 position: 'absolute',
@@ -614,26 +1624,28 @@ const DashboardPage: React.FC = () => {
 
             <Box sx={{ position: 'relative', zIndex: 1 }}>
               <Typography variant="h6" fontWeight={700} gutterBottom>
-                {conteudo.bannerTitulo}
+                {conteudo?.bannerTitulo ?? base.bannerTitulo}
               </Typography>
               <Typography
                 variant="body2"
-                sx={{ opacity: 0.9, maxWidth: 500, mb: 2 }}
+                sx={{ opacity: 0.9, maxWidth: 600, mb: 2 }}
               >
-                {conteudo.bannerDescricao}
+                {conteudo?.bannerDescricao ?? base.bannerDescricao}
               </Typography>
-              <Button
-                variant="contained"
-                size="small"
-                color={theme.palette.mode === 'dark' ? 'success' : 'primary'}
-                sx={{ borderRadius: 20, boxShadow: 'none' }}
-              >
-                {conteudo.bannerBotaoLabel}
-              </Button>
+              {conteudo?.bannerBotaoPath ? (
+                <Button
+                  variant="contained"
+                  size="small"
+                  color={theme.palette.mode === 'dark' ? 'success' : 'primary'}
+                  sx={{ borderRadius: 20, boxShadow: 'none' }}
+                  onClick={() => irPara(conteudo.bannerBotaoPath)}
+                >
+                  {conteudo.bannerBotaoLabel}
+                </Button>
+              ) : null}
             </Box>
           </Paper>
 
-          {/* Acesso Rápido (Grid Interno) */}
           <Typography variant="h6" fontWeight={700} sx={{ mb: 2 }}>
             Acesso rápido
           </Typography>
@@ -647,10 +1659,11 @@ const DashboardPage: React.FC = () => {
               gap: 2,
             }}
           >
-            {conteudo.acessoRapido.map((acao, i) => (
+            {(conteudo?.acessoRapido ?? base.acessoRapido).map(acao => (
               <Paper
-                key={i}
+                key={`${acao.label}-${acao.path}`}
                 elevation={0}
+                onClick={() => irPara(acao.path)}
                 sx={{
                   p: 2,
                   textAlign: 'center',
@@ -670,14 +1683,13 @@ const DashboardPage: React.FC = () => {
                   fontWeight={600}
                   color="text.secondary"
                 >
-                  {acao}
+                  {acao.label}
                 </Typography>
               </Paper>
             ))}
           </Box>
         </Box>
 
-        {/* Lado Direito: Atividades Recentes */}
         <Box>
           <Paper
             elevation={0}
@@ -701,78 +1713,59 @@ const DashboardPage: React.FC = () => {
               </Typography>
             </Box>
 
-            <Stack spacing={0}>
-              {[
-                {
-                  user: 'Secretaria',
-                  action: 'Matriculou João Silva',
-                  time: '2 min atrás',
-                  color: '#2196F3',
-                },
-                {
-                  user: 'Coordenação',
-                  action: 'Atualizou pauta da reunião',
-                  time: '1h atrás',
-                  color: '#FF9800',
-                },
-                {
-                  user: 'Sistema',
-                  action: 'Backup automático',
-                  time: '3h atrás',
-                  color: '#9E9E9E',
-                },
-                {
-                  user: 'Prof. Ana',
-                  action: 'Lançou notas Turma A',
-                  time: '5h atrás',
-                  color: '#4CAF50',
-                },
-                {
-                  user: 'Direção',
-                  action: 'Aprovou solicitação #123',
-                  time: 'Ontem',
-                  color: '#F44336',
-                },
-              ].map((item, index) => (
-                <Box
-                  key={index}
-                  sx={{
-                    p: 2,
-                    display: 'flex',
-                    gap: 2,
-                    borderBottom:
-                      index < 4
-                        ? `1px solid ${theme.palette.divider}`
-                        : 'none',
-                    '&:hover': {
-                      bgcolor: alpha(theme.palette.action.hover, 0.5),
-                    },
-                  }}
-                >
-                  <Avatar
+            {atividades.length ? (
+              <Stack spacing={0}>
+                {atividades.map((item, index) => (
+                  <Box
+                    key={item.id}
+                    onClick={() => irPara(item.path)}
                     sx={{
-                      width: 32,
-                      height: 32,
-                      bgcolor: item.color,
-                      fontSize: '0.8rem',
+                      p: 2,
+                      display: 'flex',
+                      gap: 2,
+                      cursor: item.path ? 'pointer' : 'default',
+                      borderBottom:
+                        index < atividades.length - 1
+                          ? `1px solid ${theme.palette.divider}`
+                          : 'none',
+                      '&:hover': {
+                        bgcolor: alpha(theme.palette.action.hover, 0.5),
+                      },
                     }}
                   >
-                    {item.user.charAt(0)}
-                  </Avatar>
-                  <Box sx={{ flexGrow: 1 }}>
-                    <Typography variant="body2" fontWeight={600}>
-                      {item.action}
-                    </Typography>
-                    <Typography variant="caption" color="text.secondary">
-                      {item.user} • {item.time}
-                    </Typography>
+                    <Avatar
+                      sx={{
+                        width: 32,
+                        height: 32,
+                        bgcolor: item.color,
+                        fontSize: '0.8rem',
+                      }}
+                    >
+                      {item.user.charAt(0).toUpperCase()}
+                    </Avatar>
+                    <Box sx={{ flexGrow: 1 }}>
+                      <Typography variant="body2" fontWeight={600}>
+                        {item.action}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {item.user} • {item.time}
+                      </Typography>
+                    </Box>
+                    {item.path ? (
+                      <IconButton size="small">
+                        <ArrowForwardIcon fontSize="small" />
+                      </IconButton>
+                    ) : null}
                   </Box>
-                  <IconButton size="small">
-                    <ArrowForwardIcon fontSize="small" />
-                  </IconButton>
-                </Box>
-              ))}
-            </Stack>
+                ))}
+              </Stack>
+            ) : (
+              <Box sx={{ p: 3, textAlign: 'center' }}>
+                <Typography variant="body2" color="text.secondary">
+                  Nenhuma atividade recente encontrada para o seu perfil.
+                </Typography>
+              </Box>
+            )}
 
             <Box
               sx={{
@@ -780,8 +1773,16 @@ const DashboardPage: React.FC = () => {
                 borderTop: `1px solid ${theme.palette.divider}`,
               }}
             >
-              <Button fullWidth size="small" sx={{ textTransform: 'none' }}>
-                Ver todo o histórico
+              <Button
+                fullWidth
+                size="small"
+                sx={{ textTransform: 'none' }}
+                onClick={() => {
+                  const destino = conteudo?.bannerBotaoPath || conteudo?.botaoPrincipalPath
+                  irPara(destino)
+                }}
+              >
+                Ver área principal
               </Button>
             </Box>
           </Paper>

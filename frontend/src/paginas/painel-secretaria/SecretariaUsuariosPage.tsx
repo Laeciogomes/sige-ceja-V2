@@ -2,6 +2,7 @@
 import {
   useEffect,
   useMemo,
+  useRef,
   useState,
   type FC,
   type ChangeEvent,
@@ -62,6 +63,320 @@ import type { PapelUsuario } from '../../contextos/AuthContext'
 const SENHA_PADRAO_NOVO_USUARIO = 'Ceja@2024'
 const TIPO_USUARIO_PROFESSOR_ID = 2
 
+
+const SUPABASE_PUBLIC_STORAGE_BASE = (() => {
+  const raw = String(import.meta.env.VITE_SUPABASE_URL ?? '')
+    .trim()
+    .replace(/\/+$/, '')
+  return raw ? `${raw}/storage/v1/object/public` : ''
+})()
+
+const slugifyStorageSegment = (value: string): string =>
+  String(value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9._-]/g, '_')
+    .replace(/^_+|_+$/g, '')
+
+const normalizarCaminhoFoto = (raw: string): string => {
+  const limpo = raw.trim()
+  if (!limpo) return ''
+
+  const semQuery = limpo.split('?')[0]?.split('#')[0] ?? ''
+  const semDominio = semQuery.replace(/^https?:\/\/[^/]+/i, '')
+  const semSlashInicial = semDominio.replace(/^\/+/, '')
+  const semStorage = semSlashInicial
+    .replace(/^storage\/v1\/object\/public\//i, '')
+    .replace(/^object\/public\//i, '')
+    .replace(/^public\//i, '')
+    .replace(/^\/+/, '')
+
+  if (semStorage.startsWith('avatars/')) {
+    return semStorage.replace(/^avatars\//, '')
+  }
+
+  return semStorage
+}
+
+const resolverFotoUrl = (
+  supabase: ReturnType<typeof useSupabase>['supabase'] | null,
+  fotoUrl?: string | null,
+): string | null => {
+  if (!fotoUrl?.trim() || !supabase) return null
+  const raw = fotoUrl.trim()
+
+  if (/^(data:|blob:)/i.test(raw)) return raw
+  if (/^https?:\/\//i.test(raw) && !/\/storage\/v1\/object\/public\//i.test(raw)) {
+    return raw
+  }
+
+  const caminho = normalizarCaminhoFoto(raw)
+  if (!caminho) return null
+
+  const partes = caminho.split('/').filter(Boolean)
+  if (partes.length === 0) return null
+
+  let bucket = 'avatars'
+  let pathNoBucket = caminho
+
+  if (!['alunos', 'professores'].includes(partes[0] ?? '') && partes.length > 1) {
+    bucket = partes[0] ?? 'avatars'
+    pathNoBucket = partes.slice(1).join('/')
+  }
+
+  if (!pathNoBucket) return null
+
+  if (SUPABASE_PUBLIC_STORAGE_BASE) {
+    return `${SUPABASE_PUBLIC_STORAGE_BASE}/${bucket}/${pathNoBucket}`
+  }
+
+  return supabase.storage.from(bucket).getPublicUrl(pathNoBucket).data.publicUrl
+}
+
+const isNomeArquivoImagem = (nome: string): boolean =>
+  /\.(png|jpe?g|webp|gif|bmp|svg)$/i.test(nome)
+
+const fotoUsuarioFallbackCache = new Map<string, string | null>()
+const fotoUsuarioFallbackPromiseCache = new Map<string, Promise<string | null>>()
+
+const buscarFotoUsuarioFallback = async (
+  supabase: ReturnType<typeof useSupabase>['supabase'] | null,
+  args: {
+    userId?: string | null
+    email?: string | null
+    alunoId?: number | null
+    papel?: PapelUsuario
+  },
+): Promise<string | null> => {
+  const userId = String(args.userId ?? '').trim()
+  const email = String(args.email ?? '').trim().toLowerCase()
+  const alunoIdNumero = args.alunoId != null ? Number(args.alunoId) : null
+  const alunoId = alunoIdNumero != null && Number.isFinite(alunoIdNumero) ? String(alunoIdNumero) : ''
+  const papel = args.papel
+  const cacheKey = userId || email || (papel === 'ALUNO' ? `aluno:${alunoId}` : '')
+  if (!supabase || !cacheKey) return null
+
+  if (fotoUsuarioFallbackCache.has(cacheKey)) {
+    return fotoUsuarioFallbackCache.get(cacheKey) ?? null
+  }
+
+  const existente = fotoUsuarioFallbackPromiseCache.get(cacheKey)
+  if (existente) return existente
+
+  const tarefa = (async () => {
+    const bucket = 'avatars'
+    const construirUrl = (pathNoBucket: string): string => {
+      if (SUPABASE_PUBLIC_STORAGE_BASE) {
+        return `${SUPABASE_PUBLIC_STORAGE_BASE}/${bucket}/${pathNoBucket}`
+      }
+      return supabase.storage.from(bucket).getPublicUrl(pathNoBucket).data.publicUrl
+    }
+
+    const procurarEmPasta = async (pasta: string): Promise<string | null> => {
+      const { data } = await supabase.storage.from(bucket).list(pasta, {
+        limit: 200,
+        offset: 0,
+        sortBy: { column: 'name', order: 'desc' },
+      })
+
+      const arquivo = (data ?? [])
+        .filter((item: any) => isNomeArquivoImagem(String(item?.name ?? '')))
+        .sort((a: any, b: any) =>
+          String(b?.name ?? '').localeCompare(String(a?.name ?? '')),
+        )[0]
+
+      if (!arquivo?.name) return null
+      const pathNoBucket = pasta ? `${pasta}/${arquivo.name}` : arquivo.name
+      return construirUrl(pathNoBucket)
+    }
+
+    const procurarArquivoPorPrefixo = async (pasta: string, prefixo: string): Promise<string | null> => {
+      const { data } = await supabase.storage.from(bucket).list(pasta, {
+        limit: 200,
+        offset: 0,
+        sortBy: { column: 'name', order: 'desc' },
+      })
+
+      const arquivo = (data ?? [])
+        .filter((item: any) => {
+          const nome = String(item?.name ?? '').trim()
+          return isNomeArquivoImagem(nome) && nome.toLowerCase().startsWith(prefixo.toLowerCase())
+        })
+        .sort((a: any, b: any) =>
+          String(b?.name ?? '').localeCompare(String(a?.name ?? '')),
+        )[0]
+
+      if (!arquivo?.name) return null
+      const pathNoBucket = pasta ? `${pasta}/${arquivo.name}` : arquivo.name
+      return construirUrl(pathNoBucket)
+    }
+
+    if (papel === 'ALUNO' && alunoId) {
+      const prefixoAluno = `aluno-${alunoId}-`
+      const pastasAlunoDiretas = Array.from(
+        new Set(
+          [
+            'alunos',
+            'alunos/alunos',
+            email ? `alunos/${email}` : null,
+            email ? `alunos/${slugifyStorageSegment(email)}` : null,
+            userId ? `alunos/${userId}` : null,
+          ].filter((value) => Boolean(String(value ?? '').trim())),
+        ),
+      ) as string[]
+
+      for (const pasta of pastasAlunoDiretas) {
+        const url = await procurarArquivoPorPrefixo(pasta, prefixoAluno)
+        if (url) {
+          fotoUsuarioFallbackCache.set(cacheKey, url)
+          return url
+        }
+      }
+
+      const { data: itensAlunos } = await supabase.storage.from(bucket).list('alunos', {
+        limit: 200,
+        offset: 0,
+        sortBy: { column: 'name', order: 'asc' },
+      })
+
+      for (const item of itensAlunos ?? []) {
+        const nome = String((item as any)?.name ?? '').trim()
+        if (!nome || isNomeArquivoImagem(nome)) continue
+
+        const pasta = `alunos/${nome}`
+        const url = await procurarArquivoPorPrefixo(pasta, prefixoAluno)
+        if (url) {
+          fotoUsuarioFallbackCache.set(cacheKey, url)
+          return url
+        }
+      }
+    }
+
+    const pastasPreferenciais = Array.from(
+      new Set(
+        [
+          email,
+          slugifyStorageSegment(email),
+          userId,
+          `usuarios/${slugifyStorageSegment(email)}`,
+          `usuarios/${userId}`,
+          `professores/${slugifyStorageSegment(email)}`,
+          `professores/${userId}`,
+          `alunos/${slugifyStorageSegment(email)}`,
+          `alunos/${userId}`,
+        ].filter((value) => Boolean(String(value ?? '').trim())),
+      ),
+    ) as string[]
+
+    for (const pasta of pastasPreferenciais) {
+      const url = await procurarEmPasta(pasta)
+      if (url) {
+        fotoUsuarioFallbackCache.set(cacheKey, url)
+        return url
+      }
+    }
+
+    const { data: raiz } = await supabase.storage.from(bucket).list('', {
+      limit: 200,
+      offset: 0,
+      sortBy: { column: 'name', order: 'asc' },
+    })
+
+    for (const item of raiz ?? []) {
+      const nome = String((item as any)?.name ?? '').trim()
+      if (!nome || isNomeArquivoImagem(nome)) continue
+
+      if (
+        email &&
+        (nome === email || nome === slugifyStorageSegment(email) || nome.includes(slugifyStorageSegment(email)))
+      ) {
+        const url = await procurarEmPasta(nome)
+        if (url) {
+          fotoUsuarioFallbackCache.set(cacheKey, url)
+          return url
+        }
+      }
+
+      if (userId && nome.includes(userId)) {
+        const url = await procurarEmPasta(nome)
+        if (url) {
+          fotoUsuarioFallbackCache.set(cacheKey, url)
+          return url
+        }
+      }
+    }
+
+    fotoUsuarioFallbackCache.set(cacheKey, null)
+    return null
+  })()
+
+  fotoUsuarioFallbackPromiseCache.set(cacheKey, tarefa)
+
+  try {
+    return await tarefa
+  } finally {
+    fotoUsuarioFallbackPromiseCache.delete(cacheKey)
+  }
+}
+
+const AvatarUsuario: FC<{
+  supabase: ReturnType<typeof useSupabase>['supabase'] | null
+  userId?: string | null
+  alunoId?: number | null
+  nome: string
+  email?: string | null
+  fotoUrl?: string | null
+  papel?: PapelUsuario
+  colorFallback: string
+  sx?: any
+}> = ({ supabase, userId, alunoId, nome, email, fotoUrl, papel, colorFallback, sx }) => {
+  const [src, setSrc] = useState<string | undefined>(() =>
+    resolverFotoUrl(supabase, fotoUrl) ?? undefined,
+  )
+  const tentouFallbackRef = useRef(false)
+
+  useEffect(() => {
+    let ativo = true
+    const inicial = resolverFotoUrl(supabase, fotoUrl) ?? undefined
+    setSrc(inicial)
+    tentouFallbackRef.current = false
+
+    if (!inicial && (userId || email || alunoId)) {
+      void buscarFotoUsuarioFallback(supabase, { userId, email, alunoId, papel }).then((url) => {
+        if (!ativo || !url) return
+        tentouFallbackRef.current = true
+        setSrc(url)
+      })
+    }
+
+    return () => {
+      ativo = false
+    }
+  }, [supabase, userId, alunoId, email, fotoUrl, papel])
+
+  return (
+    <Avatar
+      src={src}
+      onError={() => {
+        if (tentouFallbackRef.current || !(userId || email || alunoId)) {
+          setSrc(undefined)
+          return
+        }
+        tentouFallbackRef.current = true
+        void buscarFotoUsuarioFallback(supabase, { userId, email, alunoId, papel }).then((url) => {
+          setSrc(url ?? undefined)
+        })
+      }}
+      sx={{
+        bgcolor: alpha(colorFallback, 0.9),
+        ...sx,
+      }}
+    >
+      {String(nome ?? '').charAt(0).toUpperCase() || (papel === 'ALUNO' ? 'A' : 'U')}
+    </Avatar>
+  )
+}
+
 type UsuarioStatus = 'ATIVO' | 'INATIVO' | 'PENDENTE'
 
 interface UsuarioRow {
@@ -81,6 +396,7 @@ interface UsuarioRow {
   ponto_referencia: string | null
   facebook_url: string | null
   instagram_url: string | null
+  foto_url: string | null
   status: string | null
 }
 
@@ -99,6 +415,11 @@ interface ProfessorRow {
   id_professor: number
   user_id: string
   matricula_professor: string | null
+}
+
+interface AlunoRow {
+  id_aluno: number
+  user_id: string
 }
 
 interface ProfessorSalaRow {
@@ -124,9 +445,11 @@ interface UsuarioLista {
   pontoReferencia: string | null
   facebookUrl: string | null
   instagramUrl: string | null
+  fotoUrl: string | null
   papel?: PapelUsuario
   papelDescricao: string
   status: UsuarioStatus
+  alunoId?: number | null
   professorId?: number
   matriculaProfessor?: string | null
   salasProfessor?: SalaRow[]
@@ -303,6 +626,7 @@ const SecretariaUsuariosPage: FC = () => {
         { data: usuariosData, error: usuariosError },
         { data: tiposData, error: tiposError },
         { data: salasData, error: salasError },
+        { data: alunosData, error: alunosError },
         { data: professoresData, error: professoresError },
         { data: profSalasData, error: profSalasError },
       ] = await Promise.all([
@@ -326,12 +650,14 @@ const SecretariaUsuariosPage: FC = () => {
               'ponto_referencia',
               'facebook_url',
               'instagram_url',
+              'foto_url',
               'status',
             ].join(','),
           )
           .order('name', { ascending: true }),
         supabase.from('tipos_usuario').select('id_tipo_usuario, nome').order('id_tipo_usuario', { ascending: true }),
         supabase.from('salas_atendimento').select('id_sala, nome, is_ativa').order('nome', { ascending: true }),
+        supabase.from('alunos').select('id_aluno, user_id'),
         supabase.from('professores').select('id_professor, user_id, matricula_professor'),
         supabase.from('professores_salas').select('id_professor, id_sala, ativo'),
       ])
@@ -339,11 +665,13 @@ const SecretariaUsuariosPage: FC = () => {
       if (usuariosError) console.error(usuariosError), erro('Erro ao carregar usuários.')
       if (tiposError) console.error(tiposError), erro('Erro ao carregar perfis de acesso.')
       if (salasError) console.error(salasError), erro('Erro ao carregar salas.')
+      if (alunosError) console.error(alunosError), erro('Erro ao carregar dados de alunos.')
       if (professoresError) console.error(professoresError), erro('Erro ao carregar dados de professores.')
       if (profSalasError) console.error(profSalasError), erro('Erro ao carregar vínculos de professores com salas.')
 
       const tiposList = (tiposData || []) as TipoUsuarioRow[]
       const salasList = (salasData || []) as SalaRow[]
+      const alunosList = (alunosData || []) as AlunoRow[]
       const profList = (professoresData || []) as ProfessorRow[]
       const profSalasList = (profSalasData || []) as ProfessorSalaRow[]
 
@@ -354,6 +682,9 @@ const SecretariaUsuariosPage: FC = () => {
 
       const profByUserId = new Map<string, ProfessorRow>()
       profList.forEach((p) => profByUserId.set(p.user_id, p))
+
+      const alunoByUserId = new Map<string, AlunoRow>()
+      alunosList.forEach((a) => alunoByUserId.set(a.user_id, a))
 
       const salasPorProfessor = new Map<number, number[]>()
       profSalasList.forEach((ps) => {
@@ -370,6 +701,7 @@ const SecretariaUsuariosPage: FC = () => {
           u.id_tipo_usuario != null ? tiposList.find((t) => t.id_tipo_usuario === u.id_tipo_usuario)?.nome ?? '' : ''
 
         const prof = profByUserId.get(u.id)
+        const aluno = alunoByUserId.get(u.id)
         const salasIds = prof ? salasPorProfessor.get(prof.id_professor) ?? [] : []
         const salasProfessor =
           prof && salasIds.length > 0
@@ -395,9 +727,11 @@ const SecretariaUsuariosPage: FC = () => {
           pontoReferencia: u.ponto_referencia,
           facebookUrl: u.facebook_url,
           instagramUrl: u.instagram_url,
+          fotoUrl: u.foto_url ?? null,
           papel,
           papelDescricao,
           status: mapStatusDbToUi(u.status),
+          alunoId: aluno?.id_aluno ?? null,
           professorId: prof?.id_professor,
           matriculaProfessor: prof?.matricula_professor ?? null,
           salasProfessor,
@@ -533,7 +867,7 @@ const SecretariaUsuariosPage: FC = () => {
           .update(payloadBase)
           .eq('id', editando.id)
           .select(
-            'id, id_tipo_usuario, name, username, email, data_nascimento, cpf, rg, celular, logradouro, numero_endereco, bairro, municipio, ponto_referencia, facebook_url, instagram_url, status',
+            'id, id_tipo_usuario, name, username, email, data_nascimento, cpf, rg, celular, logradouro, numero_endereco, bairro, municipio, ponto_referencia, facebook_url, instagram_url, foto_url, status',
           )
           .single<UsuarioRow>()
 
@@ -674,7 +1008,7 @@ const SecretariaUsuariosPage: FC = () => {
           .from('usuarios')
           .insert(payloadInsert)
           .select(
-            'id, id_tipo_usuario, name, username, email, data_nascimento, cpf, rg, celular, logradouro, numero_endereco, bairro, municipio, ponto_referencia, facebook_url, instagram_url, status',
+            'id, id_tipo_usuario, name, username, email, data_nascimento, cpf, rg, celular, logradouro, numero_endereco, bairro, municipio, ponto_referencia, facebook_url, instagram_url, foto_url, status',
           )
           .single<UsuarioRow>()
 
@@ -992,17 +1326,22 @@ const SecretariaUsuariosPage: FC = () => {
                     <Paper key={user.id} variant="outlined" sx={{ borderRadius: 2, p: 2 }}>
                       <Stack spacing={1.5}>
                         <Stack direction="row" spacing={2} alignItems="center">
-                          <Avatar
+                          <AvatarUsuario
+                            supabase={supabase}
+                            userId={user.id}
+                            alunoId={user.alunoId}
+                            nome={user.nome}
+                            email={user.email}
+                            fotoUrl={user.fotoUrl}
+                            papel={user.papel}
+                            colorFallback={getAvatarColor(user.papel)}
                             sx={{
-                              bgcolor: alpha(getAvatarColor(user.papel), 0.9),
                               width: 40,
                               height: 40,
                               fontSize: '1rem',
                               flexShrink: 0,
                             }}
-                          >
-                            {user.nome.charAt(0).toUpperCase()}
-                          </Avatar>
+                          />
 
                           <Box sx={{ minWidth: 0 }}>
                             <Typography variant="subtitle2" fontWeight={800} sx={{ wordBreak: 'break-word' }}>
@@ -1121,16 +1460,21 @@ const SecretariaUsuariosPage: FC = () => {
                           }}
                         >
                           <TableCell>
-                            <Avatar
+                            <AvatarUsuario
+                              supabase={supabase}
+                              userId={user.id}
+                              alunoId={user.alunoId}
+                              nome={user.nome}
+                              email={user.email}
+                              fotoUrl={user.fotoUrl}
+                              papel={user.papel}
+                              colorFallback={getAvatarColor(user.papel)}
                               sx={{
-                                bgcolor: alpha(getAvatarColor(user.papel), 0.9),
                                 width: 40,
                                 height: 40,
                                 fontSize: '1rem',
                               }}
-                            >
-                              {user.nome.charAt(0).toUpperCase()}
-                            </Avatar>
+                            />
                           </TableCell>
 
                           <TableCell>

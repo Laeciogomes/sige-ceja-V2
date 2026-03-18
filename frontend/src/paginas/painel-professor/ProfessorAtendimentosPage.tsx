@@ -9,7 +9,6 @@ import {
   Box,
   Button,
   Card,
-  CardActions,
   CardContent,
   Chip,
   CircularProgress,
@@ -41,433 +40,61 @@ import CloseIcon from '@mui/icons-material/Close'
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
 import EditIcon from '@mui/icons-material/Edit'
 import RefreshIcon from '@mui/icons-material/Autorenew'
-import VisibilityIcon from '@mui/icons-material/Visibility'
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline'
 import WarningAmberIcon from '@mui/icons-material/WarningAmber'
 import SchoolIcon from '@mui/icons-material/School'
 import MeetingRoomIcon from '@mui/icons-material/MeetingRoom'
 import DescriptionIcon from '@mui/icons-material/Description'
 import SwapHorizIcon from '@mui/icons-material/SwapHoriz'
+import PhotoCameraIcon from '@mui/icons-material/PhotoCamera'
 
 // Contextos
 import { useSupabase } from '../../contextos/SupabaseContext'
 import { useNotificacaoContext } from '../../contextos/NotificacaoContext'
 import { useAuth } from '../../contextos/AuthContext'
-
-type NivelEnsinoFiltro = 'todos' | 1 | 2
-type FluxoTipo = 'normal' | 'manual'
-
-type SalaAtendimento = {
-  id_sala: number
-  nome: string
-  tipo_sala: string
-  is_ativa: boolean
-}
-
-type TipoProtocolo = {
-  id_tipo_protocolo: number
-  nome: string
-}
-
-type StatusMatricula = {
-  id_status_matricula: number
-  nome: string
-}
-
-type StatusDisciplinaAluno = {
-  id_status_disciplina: number
-  nome: string
-}
-
-type FaixaProtocolosAno = {
-  id_config: number
-  id_ano_escolar: number
-  ano_nome: string
-  quantidade_protocolos: number
-  inicio: number
-  fim: number
-}
-
-type SalaDisciplinaNivelOption = {
-  id_disciplina: number
-  id_nivel_ensino: number
-  disciplina_nome: string
-
-  // total somando os anos (ex.: Química 1º+2º+3º = 7)
-  total_protocolos: number
-
-  // ano usado pra criar progresso (maior id_ano_escolar do nível)
-  ano_representativo_id: number
-  ano_representativo_nome: string
-  id_config_representativo: number
-
-  // faixas por ano: 1º:1-2, 2º:3-4, 3º:5-7
-  faixas: FaixaProtocolosAno[]
-
-  label: string
-}
-
-type AlunoBuscaOption = {
-  id_aluno: number
-  nome: string
-  email?: string | null
-  foto_url?: string | null
-
-  cpf?: string | null
-  data_nascimento?: string | null
-
-  id_matricula?: number | null
-  numero_inscricao?: string | null
-  id_nivel_ensino?: number | null
-
-  nis?: string | null
-  possui_necessidade_especial?: boolean | null
-  possui_beneficio_governo?: boolean | null
-}
-
-type ProgressoOption = {
-  id_progresso: number
-  id_disciplina: number
-  id_ano_escolar: number
-  id_nivel_ensino?: number | null
-  disciplina_nome: string
-  ano_nome: string
-  status_nome?: string | null
-  label: string
-}
-
-type SessaoView = {
-  id_sessao: number
-  id_aluno: number
-  id_professor: number
-  id_progresso: number | null
-  id_sala: number | null
-  hora_entrada: string
-  hora_saida: string | null
-  resumo_atividades: string | null
-
-  aluno_nome: string
-  aluno_foto_url?: string | null
-  aluno_cpf?: string | null
-  aluno_data_nascimento?: string | null
-  numero_inscricao?: string | null
-  mat_data_matricula?: string | null
-  mat_ano_letivo?: number | null
-
-  id_nivel_ensino?: number | null
-  aluno_nis?: string | null
-  aluno_possui_necessidade_especial?: boolean | null
-  aluno_possui_beneficio_governo?: boolean | null
-
-  sala_nome?: string | null
-  sala_tipo?: string | null
-
-  disciplina_nome?: string | null
-  ano_nome?: string | null
-
-  id_disciplina?: number | null
-  id_ano_escolar?: number | null
-}
-
-type RegistroView = {
-  id_atividade: number
-  id_sessao: number
-  id_progresso: number
-  numero_protocolo: number
-  id_tipo_protocolo: number
-  status: string
-  nota: number | null
-  is_adaptada: boolean
-  sintese: string | null
-  created_at: string
-  updated_at: string
-  tipo_nome?: string
-}
-
-type ProfessorDestinoOption = {
-  id_professor: number
-  nome: string
-  foto_url?: string | null
-}
-
-// helpers
-function first<T>(v: T | T[] | null | undefined): T | null {
-  if (!v) return null
-  return Array.isArray(v) ? (v[0] ?? null) : v
-}
-
-function normalizarTexto(valor: string): string {
-  return valor
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .trim()
-}
-
-function hojeISODateLocal(): string {
-  const d = new Date()
-  const yyyy = String(d.getFullYear())
-  const mm = String(d.getMonth() + 1).padStart(2, '0')
-  const dd = String(d.getDate()).padStart(2, '0')
-  return `${yyyy}-${mm}-${dd}`
-}
-
-function agoraParaInputDateTimeLocal(): string {
-  const d = new Date()
-  const yyyy = String(d.getFullYear())
-  const mm = String(d.getMonth() + 1).padStart(2, '0')
-  const dd = String(d.getDate()).padStart(2, '0')
-  const hh = String(d.getHours()).padStart(2, '0')
-  const mi = String(d.getMinutes()).padStart(2, '0')
-  return `${yyyy}-${mm}-${dd}T${hh}:${mi}`
-}
-
-function formatarDataHoraBR(iso: string | null | undefined): string {
-  if (!iso) return '-'
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return '-'
-  return d.toLocaleString('pt-BR', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-}
-
-function nomeNivelEnsinoCurto(idNivel: number | null | undefined): string {
-  if (idNivel === 1) return 'Fundamental'
-  if (idNivel === 2) return 'Médio'
-  return '-'
-}
-
-function nomeNivelEnsinoLongo(idNivel: number | null | undefined): string {
-  if (idNivel === 1) return 'Ensino Fundamental'
-  if (idNivel === 2) return 'Ensino Médio'
-  return '-'
-}
-
-function isStatusDisciplinaAberta(statusNome: string): boolean {
-  const s = normalizarTexto(statusNome)
-  if (
-    s.includes('aprov') ||
-    s.includes('reprov') ||
-    s.includes('conclu') ||
-    s.includes('final') ||
-    s.includes('encerr') ||
-    s.includes('tranc') ||
-    s.includes('cancel') ||
-    s.includes('inativ')
-  ) {
-    return false
-  }
-  return true
-}
-
-function statusChipProps(status: string): {
-  label: string
-  color?: 'default' | 'success' | 'warning' | 'info' | 'error'
-} {
-  const s = normalizarTexto(status)
-  if (s.includes('conclu')) return { label: status, color: 'success' }
-  if (s.includes('andamento')) return { label: status, color: 'info' }
-  if (s.includes('fazer')) return { label: status, color: 'warning' }
-  return { label: status, color: 'default' }
-}
-
-function renderNumeroInscricao(option: { numero_inscricao?: string | null }): string {
-  const ra = option.numero_inscricao?.trim()
-  return ra ? `RA: ${ra}` : 'RA: -'
-}
-
-function isBuscaNumerica(input: string): boolean {
-  const t = input.trim()
-  return t.length > 0 && /^[\d.\-\s]+$/.test(t)
-}
-
-function extrairDigitos(input: string): string {
-  return input.replace(/\D/g, '')
-}
-
-function formatarCPF(digitos: string): string {
-  const d = extrairDigitos(digitos).padStart(11, '0').slice(-11)
-  return `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6, 9)}-${d.slice(9, 11)}`
-}
-
-function calcularIdade(dataNascStr: string, refDate: Date): number {
-  const nasc = new Date(dataNascStr)
-  if (Number.isNaN(nasc.getTime())) return -1
-  let idade = refDate.getFullYear() - nasc.getFullYear()
-  const m = refDate.getMonth() - nasc.getMonth()
-  if (m < 0 || (m === 0 && refDate.getDate() < nasc.getDate())) {
-    idade--
-  }
-  return idade
-}
-
-type PeDeMeiaClassificacaoUI = 'ELEGIVEL' | 'NAO_ELEGIVEL' | 'CONFERIR'
-
-function avaliarPeDeMeiaCEJA(opts: {
-  id_nivel_ensino?: number | null
-  cpf?: string | null
-  data_nascimento?: string | null
-  nis?: string | null
-  possui_beneficio_governo?: boolean | null
-  data_matricula?: string | null
-  ano_letivo?: number | null
-}): { classificacao: PeDeMeiaClassificacaoUI; motivos: string[] } {
-  const motivos: string[] = []
-
-  const nivel = opts.id_nivel_ensino ?? null
-  if (nivel !== 2) {
-    motivos.push('Não é Ensino Médio.')
-    return { classificacao: 'NAO_ELEGIVEL', motivos }
-  }
-
-  const cpfOk = Boolean(opts.cpf && String(opts.cpf).trim() !== '')
-  if (!cpfOk) motivos.push('CPF ausente (cadastro incompleto).')
-
-  const cadOk = Boolean((opts.nis && String(opts.nis).trim() !== '') || opts.possui_beneficio_governo)
-  if (!cadOk) motivos.push('CadÚnico não confirmado (sem NIS e sem benefício informado).')
-
-  const dataMat = opts.data_matricula ? new Date(opts.data_matricula) : null
-  const dataMatOk = Boolean(dataMat && !Number.isNaN(dataMat.getTime()))
-  if (!dataMatOk) motivos.push('Data de matrícula ausente/ inválida.')
-
-  const anoLetivo =
-    opts.ano_letivo != null
-      ? Number(opts.ano_letivo)
-      : dataMatOk && dataMat
-        ? dataMat.getFullYear()
-        : new Date().getFullYear()
-
-  // Regra operacional (CEJA): matrícula precisa estar no “início” do semestre.
-  // 1º semestre: início 07/01, prazo até 07/03
-  // 2º semestre: início 01/07, prazo até 01/09
-  let corteOk: boolean | null = null
-  if (dataMatOk && dataMat) {
-    const inicioPrimeiro = new Date(anoLetivo, 0, 7) // 07/01
-    const cutoff1 = new Date(inicioPrimeiro)
-    cutoff1.setMonth(cutoff1.getMonth() + 2) // até 07/03
-
-    const inicioSegundo = new Date(anoLetivo, 6, 1) // 01/07
-    const cutoff2 = new Date(inicioSegundo)
-    cutoff2.setMonth(cutoff2.getMonth() + 2) // até 01/09
-
-    if (dataMat <= inicioSegundo) {
-      corteOk = dataMat <= cutoff1
-    } else {
-      corteOk = dataMat <= cutoff2
-    }
-
-    if (!corteOk) motivos.push('Matrícula fora do prazo inicial do semestre.')
-  }
-
-  // Idade (EJA): 19 a 24 anos em 31/12 do ano letivo
-  let idadeOk: boolean | null = null
-  if (opts.data_nascimento) {
-    const dataRef = new Date(anoLetivo, 11, 31)
-    const idade = calcularIdade(opts.data_nascimento, dataRef)
-    if (idade < 0) {
-      idadeOk = null
-      motivos.push('Data de nascimento inválida.')
-    } else {
-      idadeOk = idade >= 19 && idade <= 24
-      if (!idadeOk) motivos.push(`Idade fora da faixa 19–24 em 31/12/${anoLetivo} (idade: ${idade}).`)
-    }
-  } else {
-    motivos.push('Data de nascimento ausente (não dá para confirmar a idade).')
-  }
-
-  // Decisão:
-  // - Se falhou em regra “dura” (idade/corte) com dados presentes => NÃO ELEGÍVEL
-  // - Se tudo ok e dados essenciais presentes => ELEGÍVEL
-  // - Se faltam dados (CPF/idade/matrícula/CadÚnico) => CONFERIR
-
-  if (idadeOk === false) return { classificacao: 'NAO_ELEGIVEL', motivos }
-  if (corteOk === false) return { classificacao: 'NAO_ELEGIVEL', motivos }
-
-  const dadosEssenciaisOk = cpfOk && cadOk && idadeOk === true && corteOk === true
-  if (dadosEssenciaisOk) return { classificacao: 'ELEGIVEL', motivos }
-
-  return { classificacao: 'CONFERIR', motivos }
-}
-
-function chipPeDeMeiaUI(opts: {
-  id_nivel_ensino?: number | null
-  cpf?: string | null
-  data_nascimento?: string | null
-  nis?: string | null
-  possui_beneficio_governo?: boolean | null
-  data_matricula?: string | null
-  ano_letivo?: number | null
-}): { label: string; color: 'success' | 'warning' | 'error' | 'default'; variant: 'filled' | 'outlined'; tooltip?: string } {
-  const r = avaliarPeDeMeiaCEJA(opts)
-  const labelBase =
-    r.classificacao === 'ELEGIVEL'
-      ? 'Elegível'
-      : r.classificacao === 'NAO_ELEGIVEL'
-        ? 'Não elegível'
-        : 'Conferir dados'
-
-  const color = r.classificacao === 'ELEGIVEL' ? 'success' : r.classificacao === 'NAO_ELEGIVEL' ? 'error' : 'warning'
-  const variant = r.classificacao === 'NAO_ELEGIVEL' ? 'outlined' : 'filled'
-  const tooltip = r.motivos.length ? r.motivos.join('\n') : undefined
-
-  return {
-    label: `Pé-de-Meia: ${labelBase}`,
-    color,
-    variant,
-    tooltip,
-  }
-}
-
-function escolherProgressoPorDisciplina(lista: ProgressoOption[], idDisciplina: number): ProgressoOption | null {
-  const candidatos = lista.filter((p) => p.id_disciplina === idDisciplina)
-  if (candidatos.length === 0) return null
-
-  const ordenado = [...candidatos].sort((a, b) => {
-    const aAberta = isStatusDisciplinaAberta(a.status_nome ?? '') ? 1 : 0
-    const bAberta = isStatusDisciplinaAberta(b.status_nome ?? '') ? 1 : 0
-    if (bAberta !== aAberta) return bAberta - aAberta
-    if (b.id_ano_escolar !== a.id_ano_escolar) return b.id_ano_escolar - a.id_ano_escolar
-    return b.id_progresso - a.id_progresso
-  })
-
-  return ordenado[0] ?? null
-}
-
-function agruparAbertasPorDisciplina(abertas: ProgressoOption[]): ProgressoOption[] {
-  const mapa = new Map<number, ProgressoOption>()
-
-  abertas.forEach((p) => {
-    const cur = mapa.get(p.id_disciplina)
-    if (!cur) {
-      mapa.set(p.id_disciplina, p)
-      return
-    }
-    if (p.id_ano_escolar !== cur.id_ano_escolar) {
-      if (p.id_ano_escolar > cur.id_ano_escolar) mapa.set(p.id_disciplina, p)
-      return
-    }
-    if (p.id_progresso > cur.id_progresso) mapa.set(p.id_disciplina, p)
-  })
-
-  return Array.from(mapa.values()).sort((a, b) => a.disciplina_nome.localeCompare(b.disciplina_nome))
-}
-
-function resumoFaixasProtocolos(faixas: FaixaProtocolosAno[]): string {
-  if (!faixas?.length) return ''
-  return faixas
-    .filter((f) => Number(f.quantidade_protocolos ?? 0) > 0)
-    .map((f) => `${f.ano_nome}: ${f.inicio}-${f.fim}`)
-    .join(' • ')
-}
-
-function anoPorNumeroProtocolo(faixas: FaixaProtocolosAno[], n: number): string | null {
-  const f = (faixas ?? []).find((x) => n >= x.inicio && n <= x.fim)
-  return f?.ano_nome ?? null
-}
+import { otimizarImagemParaUpload } from '../../utils/imagem'
+
+import { AtendimentoCard } from './professor-atendimentos/components/AtendimentoCard'
+import { AvatarAlunoAtendimento } from './professor-atendimentos/components/AvatarAlunoAtendimento'
+import { TransferenciaDialog } from './professor-atendimentos/components/TransferenciaDialog'
+import type {
+  AlunoBuscaOption,
+  FaixaProtocolosAno,
+  FluxoTipo,
+  FormAlunoSessao,
+  NivelEnsinoFiltro,
+  ProfessorDestinoOption,
+  ProgressoOption,
+  RegistroView,
+  SalaAtendimento,
+  SalaDisciplinaNivelOption,
+  SessaoView,
+  StatusDisciplinaAluno,
+  StatusMatricula,
+  TipoProtocolo,
+  TransferenciaContexto,
+} from './professor-atendimentos/types'
+import {
+  agoraParaInputDateTimeLocal,
+  agruparAbertasPorDisciplina,
+  anoPorNumeroProtocolo,
+  escolherProgressoPorDisciplina,
+  extrairDigitos,
+  first,
+  formatarCPF,
+  formatarDataHoraBR,
+  formatarEnderecoAluno,
+  hojeISODateLocal,
+  isBuscaNumerica,
+  isStatusDisciplinaAberta,
+  nomeNivelEnsinoCurto,
+  nomeNivelEnsinoLongo,
+  normalizarTexto,
+  renderNumeroInscricao,
+  resolverFotoUrl,
+  resumoFaixasProtocolos,
+  statusChipProps,
+} from './professor-atendimentos/utils'
 
 export default function ProfessorAtendimentosPage() {
   const theme = useTheme()
@@ -550,6 +177,52 @@ export default function ProfessorAtendimentosPage() {
   const sessoesAbertas = useMemo(() => sessoesFiltradas.filter((s) => !s.hora_saida), [sessoesFiltradas])
   const sessoesHistorico = useMemo(() => sessoesFiltradas.filter((s) => Boolean(s.hora_saida)), [sessoesFiltradas])
 
+  const transferenciaDisponivel = useMemo(() => {
+    if (sessoesAbertas.length === 0) {
+      return {
+        disponivel: false,
+        motivo: 'Não há atendimentos abertos para transferir.',
+        contexto: null as TransferenciaContexto | null,
+      }
+    }
+
+    if (filtroSalaId !== 'todas') {
+      const salaId = Number(filtroSalaId)
+      const salaNome =
+        minhasSalas.find((s) => s.id_sala === salaId)?.nome ??
+        sessoesAbertas.find((s) => s.id_sala === salaId)?.sala_nome ??
+        `Sala #${salaId}`
+
+      return {
+        disponivel: true,
+        motivo: '',
+        contexto: { id_sala: salaId, sala_nome: salaNome },
+      }
+    }
+
+    const salasUnicas = new Map<number, string>()
+    sessoesAbertas.forEach((s) => {
+      if (s.id_sala != null && !salasUnicas.has(s.id_sala)) {
+        salasUnicas.set(s.id_sala, s.sala_nome ?? `Sala #${s.id_sala}`)
+      }
+    })
+
+    if (salasUnicas.size === 1) {
+      const [id_sala, sala_nome] = Array.from(salasUnicas.entries())[0]
+      return {
+        disponivel: true,
+        motivo: '',
+        contexto: { id_sala, sala_nome },
+      }
+    }
+
+    return {
+      disponivel: false,
+      motivo: 'Selecione uma sala específica para transferir todos os atendimentos abertos dessa sala.',
+      contexto: null as TransferenciaContexto | null,
+    }
+  }, [sessoesAbertas, filtroSalaId, minhasSalas])
+
   const cardGridSx = useMemo(
     () => ({
       display: 'grid',
@@ -605,6 +278,19 @@ export default function ProfessorAtendimentosPage() {
   const [sessaoAtual, setSessaoAtual] = useState<SessaoView | null>(null)
   const [registros, setRegistros] = useState<RegistroView[]>([])
   const [salvandoSessao, setSalvandoSessao] = useState(false)
+  const [dlgEditarAluno, setDlgEditarAluno] = useState(false)
+  const [formAlunoSessao, setFormAlunoSessao] = useState<FormAlunoSessao>({
+    celular: '',
+    logradouro: '',
+    numero_endereco: '',
+    bairro: '',
+    municipio: '',
+    ponto_referencia: '',
+    foto_url: '',
+  })
+  const [salvandoAlunoSessao, setSalvandoAlunoSessao] = useState(false)
+  const [uploadingFotoAlunoSessao, setUploadingFotoAlunoSessao] = useState(false)
+  const fileInputFotoAlunoSessaoRef = useRef<HTMLInputElement | null>(null)
 
   // transferência
   const [dlgTransferir, setDlgTransferir] = useState(false)
@@ -612,6 +298,8 @@ export default function ProfessorAtendimentosPage() {
   const [professoresSala, setProfessoresSala] = useState<ProfessorDestinoOption[]>([])
   const [professorDestino, setProfessorDestino] = useState<ProfessorDestinoOption | null>(null)
   const [transferindo, setTransferindo] = useState(false)
+  const [qtdAtendimentosAbertosTransferencia, setQtdAtendimentosAbertosTransferencia] = useState(0)
+  const [transferenciaContexto, setTransferenciaContexto] = useState<TransferenciaContexto | null>(null)
 
   // registro dialog
   const [dlgRegistro, setDlgRegistro] = useState(false)
@@ -885,7 +573,7 @@ export default function ProfessorAtendimentosPage() {
               nis,
               possui_necessidade_especial,
               possui_beneficio_governo,
-              usuarios ( name, foto_url, cpf, data_nascimento )
+              usuarios ( id, name, foto_url, cpf, data_nascimento, celular, logradouro, numero_endereco, bairro, municipio, ponto_referencia )
             ),
             salas_atendimento (
               id_sala,
@@ -935,10 +623,17 @@ export default function ProfessorAtendimentosPage() {
             hora_saida: s.hora_saida ? String(s.hora_saida) : null,
             resumo_atividades: s.resumo_atividades ?? null,
 
+            aluno_user_id: alunoUser?.id ?? null,
             aluno_nome: alunoUser?.name ?? `Aluno #${s.id_aluno}`,
             aluno_foto_url: alunoUser?.foto_url ?? null,
             aluno_cpf: alunoUser?.cpf ?? null,
             aluno_data_nascimento: alunoUser?.data_nascimento ?? null,
+            aluno_celular: alunoUser?.celular ?? null,
+            aluno_logradouro: alunoUser?.logradouro ?? null,
+            aluno_numero_endereco: alunoUser?.numero_endereco ?? null,
+            aluno_bairro: alunoUser?.bairro ?? null,
+            aluno_municipio: alunoUser?.municipio ?? null,
+            aluno_ponto_referencia: alunoUser?.ponto_referencia ?? null,
             numero_inscricao: mat?.numero_inscricao ?? null,
             mat_data_matricula: mat?.data_matricula ?? null,
             mat_ano_letivo: mat?.ano_letivo != null ? Number(mat.ano_letivo) : null,
@@ -1079,9 +774,168 @@ export default function ProfessorAtendimentosPage() {
 
   const fecharSessaoDialog = useCallback(() => {
     setDlgSessao(false)
+    setDlgEditarAluno(false)
     setSessaoAtual(null)
     setRegistros([])
   }, [])
+
+  const aplicarAtualizacaoAlunoSessao = useCallback(
+    (payload: Partial<FormAlunoSessao>) => {
+      setSessaoAtual((old) => {
+        if (!old) return old
+        return {
+          ...old,
+          aluno_celular: payload.celular ?? old.aluno_celular ?? null,
+          aluno_logradouro: payload.logradouro ?? old.aluno_logradouro ?? null,
+          aluno_numero_endereco: payload.numero_endereco ?? old.aluno_numero_endereco ?? null,
+          aluno_bairro: payload.bairro ?? old.aluno_bairro ?? null,
+          aluno_municipio: payload.municipio ?? old.aluno_municipio ?? null,
+          aluno_ponto_referencia: payload.ponto_referencia ?? old.aluno_ponto_referencia ?? null,
+          aluno_foto_url: payload.foto_url ?? old.aluno_foto_url ?? null,
+        }
+      })
+
+      setSessoes((old) =>
+        old.map((sessao) => {
+          if (!sessaoAtual || sessao.id_aluno !== sessaoAtual.id_aluno) return sessao
+          return {
+            ...sessao,
+            aluno_celular: payload.celular ?? sessao.aluno_celular ?? null,
+            aluno_logradouro: payload.logradouro ?? sessao.aluno_logradouro ?? null,
+            aluno_numero_endereco: payload.numero_endereco ?? sessao.aluno_numero_endereco ?? null,
+            aluno_bairro: payload.bairro ?? sessao.aluno_bairro ?? null,
+            aluno_municipio: payload.municipio ?? sessao.aluno_municipio ?? null,
+            aluno_ponto_referencia: payload.ponto_referencia ?? sessao.aluno_ponto_referencia ?? null,
+            aluno_foto_url: payload.foto_url ?? sessao.aluno_foto_url ?? null,
+          }
+        })
+      )
+    },
+    [sessaoAtual]
+  )
+
+  const abrirDialogEditarAluno = useCallback(() => {
+    if (!sessaoAtual?.aluno_user_id) return erro('Este aluno não possui vínculo válido com a tabela de usuários.')
+
+    setFormAlunoSessao({
+      celular: sessaoAtual.aluno_celular ?? '',
+      logradouro: sessaoAtual.aluno_logradouro ?? '',
+      numero_endereco: sessaoAtual.aluno_numero_endereco ?? '',
+      bairro: sessaoAtual.aluno_bairro ?? '',
+      municipio: sessaoAtual.aluno_municipio ?? '',
+      ponto_referencia: sessaoAtual.aluno_ponto_referencia ?? '',
+      foto_url: sessaoAtual.aluno_foto_url ?? '',
+    })
+    setDlgEditarAluno(true)
+  }, [sessaoAtual, erro])
+
+  const salvarDadosAlunoSessao = useCallback(async () => {
+    if (!supabase) return
+    if (!sessaoAtual?.aluno_user_id) return erro('Não foi possível localizar o usuário do aluno.')
+
+    setSalvandoAlunoSessao(true)
+    try {
+      const payload = {
+        celular: formAlunoSessao.celular.trim() || null,
+        logradouro: formAlunoSessao.logradouro.trim() || null,
+        numero_endereco: formAlunoSessao.numero_endereco.trim() || null,
+        bairro: formAlunoSessao.bairro.trim() || null,
+        municipio: formAlunoSessao.municipio.trim() || null,
+        ponto_referencia: formAlunoSessao.ponto_referencia.trim() || null,
+        foto_url: formAlunoSessao.foto_url.trim() || null,
+      }
+
+      const { error: errUp } = await supabase
+        .from('usuarios')
+        .update(payload)
+        .eq('id', sessaoAtual.aluno_user_id)
+
+      if (errUp) throw errUp
+
+      aplicarAtualizacaoAlunoSessao({
+        celular: payload.celular ?? '',
+        logradouro: payload.logradouro ?? '',
+        numero_endereco: payload.numero_endereco ?? '',
+        bairro: payload.bairro ?? '',
+        municipio: payload.municipio ?? '',
+        ponto_referencia: payload.ponto_referencia ?? '',
+        foto_url: payload.foto_url ?? '',
+      })
+      setDlgEditarAluno(false)
+      sucesso('Dados do aluno atualizados com sucesso.')
+    } catch (e) {
+      console.error(e)
+      erro('Falha ao atualizar telefone/endereço do aluno.')
+    } finally {
+      if (mountedRef.current) setSalvandoAlunoSessao(false)
+    }
+  }, [supabase, sessaoAtual, formAlunoSessao, aplicarAtualizacaoAlunoSessao, sucesso, erro])
+
+  const enviarFotoAlunoSessao = useCallback(
+    async (file: File) => {
+      if (!supabase) return
+      if (!sessaoAtual?.aluno_user_id) return erro('Não foi possível localizar o usuário do aluno.')
+
+      setUploadingFotoAlunoSessao(true)
+      try {
+        const arquivoOtimizado = await otimizarImagemParaUpload(file, {
+          maxWidth: 1280,
+          maxHeight: 1280,
+          quality: 0.62,
+          mimeType: 'image/jpeg',
+          fileName: file.name,
+        })
+
+        if (arquivoOtimizado.size > 5 * 1024 * 1024) {
+          aviso('Mesmo com a compressão automática, a foto ficou acima de 5MB.')
+          return
+        }
+
+        const bucket = 'avatars'
+        const caminho = `alunos/aluno-${sessaoAtual.id_aluno}-${Date.now()}.jpg`
+
+        const { error: errStorage } = await supabase.storage.from(bucket).upload(caminho, arquivoOtimizado, {
+          upsert: true,
+          contentType: arquivoOtimizado.type || 'image/jpeg',
+        })
+
+        if (errStorage) throw errStorage
+
+        const { data: publicUrlData } = supabase.storage.from(bucket).getPublicUrl(caminho)
+        const fotoUrl = publicUrlData?.publicUrl
+
+        if (!fotoUrl) throw new Error('Não foi possível gerar a URL pública da foto.')
+
+        const { error: errUsuario } = await supabase
+          .from('usuarios')
+          .update({ foto_url: fotoUrl })
+          .eq('id', sessaoAtual.aluno_user_id)
+
+        if (errUsuario) throw errUsuario
+
+        setFormAlunoSessao((old) => ({ ...old, foto_url: fotoUrl }))
+        aplicarAtualizacaoAlunoSessao({ foto_url: fotoUrl })
+        sucesso('Foto do aluno atualizada com compressão automática.')
+      } catch (e) {
+        console.error(e)
+        erro('Falha ao salvar a foto do aluno.')
+      } finally {
+        if (mountedRef.current) setUploadingFotoAlunoSessao(false)
+      }
+    },
+    [
+      supabase,
+      sessaoAtual,
+      aplicarAtualizacaoAlunoSessao,
+      sucesso,
+      erro,
+      aviso,
+      idProfessor,
+      carregarSessoes,
+      filtroDataInicio,
+      filtroDataFim,
+    ]
+  )
 
   const salvarResumoSessao = useCallback(async () => {
     if (!supabase) return
@@ -1713,7 +1567,7 @@ export default function ProfessorAtendimentosPage() {
             hora_entrada,
             hora_saida,
             resumo_atividades,
-            alunos ( nis, possui_necessidade_especial, possui_beneficio_governo, usuarios ( name, foto_url, cpf, data_nascimento ) ),
+            alunos ( nis, possui_necessidade_especial, possui_beneficio_governo, usuarios ( id, name, foto_url, cpf, data_nascimento, celular, logradouro, numero_endereco, bairro, municipio, ponto_referencia ) ),
             salas_atendimento ( nome, tipo_sala ),
             progresso_aluno (
               id_disciplina,
@@ -1762,10 +1616,17 @@ export default function ProfessorAtendimentosPage() {
           hora_saida: nova.hora_saida ? String(nova.hora_saida) : null,
           resumo_atividades: nova.resumo_atividades ?? null,
 
+          aluno_user_id: alunoUser?.id ?? null,
           aluno_nome: alunoUser?.name ?? alunoSelecionado.nome,
           aluno_foto_url: alunoUser?.foto_url ?? null,
           aluno_cpf: alunoUser?.cpf ?? null,
           aluno_data_nascimento: alunoUser?.data_nascimento ?? null,
+          aluno_celular: alunoUser?.celular ?? null,
+          aluno_logradouro: alunoUser?.logradouro ?? null,
+          aluno_numero_endereco: alunoUser?.numero_endereco ?? null,
+          aluno_bairro: alunoUser?.bairro ?? null,
+          aluno_municipio: alunoUser?.municipio ?? null,
+          aluno_ponto_referencia: alunoUser?.ponto_referencia ?? null,
           numero_inscricao: mat?.numero_inscricao ?? alunoSelecionado.numero_inscricao ?? null,
           mat_data_matricula: mat?.data_matricula ?? null,
           mat_ano_letivo: mat?.ano_letivo != null ? Number(mat.ano_letivo) : null,
@@ -1847,15 +1708,21 @@ export default function ProfessorAtendimentosPage() {
   const abrirDialogTransferencia = useCallback(async () => {
     if (!supabase) return
     if (!idProfessor) return
-    if (!sessaoAtual?.id_sala) return aviso('Esta sessão não tem sala vinculada.')
 
+    const contexto = transferenciaDisponivel.contexto
+    if (!contexto?.id_sala) {
+      return aviso(transferenciaDisponivel.motivo || 'Selecione uma sala para transferir os atendimentos abertos.')
+    }
+
+    setTransferenciaContexto(contexto)
     setDlgTransferir(true)
     setCarregandoProfSala(true)
     setProfessorDestino(null)
     setProfessoresSala([])
+    setQtdAtendimentosAbertosTransferencia(0)
 
     try {
-      const { data, error } = await supabase
+      const { data: dataProfessores, error: errorProfessores } = await supabase
         .from('professores_salas')
         .select(
           `
@@ -1868,12 +1735,23 @@ export default function ProfessorAtendimentosPage() {
           )
         `
         )
-        .eq('id_sala', sessaoAtual.id_sala)
+        .eq('id_sala', contexto.id_sala)
         .eq('ativo', true)
 
-      if (error) throw error
+      if (errorProfessores) throw errorProfessores
 
-      const lista: ProfessorDestinoOption[] = (data ?? [])
+      const { count, error: errorQtd } = await supabase
+        .from('sessoes_atendimento')
+        .select('id_sessao', { count: 'exact', head: true })
+        .eq('id_professor', idProfessor)
+        .eq('id_sala', contexto.id_sala)
+        .is('hora_saida', null)
+
+      if (errorQtd) throw errorQtd
+
+      setQtdAtendimentosAbertosTransferencia(count ?? 0)
+
+      const lista: ProfessorDestinoOption[] = (dataProfessores ?? [])
         .map((r: any) => {
           const p = first(r?.professores) as any
           const u = first(p?.usuarios) as any
@@ -1887,61 +1765,94 @@ export default function ProfessorAtendimentosPage() {
         .sort((a, b) => a.nome.localeCompare(b.nome))
 
       setProfessoresSala(lista)
+
       if (lista.length === 0) aviso('Não há outro professor ativo nesta sala para transferir.')
+      if ((count ?? 0) === 0) aviso('Não há atendimentos abertos nesta sala para transferir.')
     } catch (e) {
       console.error(e)
-      erro('Falha ao carregar professores da sala.')
+      erro('Falha ao carregar dados da transferência.')
     } finally {
       if (mountedRef.current) setCarregandoProfSala(false)
     }
-  }, [supabase, idProfessor, sessaoAtual?.id_sala, aviso, erro])
+  }, [supabase, idProfessor, transferenciaDisponivel, aviso, erro])
 
   const confirmarTransferencia = useCallback(async () => {
     if (!supabase) return
     if (!idProfessor) return
-    if (!sessaoAtual) return
-    if (sessaoAtual.hora_saida) return info('Esta sessão já está encerrada.')
-    if (!sessaoAtual.id_sala) return aviso('Sessão sem sala vinculada.')
+    if (!transferenciaContexto?.id_sala) return aviso('Sala não definida para a transferência.')
     if (!professorDestino?.id_professor) return aviso('Selecione o professor de destino.')
 
     setTransferindo(true)
     try {
+      const { data, error: errBusca } = await supabase
+        .from('sessoes_atendimento')
+        .select('id_sessao, id_aluno, id_progresso, resumo_atividades')
+        .eq('id_professor', idProfessor)
+        .eq('id_sala', transferenciaContexto.id_sala)
+        .is('hora_saida', null)
+
+      if (errBusca) throw errBusca
+
+      const sessoesAbertasSala = (data ?? []) as Array<{
+        id_sessao: number
+        id_aluno: number
+        id_progresso: number | null
+        resumo_atividades: string | null
+      }>
+
+      if (sessoesAbertasSala.length === 0) {
+        info('Não há atendimentos abertos para transferir.')
+        setDlgTransferir(false)
+        setTransferenciaContexto(null)
+        return
+      }
+
       const agoraISO = new Date().toISOString()
       const agoraBR = formatarDataHoraBR(agoraISO)
 
       const linhaFechamento = `[TRANSFERÊNCIA] Encerrado por transferência para ${professorDestino.nome} em ${agoraBR}.`
-      const resumoFechamento = [sessaoAtual.resumo_atividades?.trim(), linhaFechamento].filter(Boolean).join('\n')
-
-      const { error: errUp } = await supabase
-        .from('sessoes_atendimento')
-        .update({
-          hora_saida: agoraISO,
-          resumo_atividades: resumoFechamento,
-        })
-        .eq('id_sessao', sessaoAtual.id_sessao)
-
-      if (errUp) throw errUp
-
       const linhaAbertura = `[TRANSFERÊNCIA] Recebido por transferência de ${nomeProfessorAtual} em ${agoraBR}.`
-      const { error: errIns } = await supabase.from('sessoes_atendimento').insert({
-        id_aluno: sessaoAtual.id_aluno,
+
+      for (const sessao of sessoesAbertasSala) {
+        const resumoFechamento = [sessao.resumo_atividades?.trim(), linhaFechamento].filter(Boolean).join('\n')
+
+        const { error: errUp } = await supabase
+          .from('sessoes_atendimento')
+          .update({
+            hora_saida: agoraISO,
+            resumo_atividades: resumoFechamento,
+          })
+          .eq('id_sessao', sessao.id_sessao)
+
+        if (errUp) throw errUp
+      }
+
+      const novasSessoes = sessoesAbertasSala.map((sessao) => ({
+        id_aluno: sessao.id_aluno,
         id_professor: professorDestino.id_professor,
-        id_sala: sessaoAtual.id_sala,
-        id_progresso: sessaoAtual.id_progresso,
+        id_sala: transferenciaContexto.id_sala,
+        id_progresso: sessao.id_progresso ?? null,
         hora_entrada: agoraISO,
         hora_saida: null,
         resumo_atividades: linhaAbertura,
-      })
+      }))
+
+      const { error: errIns } = await supabase.from('sessoes_atendimento').insert(novasSessoes)
 
       if (errIns) throw errIns
 
-      sucesso('Atendimento transferido com sucesso.')
+      sucesso(`${sessoesAbertasSala.length} atendimento(s) aberto(s) transferido(s) com sucesso.`)
+      setQtdAtendimentosAbertosTransferencia(0)
       setMostrarHistorico(true)
 
       setDlgTransferir(false)
-      setDlgSessao(false)
-      setSessaoAtual(null)
-      setRegistros([])
+      setTransferenciaContexto(null)
+
+      if (sessaoAtual?.id_sala === transferenciaContexto.id_sala && !sessaoAtual?.hora_saida) {
+        setDlgSessao(false)
+        setSessaoAtual(null)
+        setRegistros([])
+      }
 
       await carregarSessoes(idProfessor, filtroDataInicio, filtroDataFim)
     } catch (e: any) {
@@ -1953,9 +1864,10 @@ export default function ProfessorAtendimentosPage() {
   }, [
     supabase,
     idProfessor,
-    sessaoAtual,
+    transferenciaContexto,
     professorDestino,
     nomeProfessorAtual,
+    sessaoAtual,
     aviso,
     info,
     sucesso,
@@ -2281,11 +2193,32 @@ export default function ProfessorAtendimentosPage() {
         <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
           {/* Abertos */}
           <Paper variant="outlined" sx={{ p: 2, borderRadius: 2, flex: 1 }}>
-            <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1}>
+            <Stack
+              direction={{ xs: 'column', sm: 'row' }}
+              alignItems={{ xs: 'stretch', sm: 'center' }}
+              justifyContent="space-between"
+              spacing={1}
+            >
               <Typography variant="h6" sx={{ fontWeight: 900 }}>
                 Alunos em Atendimento ({sessoesAbertas.length})
               </Typography>
-              <Chip size="small" label="Abertos" color="warning" />
+
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ xs: 'stretch', sm: 'center' }}>
+                <Tooltip title={transferenciaDisponivel.disponivel ? 'Transfere todos os atendimentos abertos da sala atual.' : transferenciaDisponivel.motivo}>
+                  <span>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      startIcon={<SwapHorizIcon />}
+                      disabled={!transferenciaDisponivel.disponivel}
+                      onClick={() => void abrirDialogTransferencia()}
+                    >
+                      Transferir abertos
+                    </Button>
+                  </span>
+                </Tooltip>
+                <Chip size="small" label="Abertos" color="warning" />
+              </Stack>
             </Stack>
 
             <Divider sx={{ my: 1.5 }} />
@@ -2298,152 +2231,23 @@ export default function ProfessorAtendimentosPage() {
               <Alert severity="info">Nenhum atendimento em andamento no filtro atual.</Alert>
             ) : (
               <Box sx={cardGridSx}>
-                {sessoesAbertas.map((s) => {
-                  const pe = chipPeDeMeiaUI({
-                    id_nivel_ensino: s.id_nivel_ensino ?? null,
-                    cpf: s.aluno_cpf ?? null,
-                    data_nascimento: s.aluno_data_nascimento ?? null,
-                    nis: s.aluno_nis ?? null,
-                    possui_beneficio_governo: s.aluno_possui_beneficio_governo ?? null,
-                    data_matricula: s.mat_data_matricula ?? null,
-                    ano_letivo: s.mat_ano_letivo ?? null,
-                  })
-                  const pcd = Boolean(s.aluno_possui_necessidade_especial)
-
-                  return (
-                    <Card
-                      key={s.id_sessao}
-                      elevation={2}
-                      onClick={() => void abrirSessao(s)}
-                      sx={{
-                        display: 'flex',
-                        flexDirection: 'column',
-                        height: '100%',
-                        borderRadius: 2,
-                        cursor: 'pointer',
-                        transition: 'transform 0.2s, box-shadow 0.2s',
-                        '&:hover': { transform: 'translateY(-4px)', boxShadow: 6 },
-                      }}
-                    >
-                      <CardContent sx={{ flexGrow: 1, pb: 1 }}>
-                        <Stack direction="row" spacing={2} alignItems="center" sx={{ mb: 1.5 }}>
-                          <Avatar
-                            src={s.aluno_foto_url ?? undefined}
-                            alt={s.aluno_nome}
-                            sx={{ width: 56, height: 56, border: '2px solid', borderColor: 'primary.main' }}
-                          />
-                          <Box sx={{ minWidth: 0, flex: 1 }}>
-                            <Typography
-                              variant="h6"
-                              sx={{ fontWeight: 700, overflowWrap: 'anywhere', lineHeight: 1.2 }}
-                            >
-                              {s.aluno_nome}
-                            </Typography>
-                            <Typography variant="body2" color="text.secondary">
-                              {renderNumeroInscricao({ numero_inscricao: s.numero_inscricao })}
-                            </Typography>
-                          </Box>
-                        </Stack>
-
-                        <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ mb: 1 }}>
-                          <Chip label={s.disciplina_nome ?? '-'} color="primary" variant="outlined" size="small" />
-                          <Chip label={s.ano_nome ?? '-'} variant="outlined" size="small" />
-                          <Chip
-                            label={s.sala_nome ?? '-'}
-                            variant="outlined"
-                            size="small"
-                            icon={<MeetingRoomIcon />}
-                          />
-                        </Stack>
-
-                        <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ mb: 1 }}>
-                          <Chip size="small" variant="outlined" label={`Nível: ${nomeNivelEnsinoCurto(s.id_nivel_ensino)}`} />
-                          {pe.tooltip ? (
-                            <Tooltip title={<span style={{ whiteSpace: 'pre-line' }}>{pe.tooltip}</span>} arrow>
-                              <Chip size="small" color={pe.color} variant={pe.variant} label={pe.label} />
-                            </Tooltip>
-                          ) : (
-                            <Chip size="small" color={pe.color} variant={pe.variant} label={pe.label} />
-                          )}
-                          <Chip
-                            size="small"
-                            color={pcd ? 'info' : 'default'}
-                            variant={pcd ? 'filled' : 'outlined'}
-                            label={pcd ? 'PCD: Sim' : 'PCD: Não'}
-                          />
-                        </Stack>
-
-                        <Typography variant="caption" color="text.secondary" display="block">
-                          Entrada: {formatarDataHoraBR(s.hora_entrada)}
-                        </Typography>
-
-                        <TextField
-                          label="Resumo (opcional)"
-                          fullWidth
-                          multiline
-                          minRows={2}
-                          size="small"
-                          value={resumoPorSessao[s.id_sessao] ?? ''}
-                          onChange={(e) =>
-                            setResumoPorSessao((old) => ({
-                              ...old,
-                              [s.id_sessao]: e.target.value,
-                            }))
-                          }
-                          onClick={(e) => e.stopPropagation()}
-                          sx={{ mt: 1.2 }}
-                        />
-                      </CardContent>
-
-                      <Divider />
-
-                      <CardActions sx={{ p: 1.2 }}>
-                        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ width: '100%' }}>
-                          <Button
-                            size="small"
-                            variant="outlined"
-                            startIcon={<VisibilityIcon />}
-                            sx={{ flex: 1 }}
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              void abrirSessao(s)
-                            }}
-                          >
-                            Abrir
-                          </Button>
-
-                          <Button
-                            size="small"
-                            variant="outlined"
-                            startIcon={<DescriptionIcon />}
-                            sx={{ flex: 1 }}
-                            disabled={!s.id_progresso}
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              abrirFichaAcompanhamento(s.id_progresso)
-                            }}
-                          >
-                            Abrir Ficha
-                          </Button>
-
-                          <Button
-                            size="small"
-                            variant="contained"
-                            color="warning"
-                            startIcon={<CheckCircleOutlineIcon />}
-                            sx={{ flex: 1 }}
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              void finalizarSessaoRapido(s)
-                            }}
-                          >
-                            Finalizar
-                          </Button>
-                        </Stack>
-                      </CardActions>
-                    </Card>
-                  )
-                })}
+                {sessoesAbertas.map((s) => (
+                  <AtendimentoCard
+                    key={s.id_sessao}
+                    sessao={s}
+                    modo="aberta"
+                    resumo={resumoPorSessao[s.id_sessao] ?? ''}
+                    onResumoChange={(value) =>
+                      setResumoPorSessao((old) => ({
+                        ...old,
+                        [s.id_sessao]: value,
+                      }))
+                    }
+                    onAbrir={abrirSessao}
+                    onAbrirFicha={abrirFichaAcompanhamento}
+                    onFinalizar={finalizarSessaoRapido}
+                  />
+                ))}
               </Box>
             )}
           </Paper>
@@ -2469,92 +2273,13 @@ export default function ProfessorAtendimentosPage() {
               ) : (
                 <Box sx={cardGridSx}>
                   {sessoesHistorico.map((s) => (
-                    <Card
+                    <AtendimentoCard
                       key={s.id_sessao}
-                      elevation={1}
-                      onClick={() => void abrirSessao(s)}
-                      sx={{
-                        display: 'flex',
-                        flexDirection: 'column',
-                        height: '100%',
-                        borderRadius: 2,
-                        cursor: 'pointer',
-                        transition: 'transform 0.2s, box-shadow 0.2s',
-                        '&:hover': { transform: 'translateY(-4px)', boxShadow: 4 },
-                      }}
-                    >
-                      <CardContent sx={{ flexGrow: 1 }}>
-                        <Stack direction="row" spacing={2} alignItems="center" sx={{ mb: 1.5 }}>
-                          <Avatar src={s.aluno_foto_url ?? undefined} alt={s.aluno_nome} sx={{ width: 52, height: 52 }} />
-                          <Box sx={{ minWidth: 0, flex: 1 }}>
-                            <Typography
-                              variant="subtitle1"
-                              sx={{ fontWeight: 800, overflowWrap: 'anywhere', lineHeight: 1.2 }}
-                            >
-                              {s.aluno_nome}
-                            </Typography>
-                            <Typography variant="body2" color="text.secondary">
-                              {renderNumeroInscricao({ numero_inscricao: s.numero_inscricao })}
-                            </Typography>
-                          </Box>
-                        </Stack>
-
-                        <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ mb: 1 }}>
-                          <Chip label={s.disciplina_nome ?? '-'} color="primary" variant="outlined" size="small" />
-                          <Chip label={s.ano_nome ?? '-'} variant="outlined" size="small" />
-                          <Chip
-                            label={s.sala_nome ?? '-'}
-                            variant="outlined"
-                            size="small"
-                            icon={<MeetingRoomIcon />}
-                          />
-                          <Chip size="small" variant="outlined" label={`Nível: ${nomeNivelEnsinoCurto(s.id_nivel_ensino)}`} />
-                        </Stack>
-
-                        <Typography variant="caption" color="text.secondary" display="block">
-                          {formatarDataHoraBR(s.hora_entrada)} → {formatarDataHoraBR(s.hora_saida)}
-                        </Typography>
-
-                        {s.resumo_atividades ? (
-                          <Typography variant="body2" color="text.secondary" sx={{ mt: 1, whiteSpace: 'pre-wrap' }}>
-                            {s.resumo_atividades}
-                          </Typography>
-                        ) : null}
-                      </CardContent>
-
-                      <Divider />
-
-                      <CardActions sx={{ p: 1.2 }}>
-                        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ width: '100%' }}>
-                          <Button
-                            size="small"
-                            variant="outlined"
-                            startIcon={<VisibilityIcon />}
-                            sx={{ flex: 1 }}
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              void abrirSessao(s)
-                            }}
-                          >
-                            Abrir
-                          </Button>
-
-                          <Button
-                            size="small"
-                            variant="outlined"
-                            startIcon={<DescriptionIcon />}
-                            sx={{ flex: 1 }}
-                            disabled={!s.id_progresso}
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              abrirFichaAcompanhamento(s.id_progresso)
-                            }}
-                          >
-                            Abrir Ficha
-                          </Button>
-                        </Stack>
-                      </CardActions>
-                    </Card>
+                      sessao={s}
+                      modo="historico"
+                      onAbrir={abrirSessao}
+                      onAbrirFicha={abrirFichaAcompanhamento}
+                    />
                   ))}
                 </Box>
               )}
@@ -2746,7 +2471,7 @@ export default function ProfessorAtendimentosPage() {
               renderOption={(props, option) => (
                 <Box component="li" {...props} key={`${option.id_aluno}-${option.id_matricula ?? 'x'}`}>
                   <Stack direction="row" spacing={1.5} alignItems="center" sx={{ width: '100%' }}>
-                    <Avatar src={option.foto_url ?? undefined} alt={option.nome} sx={{ width: 36, height: 36 }} />
+                    <Avatar src={resolverFotoUrl(option.foto_url)} alt={option.nome} sx={{ width: 36, height: 36 }} />
                     <Box sx={{ minWidth: 0, flex: 1 }}>
                       <Typography sx={{ fontWeight: 800, overflowWrap: 'anywhere' }}>{option.nome}</Typography>
                       <Typography variant="caption" color="text.secondary">
@@ -2997,24 +2722,40 @@ export default function ProfessorAtendimentosPage() {
                 }}
               >
                 <Stack spacing={1}>
-                  <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
-                    <Typography variant="h6" sx={{ fontWeight: 900, overflowWrap: 'anywhere' }}>
-                      {sessaoAtual.aluno_nome}
-                    </Typography>
-                    <Chip size="small" label={sessaoAtual.hora_saida ? 'Encerrada' : 'Aberta'} color={sessaoAtual.hora_saida ? 'success' : 'warning'} />
-                    <Chip size="small" label={sessaoAtual.sala_nome ?? '-'} variant="outlined" />
-                    <Chip size="small" label={`${sessaoAtual.disciplina_nome ?? '-'} — ${sessaoAtual.ano_nome ?? '-'}`} variant="outlined" />
-                    <Chip size="small" variant="outlined" label={`Nível: ${nomeNivelEnsinoCurto(sessaoAtual.id_nivel_ensino)}`} />
-                    {limiteProtocolosSessao != null ? (
-                      <Tooltip title={resumoFaixasSessaoAtual || ''} disableHoverListener={!resumoFaixasSessaoAtual}>
-                        <Chip size="small" label={`Protocolos: 1..${limiteProtocolosSessao}`} variant="outlined" />
-                      </Tooltip>
-                    ) : null}
-                  </Stack>
+                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} alignItems={{ xs: 'flex-start', sm: 'center' }}>
+                    <AvatarAlunoAtendimento
+                      idAluno={sessaoAtual.id_aluno}
+                      fotoUrl={sessaoAtual.aluno_foto_url}
+                      nome={sessaoAtual.aluno_nome}
+                      sx={{ width: 58, height: 58 }}
+                    />
+                    <Stack spacing={1} sx={{ minWidth: 0, flex: 1 }}>
+                      <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
+                        <Typography variant="h6" sx={{ fontWeight: 900, overflowWrap: 'anywhere' }}>
+                          {sessaoAtual.aluno_nome}
+                        </Typography>
+                        <Chip size="small" label={sessaoAtual.hora_saida ? 'Encerrada' : 'Aberta'} color={sessaoAtual.hora_saida ? 'success' : 'warning'} />
+                        <Chip size="small" label={sessaoAtual.sala_nome ?? '-'} variant="outlined" />
+                        <Chip size="small" label={`${sessaoAtual.disciplina_nome ?? '-'} — ${sessaoAtual.ano_nome ?? '-'}`} variant="outlined" />
+                        <Chip size="small" variant="outlined" label={`Nível: ${nomeNivelEnsinoCurto(sessaoAtual.id_nivel_ensino)}`} />
+                        {limiteProtocolosSessao != null ? (
+                          <Tooltip title={resumoFaixasSessaoAtual || ''} disableHoverListener={!resumoFaixasSessaoAtual}>
+                            <Chip size="small" label={`Protocolos: 1..${limiteProtocolosSessao}`} variant="outlined" />
+                          </Tooltip>
+                        ) : null}
+                      </Stack>
 
-                  <Typography variant="body2" color="text.secondary">
-                    Entrada: {formatarDataHoraBR(sessaoAtual.hora_entrada)} • Saída: {formatarDataHoraBR(sessaoAtual.hora_saida)}
-                  </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        Entrada: {formatarDataHoraBR(sessaoAtual.hora_entrada)} • Saída: {formatarDataHoraBR(sessaoAtual.hora_saida)}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        Telefone: {sessaoAtual.aluno_celular?.trim() || '-'}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary" sx={{ whiteSpace: 'pre-wrap' }}>
+                        Endereço: {formatarEnderecoAluno(sessaoAtual)}
+                      </Typography>
+                    </Stack>
+                  </Stack>
 
                   <TextField
                     label="Resumo da sessão (salvar)"
@@ -3024,12 +2765,15 @@ export default function ProfessorAtendimentosPage() {
                     multiline
                   />
 
-                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} justifyContent="flex-end">
-                    {sessaoAtual.id_sala && !sessaoAtual.hora_saida ? (
-                      <Button variant="outlined" startIcon={<SwapHorizIcon />} onClick={() => void abrirDialogTransferencia()}>
-                        Transferir
-                      </Button>
-                    ) : null}
+                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} justifyContent="flex-end" flexWrap="wrap">
+                    <Button
+                      variant="contained"
+                      startIcon={<EditIcon />}
+                      onClick={abrirDialogEditarAluno}
+                      disabled={!sessaoAtual.aluno_user_id || salvandoAlunoSessao || uploadingFotoAlunoSessao}
+                    >
+                      Atualizar contato/foto
+                    </Button>
 
                     <Button
                       variant="outlined"
@@ -3037,7 +2781,7 @@ export default function ProfessorAtendimentosPage() {
                       disabled={!sessaoAtual.id_progresso}
                       onClick={() => abrirFichaAcompanhamento(sessaoAtual.id_progresso)}
                     >
-                      Abrir Ficha
+                      Abrir ficha
                     </Button>
 
                     <Button variant="outlined" onClick={() => void salvarResumoSessao()} disabled={salvandoSessao}>
@@ -3127,11 +2871,11 @@ export default function ProfessorAtendimentosPage() {
         </DialogActions>
       </Dialog>
 
-      {/* Dialog: Transferir atendimento */}
-      <Dialog open={dlgTransferir} onClose={() => setDlgTransferir(false)} fullWidth maxWidth="sm" fullScreen={isMobile}>
+      {/* Dialog: Editar dados do aluno */}
+      <Dialog open={dlgEditarAluno} onClose={() => setDlgEditarAluno(false)} fullWidth maxWidth="md" fullScreen={isMobile}>
         <DialogTitle sx={{ fontWeight: 900 }}>
-          Transferir atendimento
-          <IconButton onClick={() => setDlgTransferir(false)} sx={{ position: 'absolute', right: 8, top: 8 }}>
+          Atualizar telefone, endereço e foto do aluno
+          <IconButton onClick={() => setDlgEditarAluno(false)} sx={{ position: 'absolute', right: 8, top: 8 }}>
             <CloseIcon />
           </IconButton>
         </DialogTitle>
@@ -3142,40 +2886,122 @@ export default function ProfessorAtendimentosPage() {
           ) : (
             <Stack spacing={2}>
               <Alert severity="info">
-                Ao transferir, o sistema encerra esta sessão para você e abre uma nova para o professor escolhido, com nova hora de entrada.
+                A foto é comprimida automaticamente antes do upload para evitar erro por arquivo muito pesado.
               </Alert>
 
-              {carregandoProfSala ? <LinearProgress /> : null}
+              <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems={{ xs: 'flex-start', md: 'center' }}>
+                <AvatarAlunoAtendimento
+                  idAluno={sessaoAtual.id_aluno}
+                  fotoUrl={formAlunoSessao.foto_url || sessaoAtual.aluno_foto_url}
+                  nome={sessaoAtual.aluno_nome}
+                  sx={{ width: 88, height: 88 }}
+                />
+                <Box>
+                  <Button
+                    variant="outlined"
+                    startIcon={<PhotoCameraIcon />}
+                    disabled={uploadingFotoAlunoSessao || salvandoAlunoSessao}
+                    onClick={() => fileInputFotoAlunoSessaoRef.current?.click()}
+                  >
+                    {uploadingFotoAlunoSessao ? 'Enviando foto...' : 'Trocar foto'}
+                  </Button>
+                  <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 1 }}>
+                    JPG otimizado, largura máxima 1280px e qualidade reduzida automaticamente.
+                  </Typography>
+                  <input
+                    ref={fileInputFotoAlunoSessaoRef}
+                    type="file"
+                    accept="image/*"
+                    hidden
+                    onChange={(e) => {
+                      const file = e.target.files?.[0]
+                      if (file) void enviarFotoAlunoSessao(file)
+                      e.currentTarget.value = ''
+                    }}
+                  />
+                </Box>
+              </Stack>
 
-              <Autocomplete
-                options={professoresSala}
-                value={professorDestino}
-                onChange={(_, v) => setProfessorDestino(v)}
-                getOptionLabel={(o) => o?.nome ?? ''}
-                noOptionsText={carregandoProfSala ? 'Carregando...' : 'Nenhum professor disponível na sala'}
-                renderOption={(props, option) => (
-                  <Box component="li" {...props} key={option.id_professor}>
-                    <Stack direction="row" spacing={1.5} alignItems="center" sx={{ width: '100%' }}>
-                      <Avatar src={option.foto_url ?? undefined} alt={option.nome} sx={{ width: 34, height: 34 }} />
-                      <Typography sx={{ fontWeight: 800, overflowWrap: 'anywhere' }}>{option.nome}</Typography>
-                    </Stack>
-                  </Box>
-                )}
-                renderInput={(params) => <TextField {...params} label="Professor destino (mesma sala)" />}
-              />
+              <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Telefone / celular"
+                  value={formAlunoSessao.celular}
+                  onChange={(e) => setFormAlunoSessao((old) => ({ ...old, celular: e.target.value }))}
+                />
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Município"
+                  value={formAlunoSessao.municipio}
+                  onChange={(e) => setFormAlunoSessao((old) => ({ ...old, municipio: e.target.value }))}
+                />
+              </Stack>
+
+              <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Logradouro"
+                  value={formAlunoSessao.logradouro}
+                  onChange={(e) => setFormAlunoSessao((old) => ({ ...old, logradouro: e.target.value }))}
+                />
+                <TextField
+                  sx={{ width: { xs: '100%', md: 180 } }}
+                  size="small"
+                  label="Número"
+                  value={formAlunoSessao.numero_endereco}
+                  onChange={(e) => setFormAlunoSessao((old) => ({ ...old, numero_endereco: e.target.value }))}
+                />
+              </Stack>
+
+              <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Bairro"
+                  value={formAlunoSessao.bairro}
+                  onChange={(e) => setFormAlunoSessao((old) => ({ ...old, bairro: e.target.value }))}
+                />
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Ponto de referência"
+                  value={formAlunoSessao.ponto_referencia}
+                  onChange={(e) => setFormAlunoSessao((old) => ({ ...old, ponto_referencia: e.target.value }))}
+                />
+              </Stack>
             </Stack>
           )}
         </DialogContent>
 
         <DialogActions>
-          <Button variant="outlined" onClick={() => setDlgTransferir(false)} disabled={transferindo}>
+          <Button variant="outlined" onClick={() => setDlgEditarAluno(false)} disabled={salvandoAlunoSessao}>
             Cancelar
           </Button>
-          <Button variant="contained" onClick={() => void confirmarTransferencia()} disabled={transferindo || !professorDestino}>
-            {transferindo ? 'Transferindo...' : 'Confirmar transferência'}
+          <Button variant="contained" onClick={() => void salvarDadosAlunoSessao()} disabled={salvandoAlunoSessao || !sessaoAtual?.aluno_user_id}>
+            {salvandoAlunoSessao ? 'Salvando...' : 'Salvar dados do aluno'}
           </Button>
         </DialogActions>
       </Dialog>
+
+      <TransferenciaDialog
+        open={dlgTransferir}
+        isMobile={isMobile}
+        transferenciaContexto={transferenciaContexto}
+        qtdAtendimentosAbertosTransferencia={qtdAtendimentosAbertosTransferencia}
+        carregandoProfSala={carregandoProfSala}
+        professoresSala={professoresSala}
+        professorDestino={professorDestino}
+        transferindo={transferindo}
+        onClose={() => {
+          setDlgTransferir(false)
+          setTransferenciaContexto(null)
+        }}
+        onProfessorDestinoChange={setProfessorDestino}
+        onConfirmar={confirmarTransferencia}
+      />
 
       {/* Dialog: Registro */}
       <Dialog open={dlgRegistro} onClose={fecharDialogRegistro} fullWidth maxWidth="md" fullScreen={isMobile}>

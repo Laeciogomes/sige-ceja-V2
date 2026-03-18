@@ -3,6 +3,7 @@
 import {
   type FC,
   type ChangeEvent,
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -23,6 +24,7 @@ import {
   Divider,
   FormControl,
   FormControlLabel,
+  FormHelperText,
   IconButton,
   InputAdornment,
   InputLabel,
@@ -158,6 +160,7 @@ interface TurmaRow {
   turno: string
   ano_letivo: number
   id_nivel_ensino: number
+  is_ativa?: boolean | null
 }
 
 interface DisciplinaRow {
@@ -269,6 +272,7 @@ interface MatriculaFormState {
   dataConclusao: string
   // Aproveitamento
   seriesConcluidasIds: number[]
+  disciplinasAproveitamentoConfigIds: number[]
   // Progressão
   serieProgressaoId: number | ''
   disciplinasProgressaoIds: number[]
@@ -338,12 +342,255 @@ const gerarEmailAutomatico = (nome: string): string => {
   return `${primeiro}_${ultimo}@ceja.com`
 }
 
+const SUPABASE_PUBLIC_STORAGE_BASE = (() => {
+  const raw = String(import.meta.env.VITE_SUPABASE_URL ?? '')
+    .trim()
+    .replace(/\/+$/, '')
+  return raw ? `${raw}/storage/v1/object/public` : ''
+})()
+
+const normalizarTexto = (valor: string): string =>
+  (valor ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim()
+
+const iniciais = (nome: string): string => {
+  const partes = (nome ?? '').trim().split(/\s+/).filter(Boolean)
+  if (partes.length === 0) return '?'
+  if (partes.length === 1) return partes[0].slice(0, 2).toUpperCase()
+  return `${partes[0][0] ?? ''}${partes[1][0] ?? ''}`.toUpperCase()
+}
+
+const normalizarCaminhoFoto = (raw: string): string => {
+  const limpo = raw.trim()
+  if (!limpo) return ''
+
+  const semQuery = limpo.split('?')[0]?.split('#')[0] ?? ''
+  const semDominio = semQuery.replace(/^https?:\/\/[^/]+/i, '')
+  const semSlashInicial = semDominio.replace(/^\/+/, '')
+  const semStorage = semSlashInicial
+    .replace(/^storage\/v1\/object\/public\//i, '')
+    .replace(/^object\/public\//i, '')
+    .replace(/^public\//i, '')
+    .replace(/^\/+/, '')
+
+  if (semStorage.startsWith('avatars/')) return semStorage.replace(/^avatars\//, '')
+  return semStorage
+}
+
+const resolverFotoUrl = (
+  supabase: ReturnType<typeof useSupabase>['supabase'] | null,
+  fotoUrl?: string | null,
+): string | null => {
+  if (!fotoUrl?.trim() || !supabase) return null
+  const raw = fotoUrl.trim()
+
+  if (/^(data:|blob:)/i.test(raw)) return raw
+  if (/^https?:\/\//i.test(raw) && !/\/storage\/v1\/object\/public\//i.test(raw)) {
+    return raw
+  }
+
+  const caminho = normalizarCaminhoFoto(raw)
+  if (!caminho) return null
+
+  const partes = caminho.split('/').filter(Boolean)
+  if (partes.length === 0) return null
+
+  let bucket = 'avatars'
+  let pathNoBucket = caminho
+
+  if (!['alunos', 'professores'].includes(partes[0] ?? '') && partes.length > 1) {
+    bucket = partes[0] ?? 'avatars'
+    pathNoBucket = partes.slice(1).join('/')
+  }
+
+  if (!pathNoBucket) return null
+
+  if (SUPABASE_PUBLIC_STORAGE_BASE) {
+    return `${SUPABASE_PUBLIC_STORAGE_BASE}/${bucket}/${pathNoBucket}`
+  }
+
+  return supabase.storage.from(bucket).getPublicUrl(pathNoBucket).data.publicUrl
+}
+
+const isNomeArquivoImagem = (nome: string): boolean => /\.(png|jpe?g|webp|gif|bmp|svg)$/i.test(nome)
+
+const fotoAlunoFallbackCache = new Map<number, string | null>()
+const fotoAlunoFallbackPromiseCache = new Map<number, Promise<string | null>>()
+
+const buscarFotoAlunoFallback = async (
+  supabase: ReturnType<typeof useSupabase>['supabase'] | null,
+  idAluno?: number | null,
+): Promise<string | null> => {
+  const id = Number(idAluno ?? 0)
+  if (!supabase || !id) return null
+
+  if (fotoAlunoFallbackCache.has(id)) {
+    return fotoAlunoFallbackCache.get(id) ?? null
+  }
+
+  const existente = fotoAlunoFallbackPromiseCache.get(id)
+  if (existente) return existente
+
+  const tarefa = (async () => {
+    const prefixo = `aluno-${id}-`
+    const bucket = 'avatars'
+
+    const construirUrl = (pathNoBucket: string): string => {
+      if (SUPABASE_PUBLIC_STORAGE_BASE) {
+        return `${SUPABASE_PUBLIC_STORAGE_BASE}/${bucket}/${pathNoBucket}`
+      }
+      return supabase.storage.from(bucket).getPublicUrl(pathNoBucket).data.publicUrl
+    }
+
+    const procurarEmPasta = async (pasta: string): Promise<string | null> => {
+      const { data } = await supabase.storage.from(bucket).list(pasta, {
+        limit: 200,
+        offset: 0,
+        sortBy: { column: 'name', order: 'desc' },
+      })
+
+      const arquivo = (data ?? [])
+        .filter((item: any) => {
+          const nome = String(item?.name ?? '')
+          return nome.startsWith(prefixo) && isNomeArquivoImagem(nome)
+        })
+        .sort((a: any, b: any) => String(b?.name ?? '').localeCompare(String(a?.name ?? '')))[0]
+
+      if (!arquivo?.name) return null
+      const pathNoBucket = pasta ? `${pasta}/${arquivo.name}` : arquivo.name
+      return construirUrl(pathNoBucket)
+    }
+
+    const caminhosDiretos = ['', 'alunos', 'alunos/alunos']
+    for (const pasta of caminhosDiretos) {
+      const url = await procurarEmPasta(pasta)
+      if (url) {
+        fotoAlunoFallbackCache.set(id, url)
+        return url
+      }
+    }
+
+    const { data: raiz } = await supabase.storage.from(bucket).list('', {
+      limit: 200,
+      offset: 0,
+      sortBy: { column: 'name', order: 'asc' },
+    })
+
+    for (const item of raiz ?? []) {
+      const nome = String((item as any)?.name ?? '').trim()
+      if (!nome) continue
+
+      if (nome.startsWith(prefixo) && isNomeArquivoImagem(nome)) {
+        const url = construirUrl(nome)
+        fotoAlunoFallbackCache.set(id, url)
+        return url
+      }
+
+      if (isNomeArquivoImagem(nome)) continue
+
+      for (const pasta of [nome, `${nome}/alunos`]) {
+        const url = await procurarEmPasta(pasta)
+        if (url) {
+          fotoAlunoFallbackCache.set(id, url)
+          return url
+        }
+      }
+    }
+
+    fotoAlunoFallbackCache.set(id, null)
+    return null
+  })()
+
+  fotoAlunoFallbackPromiseCache.set(id, tarefa)
+
+  try {
+    return await tarefa
+  } finally {
+    fotoAlunoFallbackPromiseCache.delete(id)
+  }
+}
+
+interface ConfigDisciplinaAproveitamentoOption {
+  id_config: number
+  id_disciplina: number
+  id_ano_escolar: number
+  nome_ano: string
+  nome_disciplina: string
+}
+
+interface ProgressoAlunoRow {
+  id_matricula: number
+  id_ano_escolar: number
+  id_disciplina: number
+  id_status_disciplina: number
+}
+
+const AvatarAlunoMatricula: FC<{
+  supabase: ReturnType<typeof useSupabase>['supabase'] | null
+  idAluno?: number | null
+  nome: string
+  fotoUrl?: string | null
+  sx?: any
+}> = ({ supabase, idAluno, nome, fotoUrl, sx }) => {
+  const [src, setSrc] = useState<string | undefined>(() => resolverFotoUrl(supabase, fotoUrl) ?? undefined)
+  const tentouFallbackRef = useRef(false)
+
+  useEffect(() => {
+    let ativo = true
+    const inicial = resolverFotoUrl(supabase, fotoUrl) ?? undefined
+    setSrc(inicial)
+    tentouFallbackRef.current = false
+
+    if (!inicial && idAluno) {
+      void buscarFotoAlunoFallback(supabase, idAluno).then((url) => {
+        if (!ativo) return
+        if (url) {
+          tentouFallbackRef.current = true
+          setSrc(url)
+        }
+      })
+    }
+
+    return () => {
+      ativo = false
+    }
+  }, [supabase, idAluno, fotoUrl])
+
+  const tentarFallback = useCallback(() => {
+    if (tentouFallbackRef.current) {
+      setSrc(undefined)
+      return
+    }
+
+    tentouFallbackRef.current = true
+
+    if (!idAluno) {
+      setSrc(undefined)
+      return
+    }
+
+    void buscarFotoAlunoFallback(supabase, idAluno).then((url) => {
+      setSrc(url ?? undefined)
+    })
+  }, [supabase, idAluno])
+
+  return (
+    <Avatar src={src} imgProps={{ referrerPolicy: 'no-referrer' }} onError={tentarFallback} sx={sx}>
+      {iniciais(nome)}
+    </Avatar>
+  )
+}
+
 // Gera inserts para progresso_aluno a partir da modalidade da matrícula
 const gerarInsertsProgresso = (args: {
   idMatricula: number
   nivelId: number
   modalidade: string
   seriesConcluidasIds: number[]
+  disciplinasAproveitamentoConfigIds: number[]
   serieProgressaoId: number | ''
   disciplinasProgressaoIds: number[]
   anosEscolaresDisponiveis: AnoEscolarRow[]
@@ -355,6 +602,7 @@ const gerarInsertsProgresso = (args: {
     nivelId,
     modalidade,
     seriesConcluidasIds,
+    disciplinasAproveitamentoConfigIds,
     serieProgressaoId,
     disciplinasProgressaoIds,
     anosEscolaresDisponiveis,
@@ -388,48 +636,33 @@ const gerarInsertsProgresso = (args: {
   const inserts: Array<Record<string, unknown>> = []
 
   if (isAproveitamento) {
-    const concluidasSet = new Set(seriesConcluidasIds)
+    const seriesConcluidasSet = new Set(seriesConcluidasIds)
+    const disciplinasConcluidasSet = new Set(disciplinasAproveitamentoConfigIds)
 
-    const seriesConcluidas = anosNivel.filter((a) =>
-      concluidasSet.has(a.id_ano_escolar),
-    )
-    const seriesRestantes = anosNivel.filter(
-      (a) => !concluidasSet.has(a.id_ano_escolar),
-    )
-
-    // Séries concluídas → disciplinas concluídas
-    seriesConcluidas.forEach((serie) => {
+    anosNivel.forEach((serie) => {
       const configs = configDisciplinaAnoDisponiveis.filter(
         (c) => c.id_ano_escolar === serie.id_ano_escolar,
       )
+
       configs.forEach((c) => {
+        const disciplinaConcluida =
+          seriesConcluidasSet.has(serie.id_ano_escolar) &&
+          disciplinasConcluidasSet.has(c.id_config)
+
         inserts.push({
           id_matricula: idMatricula,
           id_disciplina: c.id_disciplina,
           id_ano_escolar: serie.id_ano_escolar,
-          id_status_disciplina: statusConcluida.id_status_disciplina,
+          id_status_disciplina: disciplinaConcluida
+            ? statusConcluida.id_status_disciplina
+            : statusACursar.id_status_disciplina,
           nota_final: null,
           data_conclusao: null,
-          observacoes: 'Disciplina concluída por aproveitamento de estudos.',
-        })
-      })
-    })
-
-    // Séries restantes → disciplinas A Cursar
-    seriesRestantes.forEach((serie) => {
-      const configs = configDisciplinaAnoDisponiveis.filter(
-        (c) => c.id_ano_escolar === serie.id_ano_escolar,
-      )
-      configs.forEach((c) => {
-        inserts.push({
-          id_matricula: idMatricula,
-          id_disciplina: c.id_disciplina,
-          id_ano_escolar: serie.id_ano_escolar,
-          id_status_disciplina: statusACursar.id_status_disciplina,
-          nota_final: null,
-          data_conclusao: null,
-          observacoes:
-            'Disciplina marcada como A Cursar após aproveitamento de estudos.',
+          observacoes: disciplinaConcluida
+            ? 'Disciplina concluída por aproveitamento de estudos.'
+            : seriesConcluidasSet.has(serie.id_ano_escolar)
+              ? 'Disciplina não aproveitada; mantida como A Cursar.'
+              : 'Disciplina marcada como A Cursar após aproveitamento de estudos.',
         })
       })
     })
@@ -509,14 +742,17 @@ const MatriculaNivelCard: FC<MatriculaNivelCardProps> = (props) => {
 
   const turmasFiltradas = useMemo(() => {
     if (nivelIdNum == null) return []
-    let lista = turmasDisponiveis.filter((t) => t.id_nivel_ensino === nivelIdNum)
-
-    const ano = Number(form.anoLetivo)
-    if (form.anoLetivo.trim() !== '' && Number.isFinite(ano)) {
-      lista = lista.filter((t) => t.ano_letivo === ano)
-    }
-    return lista
-  }, [turmasDisponiveis, nivelIdNum, form.anoLetivo])
+    return [...turmasDisponiveis]
+      .filter((t) => t.id_nivel_ensino === nivelIdNum)
+      .sort((a, b) => {
+        const ativaA = a.is_ativa === false ? 0 : 1
+        const ativaB = b.is_ativa === false ? 0 : 1
+        if (ativaB !== ativaA) return ativaB - ativaA
+        const nome = String(a.nome ?? '').localeCompare(String(b.nome ?? ''), 'pt-BR')
+        if (nome !== 0) return nome
+        return Number(b.ano_letivo ?? 0) - Number(a.ano_letivo ?? 0)
+      })
+  }, [turmasDisponiveis, nivelIdNum])
 
   const seriesDoNivel = useMemo(() => {
     if (nivelIdNum == null) return []
@@ -524,6 +760,37 @@ const MatriculaNivelCard: FC<MatriculaNivelCardProps> = (props) => {
       .filter((a) => a.id_nivel_ensino === nivelIdNum)
       .sort((a, b) => a.nome_ano.localeCompare(b.nome_ano))
   }, [anosEscolaresDisponiveis, nivelIdNum])
+
+  const disciplinasAproveitamentoOptions = useMemo<ConfigDisciplinaAproveitamentoOption[]>(() => {
+    if (form.seriesConcluidasIds.length === 0) return []
+
+    const seriesSet = new Set(form.seriesConcluidasIds)
+    const anoNomeById = new Map(seriesDoNivel.map((serie) => [serie.id_ano_escolar, serie.nome_ano]))
+    const disciplinaNomeById = new Map(
+      disciplinasDisponiveis.map((disciplina) => [disciplina.id_disciplina, disciplina.nome_disciplina]),
+    )
+
+    return configDisciplinaAnoDisponiveis
+      .filter((config) => seriesSet.has(config.id_ano_escolar))
+      .map((config) => ({
+        id_config: config.id_config,
+        id_disciplina: config.id_disciplina,
+        id_ano_escolar: config.id_ano_escolar,
+        nome_ano: anoNomeById.get(config.id_ano_escolar) ?? `Série ${config.id_ano_escolar}`,
+        nome_disciplina:
+          disciplinaNomeById.get(config.id_disciplina) ?? `Disciplina ${config.id_disciplina}`,
+      }))
+      .sort((a, b) => {
+        const serie = a.nome_ano.localeCompare(b.nome_ano, 'pt-BR')
+        if (serie !== 0) return serie
+        return a.nome_disciplina.localeCompare(b.nome_disciplina, 'pt-BR')
+      })
+  }, [
+    configDisciplinaAnoDisponiveis,
+    disciplinasDisponiveis,
+    form.seriesConcluidasIds,
+    seriesDoNivel,
+  ])
 
   const disciplinasDaSerieProgressao = useMemo(() => {
     if (form.serieProgressaoId === '') return []
@@ -581,6 +848,7 @@ const MatriculaNivelCard: FC<MatriculaNivelCardProps> = (props) => {
                   nivelId: e.target.value === '' ? '' : Number(e.target.value),
                   turmaId: '',
                   seriesConcluidasIds: [],
+                  disciplinasAproveitamentoConfigIds: [],
                   serieProgressaoId: '',
                   disciplinasProgressaoIds: [],
                 })
@@ -611,11 +879,12 @@ const MatriculaNivelCard: FC<MatriculaNivelCardProps> = (props) => {
           <TextField
             fullWidth
             size="small"
-            label="Ano letivo"
+            label="Ano de referência da matrícula"
             type="number"
             value={form.anoLetivo}
             onChange={(e) => setForm({ anoLetivo: e.target.value })}
             disabled={desabilitado || form.nivelId === ''}
+            helperText="Usado para histórico, relatórios e regras de benefício. Não obriga trocar a turma a cada ano."
           />
         </Stack>
 
@@ -632,6 +901,7 @@ const MatriculaNivelCard: FC<MatriculaNivelCardProps> = (props) => {
                 setForm({
                   modalidade: nova,
                   seriesConcluidasIds: [],
+                  disciplinasAproveitamentoConfigIds: [],
                   serieProgressaoId: '',
                   disciplinasProgressaoIds: [],
                 })
@@ -705,10 +975,13 @@ const MatriculaNivelCard: FC<MatriculaNivelCardProps> = (props) => {
               </MenuItem>
               {turmasFiltradas.map((t) => (
                 <MenuItem key={t.id_turma} value={String(t.id_turma)}>
-                  {t.nome} — {t.turno} ({t.ano_letivo})
+                  {t.nome} — {t.turno} • ref. {t.ano_letivo}{t.is_ativa === false ? ' • inativa' : ''}
                 </MenuItem>
               ))}
             </Select>
+            <FormHelperText>
+              A turma não é renovada automaticamente por ano. O aluno pode permanecer nela até concluir as disciplinas pendentes.
+            </FormHelperText>
           </FormControl>
 
           {modo === 'editar' && (
@@ -731,11 +1004,10 @@ const MatriculaNivelCard: FC<MatriculaNivelCardProps> = (props) => {
         {isAproveitamento && form.nivelId !== '' && (
           <Stack spacing={1.5}>
             <Typography variant="subtitle2" fontWeight={800}>
-              Aproveitamento de Estudos — Séries concluídas
+              Aproveitamento de Estudos — Séries e disciplinas concluídas
             </Typography>
             <Typography variant="body2" color="text.secondary">
-              Selecione as séries (anos escolares) que o aluno já concluiu em outra escola.
-              As disciplinas dessas séries serão marcadas como concluídas; as séries restantes serão registradas como &quot;A Cursar&quot;.
+              Primeiro selecione as séries (anos escolares) já concluídas em outra escola. Depois marque somente as disciplinas realmente concluídas nessas séries. As demais disciplinas continuarão como &quot;A Cursar&quot;.
             </Typography>
 
             <FormControl fullWidth size="small">
@@ -745,7 +1017,21 @@ const MatriculaNivelCard: FC<MatriculaNivelCardProps> = (props) => {
                 multiple
                 label="Séries concluídas"
                 value={form.seriesConcluidasIds}
-                onChange={(e) => setForm({ seriesConcluidasIds: parseMultiNumber(e.target.value) })}
+                onChange={(e) => {
+                  const proximasSeries = parseMultiNumber(e.target.value)
+                  const configIdsValidos = new Set(
+                    configDisciplinaAnoDisponiveis
+                      .filter((config) => proximasSeries.includes(config.id_ano_escolar))
+                      .map((config) => config.id_config),
+                  )
+
+                  setForm({
+                    seriesConcluidasIds: proximasSeries,
+                    disciplinasAproveitamentoConfigIds: form.disciplinasAproveitamentoConfigIds.filter((id) =>
+                      configIdsValidos.has(id),
+                    ),
+                  })
+                }}
                 renderValue={(selected) => {
                   const ids = selected as number[]
                   const nomes = seriesDoNivel
@@ -762,6 +1048,45 @@ const MatriculaNivelCard: FC<MatriculaNivelCardProps> = (props) => {
                   </MenuItem>
                 ))}
               </Select>
+            </FormControl>
+
+            <FormControl fullWidth size="small">
+              <InputLabel id={`disciplinas-aproveitamento-label-${form.formId}`}>Disciplinas concluídas</InputLabel>
+              <Select
+                labelId={`disciplinas-aproveitamento-label-${form.formId}`}
+                multiple
+                label="Disciplinas concluídas"
+                value={form.disciplinasAproveitamentoConfigIds}
+                onChange={(e) =>
+                  setForm({
+                    disciplinasAproveitamentoConfigIds: parseMultiNumber(e.target.value),
+                  })
+                }
+                renderValue={(selected) => {
+                  const ids = selected as number[]
+                  const nomes = disciplinasAproveitamentoOptions
+                    .filter((disc) => ids.includes(disc.id_config))
+                    .map((disc) => `${disc.nome_ano} — ${disc.nome_disciplina}`)
+                  return nomes.join(', ')
+                }}
+                disabled={desabilitado || disciplinasAproveitamentoOptions.length === 0}
+              >
+                {disciplinasAproveitamentoOptions.map((disciplina) => (
+                  <MenuItem key={disciplina.id_config} value={disciplina.id_config}>
+                    <Checkbox
+                      size="small"
+                      checked={form.disciplinasAproveitamentoConfigIds.includes(disciplina.id_config)}
+                    />
+                    <ListItemText
+                      primary={disciplina.nome_disciplina}
+                      secondary={disciplina.nome_ano}
+                    />
+                  </MenuItem>
+                ))}
+              </Select>
+              <FormHelperText>
+                Marque somente as disciplinas efetivamente concluídas. As não marcadas serão registradas como A Cursar.
+              </FormHelperText>
             </FormControl>
           </Stack>
         )}
@@ -885,6 +1210,96 @@ const SecretariaMatriculasPage: FC = () => {
   const fileInputFotoEditRef = useRef<HTMLInputElement | null>(null)
 
   const [editBlocosMatricula, setEditBlocosMatricula] = useState<MatriculaFormState[]>([])
+
+  const idsStatusDisciplinaConcluida = useMemo(() => {
+    return new Set(
+      statusDisciplinaDisponiveis
+        .filter((status) => {
+          const nome = normalizarTexto(status.nome)
+          return nome.includes('aprov') || nome.includes('conclu')
+        })
+        .map((status) => Number(status.id_status_disciplina)),
+    )
+  }, [statusDisciplinaDisponiveis])
+
+  const preencherCamposProgressoBlocos = useCallback(
+    async (blocosBase: MatriculaFormState[]): Promise<MatriculaFormState[]> => {
+      if (!supabase) return blocosBase
+
+      const idsMatricula = blocosBase
+        .map((bloco) => bloco.idMatricula)
+        .filter((id): id is number => Number.isFinite(Number(id)))
+
+      if (idsMatricula.length === 0) return blocosBase
+
+      const { data, error } = await supabase
+        .from('progresso_aluno')
+        .select('id_matricula, id_ano_escolar, id_disciplina, id_status_disciplina')
+        .in('id_matricula', idsMatricula)
+
+      if (error) {
+        console.error(error)
+        return blocosBase
+      }
+
+      const progressoList = ((data ?? []) as ProgressoAlunoRow[])
+      const progressoByMatricula = new Map<number, ProgressoAlunoRow[]>()
+      progressoList.forEach((row) => {
+        const atual = progressoByMatricula.get(row.id_matricula) ?? []
+        atual.push(row)
+        progressoByMatricula.set(row.id_matricula, atual)
+      })
+
+      return blocosBase.map((bloco) => {
+        if (!bloco.idMatricula) return bloco
+        const rows = progressoByMatricula.get(bloco.idMatricula) ?? []
+        if (rows.length === 0) return bloco
+
+        if (bloco.modalidade === 'Aproveitamento de Estudos') {
+          const concluidas = rows.filter((row) => idsStatusDisciplinaConcluida.has(Number(row.id_status_disciplina)))
+          const seriesConcluidasIds = Array.from(
+            new Set(concluidas.map((row) => Number(row.id_ano_escolar)).filter(Number.isFinite)),
+          )
+          const disciplinasAproveitamentoConfigIds = Array.from(
+            new Set(
+              concluidas
+                .map((row) => {
+                  const config = configDisciplinaAnoDisponiveis.find(
+                    (item) =>
+                      Number(item.id_ano_escolar) === Number(row.id_ano_escolar) &&
+                      Number(item.id_disciplina) === Number(row.id_disciplina),
+                  )
+                  return config?.id_config ?? null
+                })
+                .filter((value): value is number => Number.isFinite(Number(value))),
+            ),
+          )
+
+          return {
+            ...bloco,
+            seriesConcluidasIds,
+            disciplinasAproveitamentoConfigIds,
+          }
+        }
+
+        if (bloco.modalidade === 'Progressão de Estudos') {
+          const serieProgressaoId = rows[0]?.id_ano_escolar ? Number(rows[0].id_ano_escolar) : ''
+          const disciplinasProgressaoIds = Array.from(
+            new Set(rows.map((row) => Number(row.id_disciplina)).filter(Number.isFinite)),
+          )
+
+          return {
+            ...bloco,
+            serieProgressaoId,
+            disciplinasProgressaoIds,
+          }
+        }
+
+        return bloco
+      })
+    },
+    [supabase, idsStatusDisciplinaConcluida, configDisciplinaAnoDisponiveis],
+  )
 
   // Exclusão de matrícula
   const [dialogExcluirAberto, setDialogExcluirAberto] = useState(false)
@@ -1040,7 +1455,7 @@ const SecretariaMatriculasPage: FC = () => {
         ),
         supabase.from('niveis_ensino').select('id_nivel_ensino, nome'),
         supabase.from('status_matricula').select('id_status_matricula, nome'),
-        supabase.from('turmas').select('id_turma, nome, turno, ano_letivo, id_nivel_ensino'),
+        supabase.from('turmas').select('id_turma, nome, turno, ano_letivo, id_nivel_ensino, is_ativa'),
         supabase.from('disciplinas').select('id_disciplina, nome_disciplina'),
         supabase.from('anos_escolares').select('id_ano_escolar, nome_ano, id_nivel_ensino'),
         supabase.from('status_disciplina_aluno').select('id_status_disciplina, nome'),
@@ -1212,6 +1627,7 @@ const SecretariaMatriculasPage: FC = () => {
     dataMatricula: hojeISO(),
     dataConclusao: '',
     seriesConcluidasIds: [],
+    disciplinasAproveitamentoConfigIds: [],
     serieProgressaoId: '',
     disciplinasProgressaoIds: [],
     regenerarProgresso: false,
@@ -1267,6 +1683,17 @@ const SecretariaMatriculasPage: FC = () => {
       if (b.statusId === '') return { ok: false, msg: `Selecione um status no bloco ${idx + 1}.` }
       if (!b.modalidade.trim()) return { ok: false, msg: `Selecione a modalidade no bloco ${idx + 1}.` }
       if (!b.dataMatricula.trim()) return { ok: false, msg: `Informe a data de matrícula no bloco ${idx + 1}.` }
+
+      if (b.modalidade === 'Aproveitamento de Estudos') {
+        const precisaDefinirAproveitamento =
+          opts.modo === 'novo' || !b.idMatricula || b.regenerarProgresso
+        if (precisaDefinirAproveitamento && b.seriesConcluidasIds.length > 0 && b.disciplinasAproveitamentoConfigIds.length === 0) {
+          return {
+            ok: false,
+            msg: `Selecione as disciplinas concluídas das séries marcadas no bloco ${idx + 1} (Aproveitamento).`,
+          }
+        }
+      }
 
       if (b.modalidade === 'Progressão de Estudos') {
         const precisaDefinirProgressao =
@@ -1437,6 +1864,7 @@ const SecretariaMatriculasPage: FC = () => {
           nivelId: m.id_nivel_ensino,
           modalidade: bloco.modalidade,
           seriesConcluidasIds: bloco.seriesConcluidasIds,
+          disciplinasAproveitamentoConfigIds: bloco.disciplinasAproveitamentoConfigIds,
           serieProgressaoId: bloco.serieProgressaoId,
           disciplinasProgressaoIds: bloco.disciplinasProgressaoIds,
           anosEscolaresDisponiveis,
@@ -1513,13 +1941,19 @@ const SecretariaMatriculasPage: FC = () => {
       dataMatricula: m.dataMatricula ?? hojeISO(),
       dataConclusao: m.dataConclusao ?? '',
       seriesConcluidasIds: [],
+      disciplinasAproveitamentoConfigIds: [],
       serieProgressaoId: '',
       disciplinasProgressaoIds: [],
       regenerarProgresso: false,
     }))
 
-    setEditBlocosMatricula(blocos.length > 0 ? blocos : [criarBlocoMatriculaPadrao()])
+    const blocosIniciais = blocos.length > 0 ? blocos : [criarBlocoMatriculaPadrao()]
+    setEditBlocosMatricula(blocosIniciais)
     setEditarAberto(true)
+
+    void preencherCamposProgressoBlocos(blocosIniciais).then((blocosPreenchidos) => {
+      setEditBlocosMatricula(blocosPreenchidos)
+    })
   }
 
   const handleFecharEditarMatricula = () => {
@@ -1685,6 +2119,7 @@ const SecretariaMatriculasPage: FC = () => {
               nivelId: Number(bloco.nivelId),
               modalidade: bloco.modalidade,
               seriesConcluidasIds: bloco.seriesConcluidasIds,
+              disciplinasAproveitamentoConfigIds: bloco.disciplinasAproveitamentoConfigIds,
               serieProgressaoId: bloco.serieProgressaoId,
               disciplinasProgressaoIds: bloco.disciplinasProgressaoIds,
               anosEscolaresDisponiveis,
@@ -1965,15 +2400,16 @@ const SecretariaMatriculasPage: FC = () => {
                   <Paper key={m.id} variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
                     <Stack spacing={1.5}>
                       <Stack direction="row" spacing={2} alignItems="center">
-                        <Avatar
-                          src={m.alunoFotoUrl ?? undefined}
+                        <AvatarAlunoMatricula
+                          supabase={supabase}
+                          idAluno={m.alunoId}
+                          nome={m.alunoNome}
+                          fotoUrl={m.alunoFotoUrl ?? undefined}
                           sx={{
                             bgcolor: m.alunoFotoUrl ? undefined : alpha(theme.palette.primary.main, 0.1),
                             color: theme.palette.primary.main,
                           }}
-                        >
-                          {!m.alunoFotoUrl && m.alunoNome.charAt(0).toUpperCase()}
-                        </Avatar>
+                        />
                         <Box sx={{ minWidth: 0 }}>
                           <Typography variant="subtitle2" fontWeight={600} sx={{ wordBreak: 'break-word' }}>
                             {m.alunoNome}
@@ -2085,17 +2521,18 @@ const SecretariaMatriculasPage: FC = () => {
                     >
                       <TableCell>
                         <Stack direction="row" spacing={1} alignItems="center">
-                          <Avatar
-                            src={m.alunoFotoUrl ?? undefined}
+                          <AvatarAlunoMatricula
+                            supabase={supabase}
+                            idAluno={m.alunoId}
+                            nome={m.alunoNome}
+                            fotoUrl={m.alunoFotoUrl ?? undefined}
                             sx={{
                               width: 32,
                               height: 32,
                               bgcolor: m.alunoFotoUrl ? undefined : alpha(theme.palette.primary.main, 0.12),
                               color: theme.palette.primary.main,
                             }}
-                          >
-                            {!m.alunoFotoUrl && m.alunoNome.charAt(0).toUpperCase()}
-                          </Avatar>
+                          />
                           <Box>
                             <Typography variant="body2" fontWeight={600}>
                               {m.alunoNome}
@@ -2209,8 +2646,10 @@ const SecretariaMatriculasPage: FC = () => {
 
               {/* Avatar + upload */}
               <Stack direction="row" spacing={2} alignItems="center" sx={{ mb: 2 }}>
-                <Avatar
-                  src={novoAluno.fotoUrl || undefined}
+                <AvatarAlunoMatricula
+                  supabase={supabase}
+                  nome={novoAluno.nome || 'Aluno'}
+                  fotoUrl={novoAluno.fotoUrl || undefined}
                   sx={{
                     width: 64,
                     height: 64,
@@ -2218,9 +2657,7 @@ const SecretariaMatriculasPage: FC = () => {
                     color: theme.palette.primary.main,
                     fontSize: 28,
                   }}
-                >
-                  {!novoAluno.fotoUrl && (novoAluno.nome ? novoAluno.nome[0].toUpperCase() : '?')}
-                </Avatar>
+                />
                 <Box>
                   <Button
                     variant="outlined"
@@ -2541,8 +2978,11 @@ const SecretariaMatriculasPage: FC = () => {
 
               {/* Avatar + upload */}
               <Stack direction="row" spacing={2} alignItems="center" sx={{ mb: 2 }}>
-                <Avatar
-                  src={editAluno.fotoUrl || undefined}
+                <AvatarAlunoMatricula
+                  supabase={supabase}
+                  idAluno={editAlunoId}
+                  nome={editAluno.nome || 'Aluno'}
+                  fotoUrl={editAluno.fotoUrl || undefined}
                   sx={{
                     width: 64,
                     height: 64,
@@ -2550,9 +2990,7 @@ const SecretariaMatriculasPage: FC = () => {
                     color: theme.palette.primary.main,
                     fontSize: 28,
                   }}
-                >
-                  {!editAluno.fotoUrl && (editAluno.nome ? editAluno.nome[0].toUpperCase() : '?')}
-                </Avatar>
+                />
                 <Box>
                   <Button
                     variant="outlined"
@@ -2898,8 +3336,11 @@ const SecretariaMatriculasPage: FC = () => {
             <Stack spacing={3}>
               {/* Cabeçalho com foto + nome */}
               <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems={{ xs: 'flex-start', sm: 'center' }}>
-                <Avatar
-                  src={matriculaSelecionada.alunoFotoUrl ?? undefined}
+                <AvatarAlunoMatricula
+                  supabase={supabase}
+                  idAluno={matriculaSelecionada.alunoId}
+                  nome={matriculaSelecionada.alunoNome}
+                  fotoUrl={matriculaSelecionada.alunoFotoUrl ?? undefined}
                   sx={{
                     width: 72,
                     height: 72,
@@ -2907,9 +3348,7 @@ const SecretariaMatriculasPage: FC = () => {
                     color: theme.palette.primary.main,
                     fontSize: 32,
                   }}
-                >
-                  {!matriculaSelecionada.alunoFotoUrl && matriculaSelecionada.alunoNome.charAt(0).toUpperCase()}
-                </Avatar>
+                />
                 <Box sx={{ flex: 1 }}>
                   <Typography variant="h6" fontWeight={700}>
                     {matriculaSelecionada.alunoNome}

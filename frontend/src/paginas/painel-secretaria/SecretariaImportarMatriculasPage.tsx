@@ -1,1120 +1,3484 @@
-// src/paginas/painel-secretaria/SecretariaImportarMatriculasPage.tsx
+// src/paginas/painel-secretaria/SecretariaMatriculasPage.tsx
 
-import React, { useMemo, useState } from 'react';
 import {
+  type FC,
+  type ChangeEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
+
+import {
+  Avatar,
   Box,
   Button,
   Checkbox,
+  Chip,
+  CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   Divider,
-  LinearProgress,
+  FormControl,
+  FormControlLabel,
+  FormHelperText,
+  IconButton,
+  InputAdornment,
+  InputLabel,
+  ListItemText,
+  MenuItem,
   Paper,
+  Select,
   Stack,
+  Switch,
   Table,
   TableBody,
   TableCell,
+  TableContainer,
   TableHead,
+  TablePagination,
   TableRow,
+  TextField,
+  Tooltip,
   Typography,
-} from '@mui/material';
-import UploadFileIcon from '@mui/icons-material/UploadFile';
-import DoneAllIcon from '@mui/icons-material/DoneAll';
-import WarningAmberIcon from '@mui/icons-material/WarningAmber';
-import { useNavigate } from 'react-router-dom';
+  alpha,
+  useMediaQuery,
+  useTheme,
+} from '@mui/material'
 
-import { useSupabase } from '../../contextos/SupabaseContext';
-import { useNotificacaoContext } from '../../contextos/NotificacaoContext';
+import { green } from '@mui/material/colors'
 
-// IMPORTANTE: manter false no frontend (anon key não pode usar auth.admin).
-// Quando for rodar um script de backend com service_role, pode reaproveitar a lógica.
-const HABILITAR_CRIACAO_USUARIOS_AUTH = false;
+import SearchIcon from '@mui/icons-material/Search'
+import AddIcon from '@mui/icons-material/Add'
+import AssignmentIndIcon from '@mui/icons-material/AssignmentInd'
+import SchoolIcon from '@mui/icons-material/School'
+import EventIcon from '@mui/icons-material/Event'
+import HomeIcon from '@mui/icons-material/Home'
+import ElderlyIcon from '@mui/icons-material/Elderly'
+import AccessibleIcon from '@mui/icons-material/Accessible'
+import RestaurantIcon from '@mui/icons-material/Restaurant'
+import LocalAtmIcon from '@mui/icons-material/LocalAtm'
+import PhotoCameraIcon from '@mui/icons-material/PhotoCamera'
+import EditIcon from '@mui/icons-material/Edit'
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
+import CloseIcon from '@mui/icons-material/Close'
 
-// Tipo com TODAS as colunas relevantes do CSV (aluno.csv + PDF + campos gerados)
-type MatriculaCsvRow = {
-  id_aluno: string;
-  id?: string;
-  data_matricula?: string;
-  num_inscricao_aluno?: string;
-  num_am_aluno?: string;
-  nome_aluno: string;
-  nomeSocial_aluno?: string;
-  num_cpf_aluno?: string;
-  num_rg_aluno?: string;
-  num_nis_aluno?: string;
-  data_nasc_aluno?: string;
-  nome_pai_aluno?: string;
-  nome_mae_aluno?: string;
-  logradouro_endereco_aluno?: string;
-  numero_endereco_aluno?: string;
-  bairro_endereco_aluno?: string;
-  municipio_endereco_aluno?: string;
-  nivel_escolar_aluno?: string;
-  sexo_aluno?: string;
-  raca_aluno?: string;
-  foto_aluno?: string;
-  facebook_aluno?: string;
-  instagram_aluno?: string;
-  email_aluno?: string;
-  num_celular_aluno?: string;
-  uso_transporte?: string;
-  possui_necessidadeEspecial?: string;
-  necessidadeEspecial_qual?: string;
-  possui_restriAlimentar?: string;
-  restriAlimentar_qual?: string;
-  possui_programaSocial?: string;
-  programaSocial_qual?: string;
-  escola_origem?: string;
-  situacao_aluno?: string;
-  disciplinas_indicadas?: string;
-  porque_voltouEstudos?: string;
-  local_funcaoTrab?: string;
-  repetiu_ano?: string;
-  outras_escolasDesistiu?: string;
-  porque_desistiu?: string;
-  materias_dificeis?: string;
-  quantidade_emCasa?: string;
-  quem_saoParentes?: string;
-  responsavel_estudos?: string;
-  possui_filhos?: string;
-  quantidade_filhos?: string;
-  tomou_conhecimentoCeja?: string;
-  observacao?: string;
-  observacao_sasp?: string;
-  marcar_aluno?: string;
+import { useSupabase } from '../../contextos/SupabaseContext'
+import { useNotificacaoContext } from '../../contextos/NotificacaoContext'
 
-  // campos derivados / novos
-  id_nivel_ensino: string; // 1 = Fundamental, 2 = Médio
-  turma_letra: string; // A–E
-  id_turma: string;
-  numero_inscricao: string;
-  sige_id: string;
-  ano_letivo: string;
-  id_status_matricula: string;
-  data_matricula_import?: string;
-  tem_id_aluno?: string;
+// Tipo de usuário ALUNO na tabela tipos_usuario
+const TIPO_USUARIO_ALUNO_ID = 5
 
-  // login / foto refinado
-  cpf_raw?: string;
-  cpf_numerico?: string;
-  email_original?: string;
-  email_final?: string;
-  senha_inicial?: string;
-};
+// Modalidades do enum modalidade_matricula_enum
+const MODALIDADES_MATRICULA = [
+  {
+    value: 'Orientação de Estudos',
+    label: 'Orientação de Estudos (com protocolos completos)',
+  },
+  {
+    value: 'Aproveitamento de Estudos',
+    label: 'Aproveitamento de Estudos',
+  },
+  {
+    value: 'Progressão de Estudos',
+    label: 'Progressão de Estudos',
+  },
+] as const
 
-type MatriculaInsert = {
-  id_aluno: number;
-  numero_inscricao: string;
-  id_nivel_ensino: number;
-  id_status_matricula: number;
-  ano_letivo: number;
-  data_matricula: string;
-  id_turma: number;
-};
+// === TIPOS DE TABELA ===
 
-type UsuarioCsvRow = {
-  id_aluno: number;
-  nome: string;
-  email: string;
-  senha: string;
-  cpf?: string;
-  foto_aluno?: string;
-  data_nasc?: string;
-  sexo?: string;
-  raca?: string;
-  celular?: string;
-  logradouro?: string;
-  numero_endereco?: string;
-  bairro?: string;
-  municipio?: string;
-  facebook?: string;
-  instagram?: string;
-};
+interface MatriculaRow {
+  id_matricula: number
+  id_aluno: number
+  numero_inscricao: string
+  id_nivel_ensino: number
+  id_status_matricula: number
+  modalidade: string
+  ano_letivo: number
+  data_matricula: string
+  data_conclusao: string | null
+  id_turma: number | null
+}
 
-type AlunoUpsertRow = {
-  id_aluno: number;
-  nis?: string;
-  nome_mae: string;
-  nome_pai?: string;
-  usa_transporte_escolar: boolean;
-  possui_necessidade_especial: boolean;
-  qual_necessidade_especial?: string;
-  possui_restricao_alimentar: boolean;
-  qual_restricao_alimentar?: string;
-  possui_beneficio_governo: boolean;
-  qual_beneficio_governo?: string;
-  observacoes_gerais?: string;
-};
+interface AlunoRow {
+  id_aluno: number
+  user_id: string
+  nis: string | null
+  nome_mae: string
+  nome_pai: string | null
+  usa_transporte_escolar: boolean
+  possui_necessidade_especial: boolean
+  qual_necessidade_especial: string | null
+  possui_restricao_alimentar: boolean
+  qual_restricao_alimentar: string | null
+  possui_beneficio_governo: boolean
+  qual_beneficio_governo: string | null
+  observacoes_gerais: string | null
+}
 
-type FormularioSaspRow = {
-  id_aluno: number;
-  data_entrevista: string;
-  escola_origem?: string;
-  cidade_escola_origem?: string | null;
-  disciplinas_indicadas_aproveitamento?: string | null;
-  motivo_retorno_estudos?: string | null;
-  trabalha: boolean;
-  local_trabalho?: string | null;
-  funcao_trabalho?: string | null;
-  repetiu_ano: boolean;
-  desistiu_estudar: boolean;
-  motivos_desistencia?: string | null;
-  escolas_desistiu?: string | null;
-  materias_dificuldade?: string | null;
-  relacao_tecnologia?: string | null;
-  curso_superior_desejado?: string | null;
-  atividade_cultural_interesse?: string | null;
-  esporte_interesse?: string | null;
-  pessoas_residencia?: number | null;
-  parentes_moradia?: string | null;
-  responsavel_pelos_estudos?: string | null;
-  tem_filhos: boolean;
-  quantos_filhos?: number | null;
-  como_conheceu_ceja?: string | null;
-  observacoes_sasp?: string | null;
-};
+// Row de alunos com JOIN para usuarios (evita query gigantesca com .in(...))
+interface AlunoRowComUsuario extends AlunoRow {
+  usuarios?: UsuarioRow | null
+}
 
-const CHUNK_SIZE_MATRICULAS = 200;
-const CHUNK_SIZE_USUARIOS = 50;
-const CHUNK_SIZE_SASP = 200;
+interface UsuarioRow {
+  id: string
+  id_tipo_usuario?: number
+  status?: string
+  name: string
+  email: string
+  username: string | null
+  foto_url: string | null
+  data_nascimento: string | null
+  cpf: string | null
+  rg: string | null
+  celular: string | null
+  logradouro: string | null
+  numero_endereco: string | null
+  bairro: string | null
+  municipio: string | null
+  ponto_referencia: string | null
+  raca: string | null
+}
 
-const toBool = (v?: string): boolean => {
-  if (!v) return false;
-  const s = v.toString().trim().toLowerCase();
-  return ['1', 'true', 'sim', 'yes', 's', 'y'].includes(s);
-};
+interface NivelEnsinoRow {
+  id_nivel_ensino: number
+  nome: string
+}
 
-const toIntOrNull = (v?: string): number | null => {
-  if (!v) return null;
-  const n = Number(v);
-  return Number.isNaN(n) ? null : n;
-};
+interface StatusMatriculaRow {
+  id_status_matricula: number
+  nome: string
+}
 
-const normalizarData = (v?: string): string | null => {
-  if (!v) return null;
-  const s = v.trim();
-  if (!s) return null;
+interface TurmaRow {
+  id_turma: number
+  nome: string
+  turno: string
+  ano_letivo: number
+  id_nivel_ensino: number
+  is_ativa?: boolean | null
+}
 
-  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+interface DisciplinaRow {
+  id_disciplina: number
+  nome_disciplina: string
+}
 
-  const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(s);
-  if (m) {
-    const [, dd, mm, yyyy] = m;
-    return `${yyyy}-${mm}-${dd}`;
+interface AnoEscolarRow {
+  id_ano_escolar: number
+  nome_ano: string
+  id_nivel_ensino: number
+}
+
+interface StatusDisciplinaRow {
+  id_status_disciplina: number
+  nome: string
+}
+
+interface ConfigDisciplinaAnoRow {
+  id_config: number
+  id_disciplina: number
+  id_ano_escolar: number
+  quantidade_protocolos: number
+}
+
+// Lista agregada para exibição (Opção B: mantém IDs — evita “voltar” nome→id na edição)
+interface MatriculaLista {
+  id: number // id_matricula
+  alunoId: number // id_aluno
+  userId: string | null // alunos.user_id
+
+  // dados do usuário / aluno
+  alunoNome: string
+  alunoEmail: string | null
+  alunoFotoUrl: string | null
+  alunoNis: string | null
+  alunoNomeMae: string | null
+  alunoNomePai: string | null
+  usaTransporteEscolar: boolean
+  possuiNecessidadeEspecial: boolean
+  qualNecessidadeEspecial: string | null
+  possuiRestricaoAlimentar: boolean
+  qualRestricaoAlimentar: string | null
+  possuiBeneficioGoverno: boolean
+  qualBeneficioGoverno: string | null
+  observacoesGerais: string | null
+
+  dataNascimento: string | null
+  cpf: string | null
+  rg: string | null
+  celular: string | null
+  logradouro: string | null
+  numeroEndereco: string | null
+  bairro: string | null
+  municipio: string | null
+  pontoReferencia: string | null
+  raca: string | null
+
+  // dados da matrícula (com IDs)
+  numeroInscricao: string
+  anoLetivo: number
+  nivelId: number
+  nivelNome: string
+  turmaId: number | null
+  turmaNome: string | null
+  turno: string | null
+  statusId: number
+  statusNome: string
+  modalidade: string
+  dataMatricula: string
+  dataConclusao: string | null
+}
+
+interface AlunoFormState {
+  nome: string
+  email: string
+  dataNasc: string
+  cpf: string
+  celular: string
+  nis: string
+  nomeMae: string
+  nomePai: string
+  logradouro: string
+  numeroEnd: string
+  bairro: string
+  municipio: string
+  pontoRef: string
+  usaTransporte: boolean
+  temNecessidade: boolean
+  descNecessidade: string
+  temRestricao: boolean
+  descRestricao: string
+  temBeneficio: boolean
+  descBeneficio: string
+  observacoes: string
+  fotoUrl: string
+}
+
+interface MatriculaFormState {
+  formId: string
+  idMatricula?: number
+  nivelId: number | ''
+  numeroInscricao: string
+  anoLetivo: string
+  statusId: number | ''
+  turmaId: number | ''
+  modalidade: string
+  dataMatricula: string
+  dataConclusao: string
+  // Aproveitamento
+  seriesConcluidasIds: number[]
+  disciplinasAproveitamentoConfigIds: number[]
+  // Progressão
+  serieProgressaoId: number | ''
+  disciplinasProgressaoIds: number[]
+  // Edição: se true, reescreve progresso_aluno desta matrícula
+  regenerarProgresso: boolean
+}
+
+// === HELPERS ===
+
+const hojeISO = () => new Date().toISOString().slice(0, 10)
+
+const gerarIdLocal = () =>
+  `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
+
+const criarAlunoFormVazio = (): AlunoFormState => ({
+  nome: '',
+  email: '',
+  dataNasc: '',
+  cpf: '',
+  celular: '',
+  nis: '',
+  nomeMae: '',
+  nomePai: '',
+  logradouro: '',
+  numeroEnd: '',
+  bairro: '',
+  municipio: '',
+  pontoRef: '',
+  usaTransporte: false,
+  temNecessidade: false,
+  descNecessidade: '',
+  temRestricao: false,
+  descRestricao: '',
+  temBeneficio: false,
+  descBeneficio: '',
+  observacoes: '',
+  fotoUrl: '',
+})
+
+const parseMultiNumber = (raw: unknown): number[] => {
+  if (typeof raw === 'string') {
+    return raw
+      .split(',')
+      .map((v) => Number(v))
+      .filter((n) => Number.isFinite(n))
+  }
+  if (Array.isArray(raw)) {
+    return raw
+      .map((v) => Number(v))
+      .filter((n) => Number.isFinite(n))
+  }
+  return []
+}
+
+const gerarEmailAutomatico = (nome: string): string => {
+  const slug = nome
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-zA-Z\s]/g, '')
+    .trim()
+    .split(/\s+/)
+
+  const primeiro = slug[0] ?? 'aluno'
+  const ultimo = slug.length > 1 ? slug[slug.length - 1] : 'ceja'
+
+  return `${primeiro}_${ultimo}@ceja.com`
+}
+
+const SUPABASE_PUBLIC_STORAGE_BASE = (() => {
+  const raw = String(import.meta.env.VITE_SUPABASE_URL ?? '')
+    .trim()
+    .replace(/\/+$/, '')
+  return raw ? `${raw}/storage/v1/object/public` : ''
+})()
+
+const normalizarTexto = (valor: string): string =>
+  (valor ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim()
+
+const iniciais = (nome: string): string => {
+  const partes = (nome ?? '').trim().split(/\s+/).filter(Boolean)
+  if (partes.length === 0) return '?'
+  if (partes.length === 1) return partes[0].slice(0, 2).toUpperCase()
+  return `${partes[0][0] ?? ''}${partes[1][0] ?? ''}`.toUpperCase()
+}
+
+const normalizarCaminhoFoto = (raw: string): string => {
+  const limpo = raw.trim()
+  if (!limpo) return ''
+
+  const semQuery = limpo.split('?')[0]?.split('#')[0] ?? ''
+  const semDominio = semQuery.replace(/^https?:\/\/[^/]+/i, '')
+  const semSlashInicial = semDominio.replace(/^\/+/, '')
+  const semStorage = semSlashInicial
+    .replace(/^storage\/v1\/object\/public\//i, '')
+    .replace(/^object\/public\//i, '')
+    .replace(/^public\//i, '')
+    .replace(/^\/+/, '')
+
+  if (semStorage.startsWith('avatars/')) return semStorage.replace(/^avatars\//, '')
+  return semStorage
+}
+
+const resolverFotoUrl = (
+  supabase: ReturnType<typeof useSupabase>['supabase'] | null,
+  fotoUrl?: string | null,
+): string | null => {
+  if (!fotoUrl?.trim() || !supabase) return null
+  const raw = fotoUrl.trim()
+
+  if (/^(data:|blob:)/i.test(raw)) return raw
+  if (/^https?:\/\//i.test(raw) && !/\/storage\/v1\/object\/public\//i.test(raw)) {
+    return raw
   }
 
-  return null;
-};
+  const caminho = normalizarCaminhoFoto(raw)
+  if (!caminho) return null
 
-// Parser de CSV que respeita campos entre aspas e vírgulas dentro do texto
-const parseCsvLine = (line: string): string[] => {
-  const result: string[] = [];
-  let current = '';
-  let inQuotes = false;
+  const partes = caminho.split('/').filter(Boolean)
+  if (partes.length === 0) return null
 
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i];
+  let bucket = 'avatars'
+  let pathNoBucket = caminho
 
-    if (ch === '"') {
-      // Duas aspas seguidas dentro de campo: "" -> "
-      if (inQuotes && line[i + 1] === '"') {
-        current += '"';
-        i++;
-      } else {
-        inQuotes = !inQuotes;
-      }
-    } else if (ch === ',' && !inQuotes) {
-      result.push(current);
-      current = '';
-    } else {
-      current += ch;
-    }
+  if (!['alunos', 'professores'].includes(partes[0] ?? '') && partes.length > 1) {
+    bucket = partes[0] ?? 'avatars'
+    pathNoBucket = partes.slice(1).join('/')
   }
-  result.push(current);
 
-  return result;
-};
+  if (!pathNoBucket) return null
 
-const SecretariaImportarMatriculasPage: React.FC = () => {
-  const { supabase } = useSupabase();
-  const { notificar } = useNotificacaoContext();
-  const navigate = useNavigate();
+  if (SUPABASE_PUBLIC_STORAGE_BASE) {
+    return `${SUPABASE_PUBLIC_STORAGE_BASE}/${bucket}/${pathNoBucket}`
+  }
 
-  const [csvRows, setCsvRows] = useState<MatriculaCsvRow[]>([]);
-  const [linhasValidas, setLinhasValidas] = useState<MatriculaInsert[]>([]);
-  const [usuariosCsv, setUsuariosCsv] = useState<UsuarioCsvRow[]>([]);
-  const [alunosUpsert, setAlunosUpsert] = useState<AlunoUpsertRow[]>([]);
-  const [saspRows, setSaspRows] = useState<FormularioSaspRow[]>([]);
-  const [carregandoCsv, setCarregandoCsv] = useState(false);
-  const [importando, setImportando] = useState(false);
-  const [somenteSimulacao, setSomenteSimulacao] = useState(true);
-  const [erros, setErros] = useState<string[]>([]);
+  return supabase.storage.from(bucket).getPublicUrl(pathNoBucket).data.publicUrl
+}
 
-  const handleFileChange: React.ChangeEventHandler<HTMLInputElement> = async (
-    event,
-  ) => {
-    const file = event.target.files?.[0];
-    if (!file) {
-      return;
+const isNomeArquivoImagem = (nome: string): boolean => /\.(png|jpe?g|webp|gif|bmp|svg)$/i.test(nome)
+
+const fotoAlunoFallbackCache = new Map<number, string | null>()
+const fotoAlunoFallbackPromiseCache = new Map<number, Promise<string | null>>()
+
+const buscarFotoAlunoFallback = async (
+  supabase: ReturnType<typeof useSupabase>['supabase'] | null,
+  idAluno?: number | null,
+): Promise<string | null> => {
+  const id = Number(idAluno ?? 0)
+  if (!supabase || !id) return null
+
+  if (fotoAlunoFallbackCache.has(id)) {
+    return fotoAlunoFallbackCache.get(id) ?? null
+  }
+
+  const existente = fotoAlunoFallbackPromiseCache.get(id)
+  if (existente) return existente
+
+  const tarefa = (async () => {
+    const prefixo = `aluno-${id}-`
+    const bucket = 'avatars'
+
+    const construirUrl = (pathNoBucket: string): string => {
+      if (SUPABASE_PUBLIC_STORAGE_BASE) {
+        return `${SUPABASE_PUBLIC_STORAGE_BASE}/${bucket}/${pathNoBucket}`
+      }
+      return supabase.storage.from(bucket).getPublicUrl(pathNoBucket).data.publicUrl
     }
 
-    setCarregandoCsv(true);
-    setErros([]);
-    setCsvRows([]);
-    setLinhasValidas([]);
-    setUsuariosCsv([]);
-    setAlunosUpsert([]);
-    setSaspRows([]);
+    const procurarEmPasta = async (pasta: string): Promise<string | null> => {
+      const { data } = await supabase.storage.from(bucket).list(pasta, {
+        limit: 200,
+        offset: 0,
+        sortBy: { column: 'name', order: 'desc' },
+      })
 
-    try {
-      const text = await file.text();
-      const rawLines = text.split(/\r?\n/);
-      const linhas = rawLines.filter((l) => l.trim().length > 0);
+      const arquivo = (data ?? [])
+        .filter((item: any) => {
+          const nome = String(item?.name ?? '')
+          return nome.startsWith(prefixo) && isNomeArquivoImagem(nome)
+        })
+        .sort((a: any, b: any) => String(b?.name ?? '').localeCompare(String(a?.name ?? '')))[0]
 
-      if (linhas.length < 2) {
-        setErros(['Arquivo CSV vazio ou sem dados.']);
-        return;
-      }
-
-      const headerCells = parseCsvLine(linhas[0]);
-      const headers = headerCells.map((h) => h.trim());
-      const dataLines = linhas.slice(1);
-
-      const erroCols: string[] = [];
-      const getIndex = (col: string, obrigatoria = true) => {
-        const idx = headers.indexOf(col);
-        if (idx === -1 && obrigatoria) {
-          erroCols.push(`Coluna obrigatória "${col}" não encontrada no cabeçalho.`);
-        }
-        return idx;
-      };
-
-      // colunas mínimas para matrícula
-      getIndex('id_aluno');
-      getIndex('id_nivel_ensino');
-      getIndex('id_turma');
-      getIndex('numero_inscricao');
-      getIndex('ano_letivo');
-      getIndex('id_status_matricula');
-      getIndex('data_matricula');
-
-      // colunas de referência / exibição
-      getIndex('nome_aluno', false);
-      getIndex('turma_letra', false);
-
-      // colunas para criação de usuário
-      getIndex('email_final', false);
-      getIndex('senha_inicial', false);
-      getIndex('cpf_raw', false);
-      getIndex('foto_aluno', false);
-
-      if (erroCols.length > 0) {
-        setErros(erroCols);
-        return;
-      }
-
-      const rows: MatriculaCsvRow[] = [];
-      const insertsMatriculas: MatriculaInsert[] = [];
-      const errosLinha: string[] = [];
-      const usuariosMap = new Map<number, UsuarioCsvRow>();
-      const alunosMap = new Map<number, AlunoUpsertRow>();
-      const alunosRawMap = new Map<number, MatriculaCsvRow>();
-
-      dataLines.forEach((linha, i) => {
-        const partes = parseCsvLine(linha);
-        if (partes.length === 0) return;
-
-        const raw: any = {};
-        headers.forEach((h, idx) => {
-          raw[h] = (partes[idx] ?? '').trim();
-        });
-
-        const temId = (raw.tem_id_aluno ?? '').toString().toLowerCase();
-        if (temId === 'false' || temId === '0') {
-          return;
-        }
-
-        if (!raw.id_aluno) {
-          errosLinha.push(
-            `Linha ${i + 2}: sem id_aluno (provavelmente aluno não encontrado na migração).`,
-          );
-          return;
-        }
-
-        const idAluno = Number(raw.id_aluno);
-        const idNivel = Number(raw.id_nivel_ensino);
-        const idTurma = Number(raw.id_turma);
-        const anoLetivo = Number(raw.ano_letivo || '2025');
-        const idStatus = Number(raw.id_status_matricula || 1);
-        const numeroInscricao = String(
-          raw.numero_inscricao || raw.num_inscricao_aluno || '',
-        ).trim();
-        const dataMatricula =
-          normalizarData(raw.data_matricula) ||
-          normalizarData(raw.data_matricula_import) ||
-          `${anoLetivo || 2025}-01-01`;
-
-        if (
-          Number.isNaN(idAluno) ||
-          Number.isNaN(idNivel) ||
-          Number.isNaN(idTurma) ||
-          Number.isNaN(anoLetivo) ||
-          Number.isNaN(idStatus)
-        ) {
-          errosLinha.push(
-            `Linha ${i + 2}: dados numéricos inválidos (id_aluno=${raw.id_aluno}, id_turma=${raw.id_turma}, ano_letivo=${raw.ano_letivo}).`,
-          );
-          return;
-        }
-
-        const fotoAluno = String(raw.foto_aluno || '').trim();
-        const cpfRaw = String(raw.cpf_raw || raw.num_cpf_aluno || '').trim();
-        const emailFinal = String(
-          raw.email_final || raw.email_aluno || '',
-        )
-          .trim()
-          .toLowerCase();
-        const senhaInicialRaw = String(raw.senha_inicial || '').trim();
-        const celular = String(raw.num_celular_aluno || '').trim();
-
-        const rowObj: MatriculaCsvRow = {
-          ...raw,
-          id_aluno: raw.id_aluno,
-          id_nivel_ensino: raw.id_nivel_ensino,
-          turma_letra: raw.turma_letra,
-          id_turma: raw.id_turma,
-          numero_inscricao: numeroInscricao,
-          sige_id: raw.sige_id,
-          ano_letivo: String(anoLetivo),
-          id_status_matricula: String(idStatus),
-          data_matricula: dataMatricula,
-          foto_aluno: fotoAluno,
-          cpf_raw: cpfRaw,
-          email_final: emailFinal,
-          senha_inicial: senhaInicialRaw,
-        };
-
-        rows.push(rowObj);
-
-        insertsMatriculas.push({
-          id_aluno: idAluno,
-          id_nivel_ensino: idNivel,
-          id_turma: idTurma,
-          numero_inscricao: numeroInscricao,
-          ano_letivo: anoLetivo,
-          id_status_matricula: idStatus,
-          data_matricula: dataMatricula!,
-        });
-
-        if (!alunosRawMap.has(idAluno)) {
-          alunosRawMap.set(idAluno, rowObj);
-        }
-
-        const usaTransporte = toBool(raw.uso_transporte);
-        const possuiNecEsp = toBool(raw.possui_necessidadeEspecial);
-        const possuiRestAli = toBool(raw.possui_restriAlimentar);
-        const possuiProgSoc = toBool(raw.possui_programaSocial);
-
-        if (!alunosMap.has(idAluno)) {
-          const alunoUp: AlunoUpsertRow = {
-            id_aluno: idAluno,
-            nis: raw.num_nis_aluno || undefined,
-            nome_mae: raw.nome_mae_aluno || 'Não informado',
-            nome_pai: raw.nome_pai_aluno || undefined,
-            usa_transporte_escolar: usaTransporte,
-            possui_necessidade_especial: possuiNecEsp,
-            qual_necessidade_especial: raw.necessidadeEspecial_qual || undefined,
-            possui_restricao_alimentar: possuiRestAli,
-            qual_restricao_alimentar: raw.restriAlimentar_qual || undefined,
-            possui_beneficio_governo: possuiProgSoc,
-            qual_beneficio_governo: raw.programaSocial_qual || undefined,
-            observacoes_gerais: raw.observacao || undefined,
-          };
-          alunosMap.set(idAluno, alunoUp);
-        }
-
-        let senhaParaUsuario = senhaInicialRaw;
-        if (!senhaParaUsuario && emailFinal) {
-          const base =
-            numeroInscricao || String(raw.sige_id || '') || String(raw.id_aluno || '');
-          if (base) {
-            senhaParaUsuario = `${base}@ceja`;
-            errosLinha.push(
-              `Linha ${i + 2}: aluno "${raw.nome_aluno}" está sem senha_inicial (CPF). Será usada a senha gerada "${senhaParaUsuario}".`,
-            );
-          } else {
-            errosLinha.push(
-              `Linha ${i + 2}: aluno "${raw.nome_aluno}" tem email_final mas está sem senha_inicial e sem número de matrícula/SIGE. Usuário de login não será criado automaticamente.`,
-            );
-          }
-        }
-
-        if (emailFinal && senhaParaUsuario && !usuariosMap.has(idAluno)) {
-          const nomeAluno = String(raw.nome_aluno || '').trim();
-          usuariosMap.set(idAluno, {
-            id_aluno: idAluno,
-            nome: nomeAluno || `Aluno ${idAluno}`,
-            email: emailFinal,
-            senha: senhaParaUsuario,
-            cpf: cpfRaw || undefined,
-            foto_aluno: fotoAluno || undefined,
-            data_nasc: normalizarData(raw.data_nasc_aluno) || undefined,
-            sexo: raw.sexo_aluno || undefined,
-            raca: raw.raca_aluno || undefined,
-            celular: celular || undefined,
-            logradouro: raw.logradouro_endereco_aluno || undefined,
-            numero_endereco: raw.numero_endereco_aluno || undefined,
-            bairro: raw.bairro_endereco_aluno || undefined,
-            municipio: raw.municipio_endereco_aluno || undefined,
-            facebook: raw.facebook_aluno || undefined,
-            instagram: raw.instagram_aluno || undefined,
-          });
-        }
-      });
-
-      const saspMap = new Map<number, FormularioSaspRow>();
-      alunosRawMap.forEach((row, idAluno) => {
-        const dataEnt =
-          normalizarData(row.data_matricula) ||
-          normalizarData(row.data_matricula_import) ||
-          `${row.ano_letivo || '2025'}-01-01`;
-
-        const trabalha = !!row.local_funcaoTrab && row.local_funcaoTrab.trim() !== '';
-        const repetiu = toBool(row.repetiu_ano);
-        const temFilhos = toBool(row.possui_filhos);
-        const desistiu = row.porque_desistiu || row.outras_escolasDesistiu ? true : false;
-
-        const extraObs: string[] = [];
-        if (row.situacao_aluno) {
-          extraObs.push(`Situação aluno (origem): ${row.situacao_aluno}`);
-        }
-        if (row.marcar_aluno) {
-          extraObs.push(`Marcar aluno: ${row.marcar_aluno}`);
-        }
-        if (row.num_am_aluno) {
-          extraObs.push(`Número AM aluno: ${row.num_am_aluno}`);
-        }
-
-        const observacoesSasp = [
-          row.observacao_sasp || '',
-          extraObs.join(' | '),
-        ]
-          .filter(Boolean)
-          .join(' | ');
-
-        const sasp: FormularioSaspRow = {
-          id_aluno: idAluno,
-          data_entrevista: dataEnt!,
-          escola_origem: row.escola_origem || undefined,
-          cidade_escola_origem: null,
-          disciplinas_indicadas_aproveitamento:
-            row.disciplinas_indicadas || null,
-          motivo_retorno_estudos: row.porque_voltouEstudos || null,
-          trabalha,
-          local_trabalho: row.local_funcaoTrab || null,
-          funcao_trabalho: null,
-          repetiu_ano: repetiu,
-          desistiu_estudar: desistiu,
-          motivos_desistencia: row.porque_desistiu || null,
-          escolas_desistiu: row.outras_escolasDesistiu || null,
-          materias_dificuldade: row.materias_dificeis || null,
-          relacao_tecnologia: null,
-          curso_superior_desejado: null,
-          atividade_cultural_interesse: null,
-          esporte_interesse: null,
-          pessoas_residencia: toIntOrNull(row.quantidade_emCasa),
-          parentes_moradia: row.quem_saoParentes || null,
-          responsavel_pelos_estudos: row.responsavel_estudos || null,
-          tem_filhos: temFilhos,
-          quantos_filhos: toIntOrNull(row.quantidade_filhos),
-          como_conheceu_ceja: row.tomou_conhecimentoCeja || null,
-          observacoes_sasp: observacoesSasp || null,
-        };
-
-        saspMap.set(idAluno, sasp);
-      });
-
-      setCsvRows(rows);
-      setLinhasValidas(insertsMatriculas);
-      setUsuariosCsv(Array.from(usuariosMap.values()));
-      setAlunosUpsert(Array.from(alunosMap.values()));
-      setSaspRows(Array.from(saspMap.values()));
-
-      if (errosLinha.length > 0) {
-        setErros(errosLinha);
-      }
-
-      notificar({
-        tipo: 'info',
-        mensagem: `Arquivo lido com sucesso: ${insertsMatriculas.length} matrículas prontas para importação. Alunos únicos: ${
-          alunosMap.size
-        }. Usuários com dados de login: ${usuariosMap.size}.`,
-      });
-    } catch (error: any) {
-      console.error(error);
-      setErros([`Erro ao ler arquivo: ${error?.message || String(error)}`]);
-      notificar({
-        tipo: 'erro',
-        mensagem: 'Falha ao ler o arquivo CSV de matrículas.',
-      });
-    } finally {
-      setCarregandoCsv(false);
-    }
-  };
-
-  const resumoPorNivel = useMemo(() => {
-    let fundamental = 0;
-    let medio = 0;
-
-    linhasValidas.forEach((l) => {
-      if (l.id_nivel_ensino === 1) fundamental += 1;
-      if (l.id_nivel_ensino === 2) medio += 1;
-    });
-
-    return { fundamental, medio };
-  }, [linhasValidas]);
-
-  const resumoPorTurma = useMemo(() => {
-    const mapa = new Map<string, number>();
-    csvRows.forEach((row) => {
-      const chave = `${row.id_nivel_ensino}-${row.turma_letra}`;
-      mapa.set(chave, (mapa.get(chave) || 0) + 1);
-    });
-
-    const itens: { chave: string; nivel: string; turma: string; total: number }[] =
-      [];
-    mapa.forEach((total, key) => {
-      const [nivelStr, letra] = key.split('-');
-      const nivelId = Number(nivelStr);
-      const nivel =
-        nivelId === 1
-          ? 'Fundamental'
-          : nivelId === 2
-          ? 'Médio'
-          : `Nível ${nivelId}`;
-      itens.push({ chave: key, nivel, turma: letra, total });
-    });
-
-    itens.sort((a, b) =>
-      a.nivel === b.nivel
-        ? a.turma.localeCompare(b.turma)
-        : a.nivel.localeCompare(b.nivel),
-    );
-
-    return itens;
-  }, [csvRows]);
-
-  const totalUsuariosParaCriar = useMemo(
-    () => usuariosCsv.length,
-    [usuariosCsv],
-  );
-
-  const totalAlunosParaUpsert = useMemo(
-    () => alunosUpsert.length,
-    [alunosUpsert],
-  );
-
-  const totalSaspParaInserir = useMemo(
-    () => saspRows.length,
-    [saspRows],
-  );
-
-  const handleImportar = async () => {
-    if (!supabase) {
-      notificar({
-        tipo: 'erro',
-        mensagem: 'Cliente Supabase não encontrado no contexto.',
-      });
-      return;
+      if (!arquivo?.name) return null
+      const pathNoBucket = pasta ? `${pasta}/${arquivo.name}` : arquivo.name
+      return construirUrl(pathNoBucket)
     }
 
-    if (linhasValidas.length === 0) {
-      notificar({
-        tipo: 'aviso',
-        mensagem: 'Nenhuma linha válida para importar.',
-      });
-      return;
+    const caminhosDiretos = ['', 'alunos', 'alunos/alunos']
+    for (const pasta of caminhosDiretos) {
+      const url = await procurarEmPasta(pasta)
+      if (url) {
+        fotoAlunoFallbackCache.set(id, url)
+        return url
+      }
     }
 
-    if (somenteSimulacao) {
-      notificar({
-        tipo: 'info',
-        mensagem: `Simulação: seriam inseridas ${linhasValidas.length} matrículas, atualização de ${totalAlunosParaUpsert} alunos na tabela 'alunos', inserção de até ${totalSaspParaInserir} registros em 'formulario_sasp' e criação de até ${totalUsuariosParaCriar} usuários de login (se habilitado no backend).`,
-      });
-      return;
+    const { data: raiz } = await supabase.storage.from(bucket).list('', {
+      limit: 200,
+      offset: 0,
+      sortBy: { column: 'name', order: 'asc' },
+    })
+
+    for (const item of raiz ?? []) {
+      const nome = String((item as any)?.name ?? '').trim()
+      if (!nome) continue
+
+      if (nome.startsWith(prefixo) && isNomeArquivoImagem(nome)) {
+        const url = construirUrl(nome)
+        fotoAlunoFallbackCache.set(id, url)
+        return url
+      }
+
+      if (isNomeArquivoImagem(nome)) continue
+
+      for (const pasta of [nome, `${nome}/alunos`]) {
+        const url = await procurarEmPasta(pasta)
+        if (url) {
+          fotoAlunoFallbackCache.set(id, url)
+          return url
+        }
+      }
     }
 
-    setImportando(true);
-    setErros([]);
+    fotoAlunoFallbackCache.set(id, null)
+    return null
+  })()
 
-    const errosAcumulados: string[] = [];
-    let usuariosCriados = 0;
+  fotoAlunoFallbackPromiseCache.set(id, tarefa)
 
-    try {
-      // 0. Atualizar ALUNOS (sem mexer em id_aluno, que é identity)
-      if (alunosUpsert.length > 0) {
-        for (const a of alunosUpsert) {
-          const { id_aluno, ...resto } = a;
+  try {
+    return await tarefa
+  } finally {
+    fotoAlunoFallbackPromiseCache.delete(id)
+  }
+}
 
-          const { error: erroUpdateAluno } = await supabase
-            .from('alunos')
-            .update(resto)
-            .eq('id_aluno', id_aluno);
+interface ConfigDisciplinaAproveitamentoOption {
+  id_config: number
+  id_disciplina: number
+  id_ano_escolar: number
+  nome_ano: string
+  nome_disciplina: string
+}
 
-          if (erroUpdateAluno) {
-            errosAcumulados.push(
-              `Falha ao atualizar dados do aluno id_aluno=${id_aluno} na tabela 'alunos': ${erroUpdateAluno.message}`,
-            );
-          }
+interface ProgressoAlunoRow {
+  id_matricula: number
+  id_ano_escolar: number
+  id_disciplina: number
+  id_status_disciplina: number
+}
+
+const AvatarAlunoMatricula: FC<{
+  supabase: ReturnType<typeof useSupabase>['supabase'] | null
+  idAluno?: number | null
+  nome: string
+  fotoUrl?: string | null
+  sx?: any
+}> = ({ supabase, idAluno, nome, fotoUrl, sx }) => {
+  const [src, setSrc] = useState<string | undefined>(() => resolverFotoUrl(supabase, fotoUrl) ?? undefined)
+  const tentouFallbackRef = useRef(false)
+
+  useEffect(() => {
+    let ativo = true
+    const inicial = resolverFotoUrl(supabase, fotoUrl) ?? undefined
+    setSrc(inicial)
+    tentouFallbackRef.current = false
+
+    if (!inicial && idAluno) {
+      void buscarFotoAlunoFallback(supabase, idAluno).then((url) => {
+        if (!ativo) return
+        if (url) {
+          tentouFallbackRef.current = true
+          setSrc(url)
         }
-      }
-
-      // 1. Criação de usuários de login (DISPARO OPCIONAL)
-      if (usuariosCsv.length > 0 && HABILITAR_CRIACAO_USUARIOS_AUTH) {
-        const adminAuth = (supabase as any).auth?.admin;
-
-        if (!adminAuth || typeof adminAuth.createUser !== 'function') {
-          errosAcumulados.push(
-            'O cliente Supabase atual não possui acesso a supabase.auth.admin.createUser. Verifique se está usando a service_role key em ambiente seguro.',
-          );
-        } else {
-          const idsAlunos = Array.from(
-            new Set(usuariosCsv.map((u) => u.id_aluno)),
-          );
-
-          let idsSemUsuario = new Set<number>(idsAlunos);
-
-          const { data: alunosExistentes, error: erroAlunos } = await supabase
-            .from('alunos')
-            .select('id_aluno, user_id')
-            .in('id_aluno', idsAlunos);
-
-          if (erroAlunos) {
-            errosAcumulados.push(
-              `Falha ao consultar tabela 'alunos' para checar usuários já existentes: ${erroAlunos.message}`,
-            );
-          } else if (alunosExistentes && alunosExistentes.length > 0) {
-            const idsQueJaTemUsuario = new Set<number>(
-              alunosExistentes
-                .filter((a: any) => a.user_id)
-                .map((a: any) => Number(a.id_aluno)),
-            );
-            idsSemUsuario = new Set(
-              idsAlunos.filter((id) => !idsQueJaTemUsuario.has(id)),
-            );
-          }
-
-          const candidatos = usuariosCsv.filter((u) =>
-            idsSemUsuario.has(u.id_aluno),
-          );
-
-          if (candidatos.length > 0) {
-            const emailsCandidatos = candidatos.map((u) => u.email);
-            const { data: usuariosExistentes, error: erroUsuariosExistentes } =
-              await supabase
-                .from('usuarios')
-                .select('id, email')
-                .in('email', emailsCandidatos);
-
-            const emailsJaCadastrados = new Set<string>();
-            if (!erroUsuariosExistentes && usuariosExistentes) {
-              usuariosExistentes.forEach((u: any) => {
-                if (u.email) {
-                  emailsJaCadastrados.add(String(u.email).toLowerCase());
-                }
-              });
-            }
-
-            const usuariosParaCriar = candidatos.filter(
-              (u) => !emailsJaCadastrados.has(u.email.toLowerCase()),
-            );
-
-            for (let i = 0; i < usuariosParaCriar.length; i += CHUNK_SIZE_USUARIOS) {
-              const chunk = usuariosParaCriar.slice(i, i + CHUNK_SIZE_USUARIOS);
-
-              for (const u of chunk) {
-                try {
-                  const { data, error } = await adminAuth.createUser({
-                    email: u.email,
-                    password: u.senha,
-                    email_confirm: true,
-                    user_metadata: {
-                      nome: u.nome,
-                      origem: 'importacao_matriculas_2025',
-                    },
-                  });
-
-                  if (error || !data?.user) {
-                    errosAcumulados.push(
-                      `Falha ao criar usuário Auth para aluno ${u.nome} (${u.email}): ${
-                        error?.message ?? 'sem detalhes'
-                      }`,
-                    );
-                    continue;
-                  }
-
-                  const authUserId = data.user.id;
-
-                  const { error: erroInsertUsuario } = await supabase
-                    .from('usuarios')
-                    .insert({
-                      id: authUserId,
-                      id_tipo_usuario: 5,
-                      name: u.nome,
-                      email: u.email,
-                      cpf: u.cpf ?? null,
-                      data_nascimento: u.data_nasc ?? null,
-                      sexo: u.sexo ?? null,
-                      raca: u.raca ?? null,
-                      celular: u.celular ?? null,
-                      logradouro: u.logradouro ?? null,
-                      numero_endereco: u.numero_endereco ?? null,
-                      bairro: u.bairro ?? null,
-                      municipio: u.municipio ?? null,
-                      facebook_url: u.facebook ?? null,
-                      instagram_url: u.instagram ?? null,
-                      foto_url: u.foto_aluno ?? null,
-                    });
-
-                  if (erroInsertUsuario) {
-                    errosAcumulados.push(
-                      `Usuário Auth criado (${u.email}), mas falhou ao inserir em public.usuarios: ${erroInsertUsuario.message}`,
-                    );
-                  }
-
-                  const { error: erroUpdateAluno } = await supabase
-                    .from('alunos')
-                    .update({ user_id: authUserId })
-                    .eq('id_aluno', u.id_aluno);
-
-                  if (erroUpdateAluno) {
-                    errosAcumulados.push(
-                      `Usuário criado para ${u.email}, mas não foi possível atualizar alunos.id_aluno=${u.id_aluno}: ${erroUpdateAluno.message}`,
-                    );
-                  }
-
-                  usuariosCriados += 1;
-                } catch (err: any) {
-                  errosAcumulados.push(
-                    `Erro inesperado ao criar usuário para ${u.email}: ${
-                      err?.message || String(err)
-                    }`,
-                  );
-                }
-              }
-            }
-          }
-        }
-      } else if (usuariosCsv.length > 0 && !HABILITAR_CRIACAO_USUARIOS_AUTH) {
-        errosAcumulados.push(
-          `Foram detectados ${usuariosCsv.length} alunos com dados de login (email_final/senha), ` +
-            `mas a criação de usuários Auth está desabilitada no frontend (requer service_role). ` +
-            `Execute um script de backend com a mesma planilha para criar esses logins em segurança.`,
-        );
-      }
-
-      // 2. Inserir FORMULARIO_SASP (um por aluno, se ainda não existir)
-      if (saspRows.length > 0) {
-        const idsAlunosSasp = Array.from(
-          new Set(saspRows.map((s) => s.id_aluno)),
-        );
-
-        const { data: saspExistentes, error: erroSaspExistentes } = await supabase
-          .from('formulario_sasp')
-          .select('id_aluno')
-          .in('id_aluno', idsAlunosSasp);
-
-        const idsJaTemSasp = new Set<number>();
-        if (!erroSaspExistentes && saspExistentes) {
-          saspExistentes.forEach((s: any) => {
-            idsJaTemSasp.add(Number(s.id_aluno));
-          });
-        }
-
-        const saspParaInserir = saspRows.filter(
-          (s) => !idsJaTemSasp.has(s.id_aluno),
-        );
-
-        for (let i = 0; i < saspParaInserir.length; i += CHUNK_SIZE_SASP) {
-          const chunk = saspParaInserir.slice(i, i + CHUNK_SIZE_SASP);
-          const { error: erroInsertSasp } = await supabase
-            .from('formulario_sasp')
-            .insert(chunk);
-          if (erroInsertSasp) {
-            errosAcumulados.push(
-              `Falha ao inserir parte dos formulários SASP: ${erroInsertSasp.message}`,
-            );
-            break;
-          }
-        }
-      }
-
-      // 3. Inserir MATRÍCULAS
-      for (let i = 0; i < linhasValidas.length; i += CHUNK_SIZE_MATRICULAS) {
-        const chunk = linhasValidas.slice(i, i + CHUNK_SIZE_MATRICULAS);
-        const { error } = await supabase.from('matriculas').insert(chunk);
-        if (error) {
-          throw error;
-        }
-      }
-
-      const partesMensagem: string[] = [
-        `Importação concluída: ${linhasValidas.length} matrículas criadas.`,
-        `Alunos atualizados na tabela 'alunos': ${totalAlunosParaUpsert}.`,
-        `Formulários SASP inseridos (novos): até ${totalSaspParaInserir}.`,
-      ];
-      if (usuariosCsv.length > 0) {
-        partesMensagem.push(
-          HABILITAR_CRIACAO_USUARIOS_AUTH
-            ? `Usuários de aluno criados: ${usuariosCriados} (veja avisos abaixo para senhas geradas ou erros).`
-            : `Usuários de aluno NÃO foram criados pelo frontend (veja aviso abaixo sobre service_role/script backend).`,
-        );
-      }
-
-      notificar({
-        tipo: 'sucesso',
-        mensagem: partesMensagem.join(' '),
-      });
-
-      if (errosAcumulados.length > 0) {
-        setErros((prev) => [...prev, ...errosAcumulados]);
-      }
-
-      navigate('/secretaria/matriculas');
-    } catch (error: any) {
-      console.error(error);
-      setErros((prev) => [
-        ...prev,
-        `Erro ao importar tudo (alunos, SASP e matrículas): ${
-          error?.message || String(error)
-        }`,
-      ]);
-      notificar({
-        tipo: 'erro',
-        mensagem:
-          'Falha ao importar. Veja os detalhes dos erros na parte inferior da página.',
-      });
-    } finally {
-      setImportando(false);
+      })
     }
-  };
+
+    return () => {
+      ativo = false
+    }
+  }, [supabase, idAluno, fotoUrl])
+
+  const tentarFallback = useCallback(() => {
+    if (tentouFallbackRef.current) {
+      setSrc(undefined)
+      return
+    }
+
+    tentouFallbackRef.current = true
+
+    if (!idAluno) {
+      setSrc(undefined)
+      return
+    }
+
+    void buscarFotoAlunoFallback(supabase, idAluno).then((url) => {
+      setSrc(url ?? undefined)
+    })
+  }, [supabase, idAluno])
 
   return (
-    <Box sx={{ p: 2, maxWidth: 1200, mx: 'auto' }}>
-      <Typography variant="h4" gutterBottom>
-        Importar matrículas + alunos + SASP
-      </Typography>
+    <Avatar src={src} imgProps={{ referrerPolicy: 'no-referrer' }} onError={tentarFallback} sx={sx}>
+      {iniciais(nome)}
+    </Avatar>
+  )
+}
 
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-        Esta página importa em lote:
-        <br />
-        • Atualização dos dados de aluno na tabela <code>alunos</code> (NIS, mãe/pai,
-        transporte, necessidades, benefícios, observações);
-        <br />
-        • Questionário completo em <code>formulario_sasp</code>;
-        <br />
-        • Matrículas 2025 em <code>matriculas</code> com a turma vinda dos PDFs.
-        <br />
-        • Opcionalmente, criação de usuários de login (Auth + <code>usuarios</code>)
-        usando <code>email_final</code> e <code>senha_inicial</code> ou{' '}
-        <code>{'<numero_inscricao>@ceja'}</code> quando o CPF não estiver disponível
-        (essa parte exige service_role e está desabilitada no frontend por segurança).
-      </Typography>
+// Gera inserts para progresso_aluno a partir da modalidade da matrícula
+const gerarInsertsProgresso = (args: {
+  idMatricula: number
+  nivelId: number
+  modalidade: string
+  seriesConcluidasIds: number[]
+  disciplinasAproveitamentoConfigIds: number[]
+  serieProgressaoId: number | ''
+  disciplinasProgressaoIds: number[]
+  anosEscolaresDisponiveis: AnoEscolarRow[]
+  statusDisciplinaDisponiveis: StatusDisciplinaRow[]
+  configDisciplinaAnoDisponiveis: ConfigDisciplinaAnoRow[]
+}): Array<Record<string, unknown>> => {
+  const {
+    idMatricula,
+    nivelId,
+    modalidade,
+    seriesConcluidasIds,
+    disciplinasAproveitamentoConfigIds,
+    serieProgressaoId,
+    disciplinasProgressaoIds,
+    anosEscolaresDisponiveis,
+    statusDisciplinaDisponiveis,
+    configDisciplinaAnoDisponiveis,
+  } = args
 
-      <Paper sx={{ p: 2, mb: 3 }}>
-        <Stack spacing={2}>
-          <Stack direction="row" spacing={2} alignItems="center">
-            <Button
-              variant="contained"
-              startIcon={<UploadFileIcon />}
-              component="label"
+  const isAproveitamento = modalidade === 'Aproveitamento de Estudos'
+  const isProgressao = modalidade === 'Progressão de Estudos'
+
+  if (!isAproveitamento && !isProgressao) return []
+  if (statusDisciplinaDisponiveis.length === 0) return []
+  if (anosEscolaresDisponiveis.length === 0) return []
+  if (configDisciplinaAnoDisponiveis.length === 0) return []
+
+  const statusConcluida =
+    statusDisciplinaDisponiveis.find((s) => {
+      const n = s.nome.toLowerCase()
+      return n.includes('aprov') || n.includes('conclu')
+    }) ?? statusDisciplinaDisponiveis[0]
+
+  const statusACursar =
+    statusDisciplinaDisponiveis.find((s) =>
+      s.nome.toLowerCase().includes('cursar'),
+    ) ?? statusDisciplinaDisponiveis[0]
+
+  const anosNivel = anosEscolaresDisponiveis.filter(
+    (a) => a.id_nivel_ensino === nivelId,
+  )
+
+  const inserts: Array<Record<string, unknown>> = []
+
+  if (isAproveitamento) {
+    const seriesConcluidasSet = new Set(seriesConcluidasIds)
+    const disciplinasConcluidasSet = new Set(disciplinasAproveitamentoConfigIds)
+
+    anosNivel.forEach((serie) => {
+      const configs = configDisciplinaAnoDisponiveis.filter(
+        (c) => c.id_ano_escolar === serie.id_ano_escolar,
+      )
+
+      configs.forEach((c) => {
+        const disciplinaConcluida =
+          seriesConcluidasSet.has(serie.id_ano_escolar) &&
+          disciplinasConcluidasSet.has(c.id_config)
+
+        inserts.push({
+          id_matricula: idMatricula,
+          id_disciplina: c.id_disciplina,
+          id_ano_escolar: serie.id_ano_escolar,
+          id_status_disciplina: disciplinaConcluida
+            ? statusConcluida.id_status_disciplina
+            : statusACursar.id_status_disciplina,
+          nota_final: null,
+          data_conclusao: null,
+          observacoes: disciplinaConcluida
+            ? 'Disciplina concluída por aproveitamento de estudos.'
+            : seriesConcluidasSet.has(serie.id_ano_escolar)
+              ? 'Disciplina não aproveitada; mantida como A Cursar.'
+              : 'Disciplina marcada como A Cursar após aproveitamento de estudos.',
+        })
+      })
+    })
+  }
+
+  if (
+    isProgressao &&
+    serieProgressaoId !== '' &&
+    disciplinasProgressaoIds.length > 0
+  ) {
+    const serieIdNum = Number(serieProgressaoId)
+    const configs = configDisciplinaAnoDisponiveis.filter(
+      (c) =>
+        c.id_ano_escolar === serieIdNum &&
+        disciplinasProgressaoIds.includes(c.id_disciplina),
+    )
+
+    configs.forEach((c) => {
+      inserts.push({
+        id_matricula: idMatricula,
+        id_disciplina: c.id_disciplina,
+        id_ano_escolar: serieIdNum,
+        id_status_disciplina: statusACursar.id_status_disciplina,
+        nota_final: null,
+        data_conclusao: null,
+        observacoes:
+          'Disciplina definida como A Cursar na matrícula de Progressão de Estudos.',
+      })
+    })
+  }
+
+  return inserts
+}
+
+// === SUBCOMPONENTE: BLOCO DE MATRÍCULA POR NÍVEL ===
+
+interface MatriculaNivelCardProps {
+  modo: 'novo' | 'editar'
+  form: MatriculaFormState
+  setForm: (patch: Partial<MatriculaFormState>) => void
+  removerBloco?: () => void
+  desabilitado: boolean
+  niveisDisponiveis: NivelEnsinoRow[]
+  statusDisponiveis: StatusMatriculaRow[]
+  turmasDisponiveis: TurmaRow[]
+  disciplinasDisponiveis: DisciplinaRow[]
+  anosEscolaresDisponiveis: AnoEscolarRow[]
+  configDisciplinaAnoDisponiveis: ConfigDisciplinaAnoRow[]
+  themeMode: 'light' | 'dark'
+}
+
+const MatriculaNivelCard: FC<MatriculaNivelCardProps> = (props) => {
+  const {
+    modo,
+    form,
+    setForm,
+    removerBloco,
+    desabilitado,
+    niveisDisponiveis,
+    statusDisponiveis,
+    turmasDisponiveis,
+    disciplinasDisponiveis,
+    anosEscolaresDisponiveis,
+    configDisciplinaAnoDisponiveis,
+    themeMode,
+  } = props
+
+  const nivelIdNum = form.nivelId === '' ? null : Number(form.nivelId)
+  const nivelNome =
+    nivelIdNum != null
+      ? niveisDisponiveis.find((n) => n.id_nivel_ensino === nivelIdNum)?.nome ??
+        'Nível'
+      : 'Nível não selecionado'
+
+  const isAproveitamento = form.modalidade === 'Aproveitamento de Estudos'
+  const isProgressao = form.modalidade === 'Progressão de Estudos'
+
+  const turmasFiltradas = useMemo(() => {
+    if (nivelIdNum == null) return []
+    return [...turmasDisponiveis]
+      .filter((t) => t.id_nivel_ensino === nivelIdNum)
+      .sort((a, b) => {
+        const ativaA = a.is_ativa === false ? 0 : 1
+        const ativaB = b.is_ativa === false ? 0 : 1
+        if (ativaB !== ativaA) return ativaB - ativaA
+        const nome = String(a.nome ?? '').localeCompare(String(b.nome ?? ''), 'pt-BR')
+        if (nome !== 0) return nome
+        return Number(b.ano_letivo ?? 0) - Number(a.ano_letivo ?? 0)
+      })
+  }, [turmasDisponiveis, nivelIdNum])
+
+  const seriesDoNivel = useMemo(() => {
+    if (nivelIdNum == null) return []
+    return anosEscolaresDisponiveis
+      .filter((a) => a.id_nivel_ensino === nivelIdNum)
+      .sort((a, b) => a.nome_ano.localeCompare(b.nome_ano))
+  }, [anosEscolaresDisponiveis, nivelIdNum])
+
+  const disciplinasAproveitamentoOptions = useMemo<ConfigDisciplinaAproveitamentoOption[]>(() => {
+    if (form.seriesConcluidasIds.length === 0) return []
+
+    const seriesSet = new Set(form.seriesConcluidasIds)
+    const anoNomeById = new Map(seriesDoNivel.map((serie) => [serie.id_ano_escolar, serie.nome_ano]))
+    const disciplinaNomeById = new Map(
+      disciplinasDisponiveis.map((disciplina) => [disciplina.id_disciplina, disciplina.nome_disciplina]),
+    )
+
+    return configDisciplinaAnoDisponiveis
+      .filter((config) => seriesSet.has(config.id_ano_escolar))
+      .map((config) => ({
+        id_config: config.id_config,
+        id_disciplina: config.id_disciplina,
+        id_ano_escolar: config.id_ano_escolar,
+        nome_ano: anoNomeById.get(config.id_ano_escolar) ?? `Série ${config.id_ano_escolar}`,
+        nome_disciplina:
+          disciplinaNomeById.get(config.id_disciplina) ?? `Disciplina ${config.id_disciplina}`,
+      }))
+      .sort((a, b) => {
+        const serie = a.nome_ano.localeCompare(b.nome_ano, 'pt-BR')
+        if (serie !== 0) return serie
+        return a.nome_disciplina.localeCompare(b.nome_disciplina, 'pt-BR')
+      })
+  }, [
+    configDisciplinaAnoDisponiveis,
+    disciplinasDisponiveis,
+    form.seriesConcluidasIds,
+    seriesDoNivel,
+  ])
+
+  const disciplinasDaSerieProgressao = useMemo(() => {
+    if (form.serieProgressaoId === '') return []
+    const serieIdNum = Number(form.serieProgressaoId)
+    const configs = configDisciplinaAnoDisponiveis.filter(
+      (c) => c.id_ano_escolar === serieIdNum,
+    )
+    const ids = configs.map((c) => c.id_disciplina)
+    return disciplinasDisponiveis.filter((d) => ids.includes(d.id_disciplina))
+  }, [form.serieProgressaoId, configDisciplinaAnoDisponiveis, disciplinasDisponiveis])
+
+  return (
+    <Paper
+      variant="outlined"
+      sx={{
+        p: 2,
+        borderRadius: 2,
+        borderColor:
+          themeMode === 'light'
+            ? alpha(green[400], 0.25)
+            : alpha(green[300], 0.25),
+      }}
+    >
+      <Stack spacing={2}>
+        <Stack direction="row" spacing={2} alignItems="center" justifyContent="space-between">
+          <Box sx={{ minWidth: 0 }}>
+            <Typography variant="subtitle2" fontWeight={800} sx={{ wordBreak: 'break-word' }}>
+              Matrícula — {nivelNome}
+            </Typography>
+            <Typography variant="caption" color="text.secondary">
+              Cada nível pode (e deve) ter número de inscrição e turma próprios.
+            </Typography>
+          </Box>
+
+          {removerBloco && (
+            <Tooltip title="Remover este bloco (apenas do formulário)">
+              <span>
+                <IconButton size="small" onClick={removerBloco} disabled={desabilitado}>
+                  <CloseIcon fontSize="small" />
+                </IconButton>
+              </span>
+            </Tooltip>
+          )}
+        </Stack>
+
+        <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
+          <FormControl fullWidth size="small">
+            <InputLabel id={`nivel-label-${form.formId}`}>Nível de ensino</InputLabel>
+            <Select
+              labelId={`nivel-label-${form.formId}`}
+              label="Nível de ensino"
+              value={form.nivelId === '' ? '' : String(form.nivelId)}
+              onChange={(e) =>
+                setForm({
+                  nivelId: e.target.value === '' ? '' : Number(e.target.value),
+                  turmaId: '',
+                  seriesConcluidasIds: [],
+                  disciplinasAproveitamentoConfigIds: [],
+                  serieProgressaoId: '',
+                  disciplinasProgressaoIds: [],
+                })
+              }
+              disabled={desabilitado}
             >
-              Selecionar arquivo CSV
-              <input
-                type="file"
-                hidden
-                accept=".csv,text/csv"
-                onChange={handleFileChange}
-              />
-            </Button>
+              <MenuItem value="">
+                <em>Selecione</em>
+              </MenuItem>
+              {niveisDisponiveis.map((nivel) => (
+                <MenuItem key={nivel.id_nivel_ensino} value={String(nivel.id_nivel_ensino)}>
+                  {nivel.nome}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
 
-            {carregandoCsv && (
-              <Box sx={{ flex: 1 }}>
-                <LinearProgress />
-              </Box>
-            )}
+          <TextField
+            fullWidth
+            size="small"
+            label="Número de inscrição"
+            value={form.numeroInscricao}
+            onChange={(e) => setForm({ numeroInscricao: e.target.value })}
+            disabled={desabilitado || form.nivelId === ''}
+            helperText="Obrigatório (tabela matriculas.numero_inscricao é NOT NULL)."
+          />
+
+          <TextField
+            fullWidth
+            size="small"
+            label="Ano de referência da matrícula"
+            type="number"
+            value={form.anoLetivo}
+            onChange={(e) => setForm({ anoLetivo: e.target.value })}
+            disabled={desabilitado || form.nivelId === ''}
+            helperText="Usado para histórico, relatórios e regras de benefício. Não obriga trocar a turma a cada ano."
+          />
+        </Stack>
+
+        <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
+          <FormControl fullWidth size="small">
+            <InputLabel id={`modalidade-label-${form.formId}`}>Modalidade</InputLabel>
+            <Select
+              labelId={`modalidade-label-${form.formId}`}
+              label="Modalidade"
+              value={form.modalidade}
+              onChange={(e) => {
+                const nova = e.target.value
+                // sempre que muda modalidade, zera campos específicos para evitar “lixo”
+                setForm({
+                  modalidade: nova,
+                  seriesConcluidasIds: [],
+                  disciplinasAproveitamentoConfigIds: [],
+                  serieProgressaoId: '',
+                  disciplinasProgressaoIds: [],
+                })
+              }}
+              disabled={desabilitado || form.nivelId === ''}
+            >
+              {MODALIDADES_MATRICULA.map((mod) => (
+                <MenuItem key={mod.value} value={mod.value}>
+                  {mod.label}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+
+          <FormControl fullWidth size="small">
+            <InputLabel id={`status-label-${form.formId}`}>Status</InputLabel>
+            <Select
+              labelId={`status-label-${form.formId}`}
+              label="Status"
+              value={form.statusId === '' ? '' : String(form.statusId)}
+              onChange={(e) => setForm({ statusId: e.target.value === '' ? '' : Number(e.target.value) })}
+              disabled={desabilitado || form.nivelId === ''}
+            >
+              <MenuItem value="">
+                <em>Selecione</em>
+              </MenuItem>
+              {statusDisponiveis.map((s) => (
+                <MenuItem key={s.id_status_matricula} value={String(s.id_status_matricula)}>
+                  {s.nome}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+
+          <TextField
+            fullWidth
+            size="small"
+            label="Data da matrícula"
+            type="date"
+            value={form.dataMatricula}
+            onChange={(e) => setForm({ dataMatricula: e.target.value })}
+            InputLabelProps={{ shrink: true }}
+            disabled={desabilitado || form.nivelId === ''}
+          />
+
+          <TextField
+            fullWidth
+            size="small"
+            label="Data de conclusão (opcional)"
+            type="date"
+            value={form.dataConclusao}
+            onChange={(e) => setForm({ dataConclusao: e.target.value })}
+            InputLabelProps={{ shrink: true }}
+            disabled={desabilitado || form.nivelId === ''}
+          />
+        </Stack>
+
+        <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
+          <FormControl fullWidth size="small">
+            <InputLabel id={`turma-label-${form.formId}`}>Turma</InputLabel>
+            <Select
+              labelId={`turma-label-${form.formId}`}
+              label="Turma"
+              value={form.turmaId === '' ? '' : String(form.turmaId)}
+              onChange={(e) => setForm({ turmaId: e.target.value === '' ? '' : Number(e.target.value) })}
+              disabled={desabilitado || form.nivelId === ''}
+              displayEmpty
+            >
+              <MenuItem value="">
+                <em>Sem turma vinculada</em>
+              </MenuItem>
+              {turmasFiltradas.map((t) => (
+                <MenuItem key={t.id_turma} value={String(t.id_turma)}>
+                  {t.nome} — {t.turno} • ref. {t.ano_letivo}{t.is_ativa === false ? ' • inativa' : ''}
+                </MenuItem>
+              ))}
+            </Select>
+            <FormHelperText>
+              A turma não é renovada automaticamente por ano. O aluno pode permanecer nela até concluir as disciplinas pendentes.
+            </FormHelperText>
+          </FormControl>
+
+          {modo === 'editar' && (
+            <FormControlLabel
+              sx={{ ml: { xs: 0, md: 1 } }}
+              control={
+                <Switch
+                  size="small"
+                  checked={form.regenerarProgresso}
+                  onChange={(e) => setForm({ regenerarProgresso: e.target.checked })}
+                  disabled={desabilitado || form.nivelId === ''}
+                />
+              }
+              label="Regerar progresso (progresso_aluno)"
+            />
+          )}
+        </Stack>
+
+        {/* BLOCO: APROVEITAMENTO */}
+        {isAproveitamento && form.nivelId !== '' && (
+          <Stack spacing={1.5}>
+            <Typography variant="subtitle2" fontWeight={800}>
+              Aproveitamento de Estudos — Séries e disciplinas concluídas
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Primeiro selecione as séries (anos escolares) já concluídas em outra escola. Depois marque somente as disciplinas realmente concluídas nessas séries. As demais disciplinas continuarão como &quot;A Cursar&quot;.
+            </Typography>
+
+            <FormControl fullWidth size="small">
+              <InputLabel id={`series-concluidas-label-${form.formId}`}>Séries concluídas</InputLabel>
+              <Select
+                labelId={`series-concluidas-label-${form.formId}`}
+                multiple
+                label="Séries concluídas"
+                value={form.seriesConcluidasIds}
+                onChange={(e) => {
+                  const proximasSeries = parseMultiNumber(e.target.value)
+                  const configIdsValidos = new Set(
+                    configDisciplinaAnoDisponiveis
+                      .filter((config) => proximasSeries.includes(config.id_ano_escolar))
+                      .map((config) => config.id_config),
+                  )
+
+                  setForm({
+                    seriesConcluidasIds: proximasSeries,
+                    disciplinasAproveitamentoConfigIds: form.disciplinasAproveitamentoConfigIds.filter((id) =>
+                      configIdsValidos.has(id),
+                    ),
+                  })
+                }}
+                renderValue={(selected) => {
+                  const ids = selected as number[]
+                  const nomes = seriesDoNivel
+                    .filter((s) => ids.includes(s.id_ano_escolar))
+                    .map((s) => s.nome_ano)
+                  return nomes.join(', ')
+                }}
+                disabled={desabilitado || seriesDoNivel.length === 0}
+              >
+                {seriesDoNivel.map((serie) => (
+                  <MenuItem key={serie.id_ano_escolar} value={serie.id_ano_escolar}>
+                    <Checkbox size="small" checked={form.seriesConcluidasIds.includes(serie.id_ano_escolar)} />
+                    <ListItemText primary={serie.nome_ano} />
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+
+            <FormControl fullWidth size="small">
+              <InputLabel id={`disciplinas-aproveitamento-label-${form.formId}`}>Disciplinas concluídas</InputLabel>
+              <Select
+                labelId={`disciplinas-aproveitamento-label-${form.formId}`}
+                multiple
+                label="Disciplinas concluídas"
+                value={form.disciplinasAproveitamentoConfigIds}
+                onChange={(e) =>
+                  setForm({
+                    disciplinasAproveitamentoConfigIds: parseMultiNumber(e.target.value),
+                  })
+                }
+                renderValue={(selected) => {
+                  const ids = selected as number[]
+                  const nomes = disciplinasAproveitamentoOptions
+                    .filter((disc) => ids.includes(disc.id_config))
+                    .map((disc) => `${disc.nome_ano} — ${disc.nome_disciplina}`)
+                  return nomes.join(', ')
+                }}
+                disabled={desabilitado || disciplinasAproveitamentoOptions.length === 0}
+              >
+                {disciplinasAproveitamentoOptions.map((disciplina) => (
+                  <MenuItem key={disciplina.id_config} value={disciplina.id_config}>
+                    <Checkbox
+                      size="small"
+                      checked={form.disciplinasAproveitamentoConfigIds.includes(disciplina.id_config)}
+                    />
+                    <ListItemText
+                      primary={disciplina.nome_disciplina}
+                      secondary={disciplina.nome_ano}
+                    />
+                  </MenuItem>
+                ))}
+              </Select>
+              <FormHelperText>
+                Marque somente as disciplinas efetivamente concluídas. As não marcadas serão registradas como A Cursar.
+              </FormHelperText>
+            </FormControl>
           </Stack>
+        )}
+
+        {/* BLOCO: PROGRESSÃO */}
+        {isProgressao && form.nivelId !== '' && (
+          <Stack spacing={1.5}>
+            <Typography variant="subtitle2" fontWeight={800}>
+              Progressão de Estudos — Série e disciplinas
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Selecione a série (ano escolar) e as disciplinas que o aluno irá cursar no CEJA.
+              As disciplinas serão registradas com status &quot;A Cursar&quot;.
+            </Typography>
+
+            <FormControl fullWidth size="small">
+              <InputLabel id={`serie-progressao-label-${form.formId}`}>Série (ano escolar)</InputLabel>
+              <Select
+                labelId={`serie-progressao-label-${form.formId}`}
+                label="Série (ano escolar)"
+                value={form.serieProgressaoId === '' ? '' : String(form.serieProgressaoId)}
+                onChange={(e) =>
+                  setForm({
+                    serieProgressaoId: e.target.value === '' ? '' : Number(e.target.value),
+                    disciplinasProgressaoIds: [],
+                  })
+                }
+                disabled={desabilitado || seriesDoNivel.length === 0}
+              >
+                <MenuItem value="">
+                  <em>Selecione</em>
+                </MenuItem>
+                {seriesDoNivel.map((serie) => (
+                  <MenuItem key={serie.id_ano_escolar} value={serie.id_ano_escolar}>
+                    {serie.nome_ano}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+
+            <FormControl fullWidth size="small">
+              <InputLabel id={`disciplinas-progressao-label-${form.formId}`}>Disciplinas a cursar</InputLabel>
+              <Select
+                labelId={`disciplinas-progressao-label-${form.formId}`}
+                multiple
+                label="Disciplinas a cursar"
+                value={form.disciplinasProgressaoIds}
+                onChange={(e) => setForm({ disciplinasProgressaoIds: parseMultiNumber(e.target.value) })}
+                renderValue={(selected) => {
+                  const ids = selected as number[]
+                  const nomes = disciplinasDaSerieProgressao
+                    .filter((d) => ids.includes(d.id_disciplina))
+                    .map((d) => d.nome_disciplina)
+                  return nomes.join(', ')
+                }}
+                disabled={desabilitado || disciplinasDaSerieProgressao.length === 0}
+              >
+                {disciplinasDaSerieProgressao.map((disc) => (
+                  <MenuItem key={disc.id_disciplina} value={disc.id_disciplina}>
+                    <Checkbox size="small" checked={form.disciplinasProgressaoIds.includes(disc.id_disciplina)} />
+                    <ListItemText primary={disc.nome_disciplina} />
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Stack>
+        )}
+      </Stack>
+    </Paper>
+  )
+}
+
+// === COMPONENTE PRINCIPAL ===
+
+const SecretariaMatriculasPage: FC = () => {
+  const theme = useTheme()
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'))
+
+  const { supabase } = useSupabase()
+  const { erro, sucesso, aviso } = useNotificacaoContext()
+
+  const [matriculas, setMatriculas] = useState<MatriculaLista[]>([])
+  const [carregando, setCarregando] = useState<boolean>(true)
+
+  const [busca, setBusca] = useState('')
+  const [filtroAno, setFiltroAno] = useState<string>('todos')
+  const [filtroNivel, setFiltroNivel] = useState<string>('todos')
+  const [filtroStatus, setFiltroStatus] = useState<string>('todos')
+
+  const [anosDisponiveis, setAnosDisponiveis] = useState<number[]>([])
+  const [niveisDisponiveis, setNiveisDisponiveis] = useState<NivelEnsinoRow[]>([])
+  const [statusDisponiveis, setStatusDisponiveis] = useState<StatusMatriculaRow[]>([])
+  const [turmasDisponiveis, setTurmasDisponiveis] = useState<TurmaRow[]>([])
+  const [disciplinasDisponiveis, setDisciplinasDisponiveis] = useState<DisciplinaRow[]>([])
+  const [anosEscolaresDisponiveis, setAnosEscolaresDisponiveis] = useState<AnoEscolarRow[]>([])
+  const [statusDisciplinaDisponiveis, setStatusDisciplinaDisponiveis] = useState<StatusDisciplinaRow[]>([])
+  const [configDisciplinaAnoDisponiveis, setConfigDisciplinaAnoDisponiveis] = useState<ConfigDisciplinaAnoRow[]>([])
+
+  const [page, setPage] = useState(0)
+  const [rowsPerPage, setRowsPerPage] = useState(10)
+
+  // ===== NOVA MATRÍCULA (CADASTRO) =====
+  const [novaAberta, setNovaAberta] = useState(false)
+  const [salvandoNova, setSalvandoNova] = useState(false)
+
+  const [novoAluno, setNovoAluno] = useState<AlunoFormState>(criarAlunoFormVazio())
+  const [uploadingFotoNovoAluno, setUploadingFotoNovoAluno] = useState(false)
+  const fileInputFotoNovoRef = useRef<HTMLInputElement | null>(null)
+
+  const [novoBlocosMatricula, setNovoBlocosMatricula] = useState<MatriculaFormState[]>([])
+
+  // ===== EDIÇÃO =====
+  const [editarAberto, setEditarAberto] = useState(false)
+  const [salvandoEdicao, setSalvandoEdicao] = useState(false)
+
+  const [editAluno, setEditAluno] = useState<AlunoFormState>(criarAlunoFormVazio())
+  const [editAlunoId, setEditAlunoId] = useState<number | null>(null)
+  const [editUserId, setEditUserId] = useState<string | null>(null)
+
+  const [uploadingFotoEditAluno, setUploadingFotoEditAluno] = useState(false)
+  const fileInputFotoEditRef = useRef<HTMLInputElement | null>(null)
+
+  const [editBlocosMatricula, setEditBlocosMatricula] = useState<MatriculaFormState[]>([])
+
+  const idsStatusDisciplinaConcluida = useMemo(() => {
+    return new Set(
+      statusDisciplinaDisponiveis
+        .filter((status) => {
+          const nome = normalizarTexto(status.nome)
+          return nome.includes('aprov') || nome.includes('conclu')
+        })
+        .map((status) => Number(status.id_status_disciplina)),
+    )
+  }, [statusDisciplinaDisponiveis])
+
+  const preencherCamposProgressoBlocos = useCallback(
+    async (blocosBase: MatriculaFormState[]): Promise<MatriculaFormState[]> => {
+      if (!supabase) return blocosBase
+
+      const idsMatricula = blocosBase
+        .map((bloco) => bloco.idMatricula)
+        .filter((id): id is number => Number.isFinite(Number(id)))
+
+      if (idsMatricula.length === 0) return blocosBase
+
+      const { data, error } = await supabase
+        .from('progresso_aluno')
+        .select('id_matricula, id_ano_escolar, id_disciplina, id_status_disciplina')
+        .in('id_matricula', idsMatricula)
+
+      if (error) {
+        console.error(error)
+        return blocosBase
+      }
+
+      const progressoList = ((data ?? []) as ProgressoAlunoRow[])
+      const progressoByMatricula = new Map<number, ProgressoAlunoRow[]>()
+      progressoList.forEach((row) => {
+        const atual = progressoByMatricula.get(row.id_matricula) ?? []
+        atual.push(row)
+        progressoByMatricula.set(row.id_matricula, atual)
+      })
+
+      return blocosBase.map((bloco) => {
+        if (!bloco.idMatricula) return bloco
+        const rows = progressoByMatricula.get(bloco.idMatricula) ?? []
+        if (rows.length === 0) return bloco
+
+        if (bloco.modalidade === 'Aproveitamento de Estudos') {
+          const concluidas = rows.filter((row) => idsStatusDisciplinaConcluida.has(Number(row.id_status_disciplina)))
+          const seriesConcluidasIds = Array.from(
+            new Set(concluidas.map((row) => Number(row.id_ano_escolar)).filter(Number.isFinite)),
+          )
+          const disciplinasAproveitamentoConfigIds = Array.from(
+            new Set(
+              concluidas
+                .map((row) => {
+                  const config = configDisciplinaAnoDisponiveis.find(
+                    (item) =>
+                      Number(item.id_ano_escolar) === Number(row.id_ano_escolar) &&
+                      Number(item.id_disciplina) === Number(row.id_disciplina),
+                  )
+                  return config?.id_config ?? null
+                })
+                .filter((value): value is number => Number.isFinite(Number(value))),
+            ),
+          )
+
+          return {
+            ...bloco,
+            seriesConcluidasIds,
+            disciplinasAproveitamentoConfigIds,
+          }
+        }
+
+        if (bloco.modalidade === 'Progressão de Estudos') {
+          const serieProgressaoId = rows[0]?.id_ano_escolar ? Number(rows[0].id_ano_escolar) : ''
+          const disciplinasProgressaoIds = Array.from(
+            new Set(rows.map((row) => Number(row.id_disciplina)).filter(Number.isFinite)),
+          )
+
+          return {
+            ...bloco,
+            serieProgressaoId,
+            disciplinasProgressaoIds,
+          }
+        }
+
+        return bloco
+      })
+    },
+    [supabase, idsStatusDisciplinaConcluida, configDisciplinaAnoDisponiveis],
+  )
+
+  // Exclusão de matrícula
+  const [dialogExcluirAberto, setDialogExcluirAberto] = useState(false)
+  const [matriculaParaExcluir, setMatriculaParaExcluir] = useState<MatriculaLista | null>(null)
+  const [excluindoMatricula, setExcluindoMatricula] = useState(false)
+
+  // Ficha selecionada
+  const [matriculaSelecionada, setMatriculaSelecionada] = useState<MatriculaLista | null>(null)
+
+  // ===== MAPAS ÚTEIS =====
+  const niveisById = useMemo(() => {
+    const m = new Map<number, NivelEnsinoRow>()
+    niveisDisponiveis.forEach((n) => m.set(n.id_nivel_ensino, n))
+    return m
+  }, [niveisDisponiveis])
+
+
+
+  const statusAtivoId = useMemo(() => {
+    const ativo = statusDisponiveis.find((s) => s.nome.toLowerCase().includes('ativo'))
+    return ativo?.id_status_matricula ?? statusDisponiveis[0]?.id_status_matricula ?? null
+  }, [statusDisponiveis])
+
+  // ===== Upload foto (genérico) =====
+  const uploadFotoAluno = async (file: File, alvo: 'novo' | 'edit') => {
+    if (!supabase) return
+
+    try {
+      if (alvo === 'novo') setUploadingFotoNovoAluno(true)
+      else setUploadingFotoEditAluno(true)
+
+      if (file.size > 5 * 1024 * 1024) {
+        aviso('Tamanho máximo permitido para a foto é 5MB.')
+        return
+      }
+
+      const bucket = 'avatars'
+      const ext = (file.name.split('.').pop() || 'jpg').toLowerCase()
+
+      const baseRaw =
+        alvo === 'novo'
+          ? (novoAluno.email || novoAluno.nome || 'aluno')
+          : (editAluno.email || editAluno.nome || 'aluno')
+
+      const base = baseRaw
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .replace(/[^a-z0-9]/g, '-')
+
+      const caminho = `alunos/${base || 'aluno'}-${Date.now()}.${ext}`
+
+      const { error: upErr } = await supabase.storage.from(bucket).upload(caminho, file, { upsert: true })
+
+      if (upErr) {
+        console.error(upErr)
+        erro('Erro ao enviar a foto do aluno. Verifique o Storage.')
+        return
+      }
+
+      const { data: publicUrlData } = supabase.storage.from(bucket).getPublicUrl(caminho)
+
+      if (!publicUrlData?.publicUrl) {
+        erro('Não foi possível obter a URL pública da foto.')
+        return
+      }
+
+      if (alvo === 'novo') setNovoAluno((p) => ({ ...p, fotoUrl: publicUrlData.publicUrl }))
+      else setEditAluno((p) => ({ ...p, fotoUrl: publicUrlData.publicUrl }))
+
+      sucesso('Foto do aluno atualizada.')
+    } catch (e) {
+      console.error(e)
+      erro('Erro inesperado ao enviar a foto do aluno.')
+    } finally {
+      if (alvo === 'novo') setUploadingFotoNovoAluno(false)
+      else setUploadingFotoEditAluno(false)
+    }
+  }
+
+  // ===== Carregar dados =====
+
+  const carregarDados = async () => {
+    if (!supabase) return
+
+    try {
+      setCarregando(true)
+
+      const [
+        { data: matriculasData, error: matriculasError },
+        { data: alunosData, error: alunosError },
+        { data: niveisData, error: niveisError },
+        { data: statusData, error: statusError },
+        { data: turmasData, error: turmasError },
+        { data: disciplinasData, error: disciplinasError },
+        { data: anosEscolaresData, error: anosEscolaresError },
+        { data: statusDiscData, error: statusDiscError },
+        { data: configDiscAnoData, error: configDiscAnoError },
+      ] = await Promise.all([
+        supabase
+          .from('matriculas')
+          .select(
+            [
+              'id_matricula',
+              'id_aluno',
+              'numero_inscricao',
+              'id_nivel_ensino',
+              'id_status_matricula',
+              'modalidade',
+              'ano_letivo',
+              'data_matricula',
+              'data_conclusao',
+              'id_turma',
+            ].join(','),
+          )
+          .order('ano_letivo', { ascending: false })
+          .order('data_matricula', { ascending: false }),
+        // IMPORTANTE (Correção B): trazer o usuário junto do aluno via relacionamento
+        // para evitar URL gigante e erro 400 quando o Supabase/PostgREST monta `id=in.(...)`.
+        supabase.from('alunos').select(
+          `
+            id_aluno,
+            user_id,
+            nis,
+            nome_mae,
+            nome_pai,
+            usa_transporte_escolar,
+            possui_necessidade_especial,
+            qual_necessidade_especial,
+            possui_restricao_alimentar,
+            qual_restricao_alimentar,
+            possui_beneficio_governo,
+            qual_beneficio_governo,
+            observacoes_gerais,
+            usuarios (
+              id,
+              name,
+              email,
+              username,
+              foto_url,
+              data_nascimento,
+              cpf,
+              rg,
+              celular,
+              logradouro,
+              numero_endereco,
+              bairro,
+              municipio,
+              ponto_referencia,
+              raca
+            )
+          `,
+        ),
+        supabase.from('niveis_ensino').select('id_nivel_ensino, nome'),
+        supabase.from('status_matricula').select('id_status_matricula, nome'),
+        supabase.from('turmas').select('id_turma, nome, turno, ano_letivo, id_nivel_ensino, is_ativa'),
+        supabase.from('disciplinas').select('id_disciplina, nome_disciplina'),
+        supabase.from('anos_escolares').select('id_ano_escolar, nome_ano, id_nivel_ensino'),
+        supabase.from('status_disciplina_aluno').select('id_status_disciplina, nome'),
+        supabase
+          .from('config_disciplina_ano')
+          .select('id_config, id_disciplina, id_ano_escolar, quantidade_protocolos'),
+      ])
+
+      if (matriculasError) {
+        console.error(matriculasError)
+        erro('Erro ao carregar matrículas.')
+      }
+      if (alunosError) {
+        console.error(alunosError)
+        erro('Erro ao carregar alunos.')
+      }
+      if (niveisError) {
+        console.error(niveisError)
+        erro('Erro ao carregar níveis de ensino.')
+      }
+      if (statusError) {
+        console.error(statusError)
+        erro('Erro ao carregar status de matrícula.')
+      }
+      if (turmasError) {
+        console.error(turmasError)
+        erro('Erro ao carregar turmas.')
+      }
+      if (disciplinasError) {
+        console.error(disciplinasError)
+        erro('Erro ao carregar disciplinas.')
+      }
+      if (anosEscolaresError) {
+        console.error(anosEscolaresError)
+        erro('Erro ao carregar anos escolares.')
+      }
+      if (statusDiscError) {
+        console.error(statusDiscError)
+        erro('Erro ao carregar status de disciplina.')
+      }
+      if (configDiscAnoError) {
+        console.error(configDiscAnoError)
+        erro('Erro ao carregar configuração de disciplinas por série.')
+      }
+
+      const matriculasList = (matriculasData ?? []) as unknown as MatriculaRow[]
+      const alunosList = (alunosData ?? []) as unknown as AlunoRowComUsuario[]
+      const niveisList = (niveisData ?? []) as NivelEnsinoRow[]
+      const statusList = (statusData ?? []) as StatusMatriculaRow[]
+      const turmasList = (turmasData ?? []) as TurmaRow[]
+      const disciplinasList = (disciplinasData ?? []) as DisciplinaRow[]
+      const anosEscolaresList = (anosEscolaresData ?? []) as AnoEscolarRow[]
+      const statusDiscList = (statusDiscData ?? []) as StatusDisciplinaRow[]
+      const configDiscAnoList = (configDiscAnoData ?? []) as ConfigDisciplinaAnoRow[]
+
+      setNiveisDisponiveis(niveisList)
+      setStatusDisponiveis(statusList)
+      setTurmasDisponiveis(turmasList)
+      setDisciplinasDisponiveis(disciplinasList)
+      setAnosEscolaresDisponiveis(anosEscolaresList)
+      setStatusDisciplinaDisponiveis(statusDiscList)
+      setConfigDisciplinaAnoDisponiveis(configDiscAnoList)
+
+      const anos = Array.from(new Set(matriculasList.map((m) => m.ano_letivo).filter((a) => a != null))).sort(
+        (a, b) => b - a,
+      )
+      setAnosDisponiveis(anos)
+
+      const alunosById = new Map<number, AlunoRowComUsuario>()
+      alunosList.forEach((a) => alunosById.set(a.id_aluno, a))
+
+      const niveisMap = new Map<number, NivelEnsinoRow>()
+      niveisList.forEach((n) => niveisMap.set(n.id_nivel_ensino, n))
+
+      const statusMap = new Map<number, StatusMatriculaRow>()
+      statusList.forEach((s) => statusMap.set(s.id_status_matricula, s))
+
+      const turmasMap = new Map<number, TurmaRow>()
+      turmasList.forEach((t) => turmasMap.set(t.id_turma, t))
+
+      const normalizados: MatriculaLista[] = matriculasList.map((m) => {
+        const aluno = alunosById.get(m.id_aluno)
+        const usuario = aluno?.usuarios ?? undefined
+        const nivel = niveisMap.get(m.id_nivel_ensino)
+        const status = statusMap.get(m.id_status_matricula)
+        const turma = m.id_turma != null ? turmasMap.get(m.id_turma) : undefined
+
+        return {
+          id: m.id_matricula,
+          alunoId: m.id_aluno,
+          userId: aluno?.user_id ?? null,
+
+          alunoNome: usuario?.name ?? 'Aluno sem vínculo de usuário',
+          alunoEmail: usuario?.email ?? null,
+          alunoFotoUrl: usuario?.foto_url ?? null,
+          alunoNis: aluno?.nis ?? null,
+          alunoNomeMae: aluno?.nome_mae ?? null,
+          alunoNomePai: aluno?.nome_pai ?? null,
+          usaTransporteEscolar: aluno?.usa_transporte_escolar ?? false,
+          possuiNecessidadeEspecial: aluno?.possui_necessidade_especial ?? false,
+          qualNecessidadeEspecial: aluno?.qual_necessidade_especial ?? null,
+          possuiRestricaoAlimentar: aluno?.possui_restricao_alimentar ?? false,
+          qualRestricaoAlimentar: aluno?.qual_restricao_alimentar ?? null,
+          possuiBeneficioGoverno: aluno?.possui_beneficio_governo ?? false,
+          qualBeneficioGoverno: aluno?.qual_beneficio_governo ?? null,
+          observacoesGerais: aluno?.observacoes_gerais ?? null,
+
+          dataNascimento: usuario?.data_nascimento ?? null,
+          cpf: usuario?.cpf ?? null,
+          rg: usuario?.rg ?? null,
+          celular: usuario?.celular ?? null,
+          logradouro: usuario?.logradouro ?? null,
+          numeroEndereco: usuario?.numero_endereco ?? null,
+          bairro: usuario?.bairro ?? null,
+          municipio: usuario?.municipio ?? null,
+          pontoReferencia: usuario?.ponto_referencia ?? null,
+          raca: usuario?.raca ?? null,
+
+          numeroInscricao: m.numero_inscricao,
+          anoLetivo: m.ano_letivo,
+          nivelId: m.id_nivel_ensino,
+          nivelNome: nivel?.nome ?? 'Nível não definido',
+          turmaId: m.id_turma,
+          turmaNome: turma?.nome ?? null,
+          turno: turma?.turno ?? null,
+          statusId: m.id_status_matricula,
+          statusNome: status?.nome ?? 'Status não definido',
+          modalidade: m.modalidade,
+          dataMatricula: m.data_matricula,
+          dataConclusao: m.data_conclusao,
+        }
+      })
+
+      setMatriculas(normalizados)
+    } catch (e) {
+      console.error(e)
+      erro('Erro inesperado ao carregar matrículas.')
+    } finally {
+      setCarregando(false)
+    }
+  }
+
+  useEffect(() => {
+    void carregarDados()
+  }, [supabase])
+
+  // ===== PAGINAÇÃO =====
+
+  const handleChangePage = (event: unknown, newPage: number) => {
+    void event
+    setPage(newPage)
+  }
+
+  const handleChangeRowsPerPage = (event: ChangeEvent<HTMLInputElement>) => {
+    setRowsPerPage(parseInt(event.target.value, 10))
+    setPage(0)
+  }
+
+  // ===== ABRIR/FECHAR NOVO =====
+
+  const criarBlocoMatriculaPadrao = (): MatriculaFormState => ({
+    formId: gerarIdLocal(),
+    nivelId: '',
+    numeroInscricao: '',
+    anoLetivo: new Date().getFullYear().toString(),
+    statusId: statusAtivoId ?? '',
+    turmaId: '',
+    modalidade: 'Orientação de Estudos',
+    dataMatricula: hojeISO(),
+    dataConclusao: '',
+    seriesConcluidasIds: [],
+    disciplinasAproveitamentoConfigIds: [],
+    serieProgressaoId: '',
+    disciplinasProgressaoIds: [],
+    regenerarProgresso: false,
+  })
+
+  const handleAbrirNovaMatricula = () => {
+    setNovoAluno(criarAlunoFormVazio())
+    setNovoBlocosMatricula([criarBlocoMatriculaPadrao()])
+    setNovaAberta(true)
+  }
+
+  const handleFecharNovaMatricula = () => {
+    if (salvandoNova) return
+    setNovaAberta(false)
+  }
+
+  const adicionarBlocoNovo = () => {
+    setNovoBlocosMatricula((prev) => [...prev, criarBlocoMatriculaPadrao()])
+  }
+
+  const adicionarTodosNiveisNovo = () => {
+    if (niveisDisponiveis.length === 0) return
+
+    setNovoBlocosMatricula((prev) => {
+      const jaTem = new Set(prev.map((b) => b.nivelId).filter((v): v is number => v !== ''))
+      const novos: MatriculaFormState[] = []
+      niveisDisponiveis.forEach((n) => {
+        if (!jaTem.has(n.id_nivel_ensino)) {
+          novos.push({
+            ...criarBlocoMatriculaPadrao(),
+            nivelId: n.id_nivel_ensino,
+          })
+        }
+      })
+      return [...prev, ...novos]
+    })
+  }
+
+  // ===== SALVAR NOVO =====
+
+  const validarBlocosMatricula = (
+    blocos: MatriculaFormState[],
+    opts: { modo: 'novo' | 'editar' } = { modo: 'novo' },
+  ): { ok: boolean; msg?: string } => {
+    if (blocos.length === 0) return { ok: false, msg: 'Adicione pelo menos uma matrícula.' }
+
+    for (const [idx, b] of blocos.entries()) {
+      if (b.nivelId === '') return { ok: false, msg: `Selecione o nível de ensino no bloco ${idx + 1}.` }
+      if (!b.numeroInscricao.trim())
+        return { ok: false, msg: `Informe o número de inscrição no bloco ${idx + 1} (nível: ${niveisById.get(Number(b.nivelId))?.nome ?? b.nivelId}).` }
+      if (!b.anoLetivo.trim() || !Number.isFinite(Number(b.anoLetivo)))
+        return { ok: false, msg: `Informe um ano letivo válido no bloco ${idx + 1}.` }
+      if (b.statusId === '') return { ok: false, msg: `Selecione um status no bloco ${idx + 1}.` }
+      if (!b.modalidade.trim()) return { ok: false, msg: `Selecione a modalidade no bloco ${idx + 1}.` }
+      if (!b.dataMatricula.trim()) return { ok: false, msg: `Informe a data de matrícula no bloco ${idx + 1}.` }
+
+      if (b.modalidade === 'Aproveitamento de Estudos') {
+        const precisaDefinirAproveitamento =
+          opts.modo === 'novo' || !b.idMatricula || b.regenerarProgresso
+        if (precisaDefinirAproveitamento && b.seriesConcluidasIds.length > 0 && b.disciplinasAproveitamentoConfigIds.length === 0) {
+          return {
+            ok: false,
+            msg: `Selecione as disciplinas concluídas das séries marcadas no bloco ${idx + 1} (Aproveitamento).`,
+          }
+        }
+      }
+
+      if (b.modalidade === 'Progressão de Estudos') {
+        const precisaDefinirProgressao =
+          opts.modo === 'novo' || !b.idMatricula || b.regenerarProgresso
+        if (precisaDefinirProgressao) {
+          if (b.serieProgressaoId === '')
+            return {
+              ok: false,
+              msg: `Selecione a série (ano escolar) no bloco ${idx + 1} (Progressão).`,
+            }
+          if (b.disciplinasProgressaoIds.length === 0)
+            return {
+              ok: false,
+              msg: `Selecione ao menos uma disciplina no bloco ${idx + 1} (Progressão).`,
+            }
+        }
+      }
+    }
+
+    return { ok: true }
+  }
+
+  const handleSalvarNovaMatricula = async () => {
+    if (!supabase) return
+
+    const nome = novoAluno.nome.trim()
+    const emailDigitado = novoAluno.email.trim().toLowerCase() || null
+    const cpf = novoAluno.cpf.trim() || null
+
+    if (!nome) {
+      erro('Informe pelo menos o nome completo do aluno.')
+      return
+    }
+
+    const valid = validarBlocosMatricula(novoBlocosMatricula, { modo: 'novo' })
+    if (!valid.ok) {
+      erro(valid.msg || 'Verifique os dados das matrículas.')
+      return
+    }
+
+    const emailFinal = emailDigitado ?? gerarEmailAutomatico(nome)
+    const senhaFinal = cpf && cpf.length >= 3 ? cpf : `Ceja@${new Date().getFullYear()}`
+
+    try {
+      setSalvandoNova(true)
+
+      // 1) Cria usuário de autenticação (OBS: signUp pode trocar a sessão em ambientes sem confirmação de e-mail)
+      const { data: sessAntesData } = await supabase.auth.getSession()
+      const sessAntes = sessAntesData.session
+
+      const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+        email: emailFinal,
+        password: senhaFinal,
+      })
+
+      if (signUpError || !signUpData?.user) {
+        console.error(signUpError)
+        erro('Erro ao criar usuário de autenticação do aluno.')
+        return
+      }
+
+      const authUserId = signUpData.user.id
+
+      // Se o signUp devolveu sessão (ambiente sem confirmação de e-mail), restaura a sessão anterior
+      if (sessAntes && signUpData.session) {
+        const { error: setSessErr } = await supabase.auth.setSession({
+          access_token: sessAntes.access_token,
+          refresh_token: sessAntes.refresh_token,
+        })
+        if (setSessErr) {
+          console.warn('Não foi possível restaurar a sessão anterior após signUp:', setSessErr)
+        }
+      }
+
+      // 2) Cria registro em public.usuarios
+      const usuarioPayload: Partial<UsuarioRow> & { id: string; id_tipo_usuario: number; status: string } = {
+        id: authUserId,
+        id_tipo_usuario: TIPO_USUARIO_ALUNO_ID,
+        name: nome,
+        username: null,
+        email: emailFinal,
+        data_nascimento: novoAluno.dataNasc || null,
+        cpf: novoAluno.cpf.trim() || null,
+        rg: null,
+        celular: novoAluno.celular.trim() || null,
+        logradouro: novoAluno.logradouro.trim() || null,
+        numero_endereco: novoAluno.numeroEnd.trim() || null,
+        bairro: novoAluno.bairro.trim() || null,
+        municipio: novoAluno.municipio.trim() || null,
+        ponto_referencia: novoAluno.pontoRef.trim() || null,
+        raca: null,
+        foto_url: novoAluno.fotoUrl || null,
+        status: 'Ativo',
+      }
+
+      const { error: usuarioError } = await supabase.from('usuarios').insert(usuarioPayload)
+
+      if (usuarioError) {
+        console.error(usuarioError)
+        erro('Erro ao salvar dados básicos do aluno (usuário).')
+        return
+      }
+
+      // 3) Cria registro em public.alunos
+      const alunoPayload: Partial<AlunoRow> = {
+        user_id: authUserId,
+        nis: novoAluno.nis.trim() || null,
+        nome_mae: novoAluno.nomeMae.trim() || 'Não informado',
+        nome_pai: novoAluno.nomePai.trim() || null,
+        usa_transporte_escolar: novoAluno.usaTransporte,
+        possui_necessidade_especial: novoAluno.temNecessidade,
+        qual_necessidade_especial: novoAluno.temNecessidade ? novoAluno.descNecessidade.trim() || null : null,
+        possui_restricao_alimentar: novoAluno.temRestricao,
+        qual_restricao_alimentar: novoAluno.temRestricao ? novoAluno.descRestricao.trim() || null : null,
+        possui_beneficio_governo: novoAluno.temBeneficio,
+        qual_beneficio_governo: novoAluno.temBeneficio ? novoAluno.descBeneficio.trim() || null : null,
+        observacoes_gerais: novoAluno.observacoes.trim() || null,
+      }
+
+      const { data: alunoData, error: alunoError } = await supabase
+        .from('alunos')
+        .insert(alunoPayload)
+        .select('id_aluno')
+        .single<{ id_aluno: number }>()
+
+      if (alunoError || !alunoData) {
+        console.error(alunoError)
+        erro('Erro ao salvar dados específicos do aluno.')
+        return
+      }
+
+      const novoAlunoId = alunoData.id_aluno
+
+      // 4) Insere uma matrícula por bloco (nível)
+      const matriculasPayload = novoBlocosMatricula.map((b) => ({
+        id_aluno: novoAlunoId,
+        numero_inscricao: b.numeroInscricao.trim(),
+        id_nivel_ensino: Number(b.nivelId),
+        id_status_matricula: Number(b.statusId),
+        modalidade: b.modalidade,
+        ano_letivo: Number(b.anoLetivo),
+        data_matricula: b.dataMatricula,
+        data_conclusao: b.dataConclusao.trim() ? b.dataConclusao : null,
+        id_turma: b.turmaId === '' ? null : Number(b.turmaId),
+      }))
+
+      const { data: matriculasInseridas, error: insertMatriculasError } = await supabase
+        .from('matriculas')
+        .insert(matriculasPayload)
+        .select(
+          'id_matricula, id_aluno, numero_inscricao, id_nivel_ensino, id_status_matricula, modalidade, ano_letivo, data_matricula, data_conclusao, id_turma',
+        )
+
+      if (insertMatriculasError || !matriculasInseridas || matriculasInseridas.length === 0) {
+        console.error(insertMatriculasError)
+        erro('Erro ao salvar a(s) matrícula(s) do aluno.')
+        return
+      }
+
+      // 5) Progresso (aproveitamento/progressão) por matrícula
+      const insertsProgressoTotal: Array<Record<string, unknown>> = []
+      for (const m of matriculasInseridas as unknown as MatriculaRow[]) {
+        const bloco = novoBlocosMatricula.find((b) => Number(b.nivelId) === m.id_nivel_ensino && b.numeroInscricao.trim() === m.numero_inscricao)
+        if (!bloco) continue
+
+        const inserts = gerarInsertsProgresso({
+          idMatricula: m.id_matricula,
+          nivelId: m.id_nivel_ensino,
+          modalidade: bloco.modalidade,
+          seriesConcluidasIds: bloco.seriesConcluidasIds,
+          disciplinasAproveitamentoConfigIds: bloco.disciplinasAproveitamentoConfigIds,
+          serieProgressaoId: bloco.serieProgressaoId,
+          disciplinasProgressaoIds: bloco.disciplinasProgressaoIds,
+          anosEscolaresDisponiveis,
+          statusDisciplinaDisponiveis,
+          configDisciplinaAnoDisponiveis,
+        })
+
+        insertsProgressoTotal.push(...inserts)
+      }
+
+      if (insertsProgressoTotal.length > 0) {
+        const { error: progError } = await supabase.from('progresso_aluno').insert(insertsProgressoTotal)
+        if (progError) {
+          console.error(progError)
+          aviso('Matrícula(s) criada(s), mas houve erro ao registrar o progresso das disciplinas.')
+        }
+      }
+
+      await carregarDados()
+      sucesso(`Aluno e matrícula(s) criados com sucesso. Usuário: ${emailFinal} | Senha inicial: ${cpf || senhaFinal}`)
+      setNovaAberta(false)
+    } catch (e) {
+      console.error(e)
+      erro('Erro inesperado ao salvar matrícula.')
+    } finally {
+      setSalvandoNova(false)
+    }
+  }
+
+  // ===== ABRIR/FECHAR EDITAR =====
+
+  const abrirDialogEditarMatricula = (matricula: MatriculaLista) => {
+    // Carrega aluno (dados comuns) a partir do agregado
+    setEditAluno({
+      nome: matricula.alunoNome ?? '',
+      email: matricula.alunoEmail ?? '',
+      dataNasc: matricula.dataNascimento ?? '',
+      cpf: matricula.cpf ?? '',
+      celular: matricula.celular ?? '',
+      nis: matricula.alunoNis ?? '',
+      nomeMae: matricula.alunoNomeMae ?? '',
+      nomePai: matricula.alunoNomePai ?? '',
+      logradouro: matricula.logradouro ?? '',
+      numeroEnd: matricula.numeroEndereco ?? '',
+      bairro: matricula.bairro ?? '',
+      municipio: matricula.municipio ?? '',
+      pontoRef: matricula.pontoReferencia ?? '',
+      usaTransporte: !!matricula.usaTransporteEscolar,
+      temNecessidade: !!matricula.possuiNecessidadeEspecial,
+      descNecessidade: matricula.qualNecessidadeEspecial ?? '',
+      temRestricao: !!matricula.possuiRestricaoAlimentar,
+      descRestricao: matricula.qualRestricaoAlimentar ?? '',
+      temBeneficio: !!matricula.possuiBeneficioGoverno,
+      descBeneficio: matricula.qualBeneficioGoverno ?? '',
+      observacoes: matricula.observacoesGerais ?? '',
+      fotoUrl: matricula.alunoFotoUrl ?? '',
+    })
+
+    setEditAlunoId(matricula.alunoId)
+    setEditUserId(matricula.userId)
+
+    // Carrega TODAS as matrículas deste aluno (para atender “fundamental + médio”)
+    const matriculasDoAluno = matriculas.filter((m) => m.alunoId === matricula.alunoId)
+
+    const blocos: MatriculaFormState[] = matriculasDoAluno.map((m) => ({
+      formId: gerarIdLocal(),
+      idMatricula: m.id,
+      nivelId: m.nivelId,
+      numeroInscricao: m.numeroInscricao ?? '',
+      anoLetivo: m.anoLetivo != null ? String(m.anoLetivo) : new Date().getFullYear().toString(),
+      statusId: m.statusId ?? '',
+      turmaId: m.turmaId ?? '',
+      modalidade: m.modalidade ?? 'Orientação de Estudos',
+      dataMatricula: m.dataMatricula ?? hojeISO(),
+      dataConclusao: m.dataConclusao ?? '',
+      seriesConcluidasIds: [],
+      disciplinasAproveitamentoConfigIds: [],
+      serieProgressaoId: '',
+      disciplinasProgressaoIds: [],
+      regenerarProgresso: false,
+    }))
+
+    const blocosIniciais = blocos.length > 0 ? blocos : [criarBlocoMatriculaPadrao()]
+    setEditBlocosMatricula(blocosIniciais)
+    setEditarAberto(true)
+
+    void preencherCamposProgressoBlocos(blocosIniciais).then((blocosPreenchidos) => {
+      setEditBlocosMatricula(blocosPreenchidos)
+    })
+  }
+
+  const handleFecharEditarMatricula = () => {
+    if (salvandoEdicao) return
+    setEditarAberto(false)
+    setEditAlunoId(null)
+    setEditUserId(null)
+    setEditBlocosMatricula([])
+  }
+
+  const adicionarBlocoEdit = () => {
+    setEditBlocosMatricula((prev) => [...prev, criarBlocoMatriculaPadrao()])
+  }
+
+  const adicionarTodosNiveisEdit = () => {
+    if (niveisDisponiveis.length === 0) return
+
+    setEditBlocosMatricula((prev) => {
+      const jaTem = new Set(prev.map((b) => b.nivelId).filter((v): v is number => v !== ''))
+      const novos: MatriculaFormState[] = []
+      niveisDisponiveis.forEach((n) => {
+        if (!jaTem.has(n.id_nivel_ensino)) {
+          novos.push({
+            ...criarBlocoMatriculaPadrao(),
+            nivelId: n.id_nivel_ensino,
+            regenerarProgresso: true,
+          })
+        }
+      })
+      return [...prev, ...novos]
+    })
+  }
+
+  // ===== SALVAR EDIÇÃO =====
+
+  const handleSalvarEdicaoMatricula = async () => {
+    if (!supabase) return
+    if (!editAlunoId || !editUserId) {
+      erro('Não foi possível identificar o aluno (id_aluno / user_id).')
+      return
+    }
+
+    const nome = editAluno.nome.trim()
+    if (!nome) {
+      erro('Informe pelo menos o nome completo do aluno.')
+      return
+    }
+
+    const valid = validarBlocosMatricula(editBlocosMatricula, { modo: 'editar' })
+    if (!valid.ok) {
+      erro(valid.msg || 'Verifique os dados das matrículas.')
+      return
+    }
+
+    try {
+      setSalvandoEdicao(true)
+
+      // 1) Atualiza public.usuarios (OBS: isso NÃO altera o email/senha no Auth)
+      const usuarioUpdate: Partial<UsuarioRow> = {
+        name: nome,
+        // Observação: "email" em UsuarioRow é string (não-null). Em update usamos "undefined" para não alterar.
+        email: editAluno.email.trim() || undefined,
+        data_nascimento: editAluno.dataNasc || null,
+        cpf: editAluno.cpf.trim() || null,
+        celular: editAluno.celular.trim() || null,
+        logradouro: editAluno.logradouro.trim() || null,
+        numero_endereco: editAluno.numeroEnd.trim() || null,
+        bairro: editAluno.bairro.trim() || null,
+        municipio: editAluno.municipio.trim() || null,
+        ponto_referencia: editAluno.pontoRef.trim() || null,
+        foto_url: editAluno.fotoUrl || null,
+      }
+
+      const { error: usuarioError } = await supabase.from('usuarios').update(usuarioUpdate).eq('id', editUserId)
+
+      if (usuarioError) {
+        console.error(usuarioError)
+        erro('Erro ao atualizar dados do usuário (aluno).')
+        return
+      }
+
+      // 2) Atualiza public.alunos
+      const alunoUpdate: Partial<AlunoRow> = {
+        nis: editAluno.nis.trim() || null,
+        nome_mae: editAluno.nomeMae.trim() || 'Não informado',
+        nome_pai: editAluno.nomePai.trim() || null,
+        usa_transporte_escolar: editAluno.usaTransporte,
+        possui_necessidade_especial: editAluno.temNecessidade,
+        qual_necessidade_especial: editAluno.temNecessidade ? editAluno.descNecessidade.trim() || null : null,
+        possui_restricao_alimentar: editAluno.temRestricao,
+        qual_restricao_alimentar: editAluno.temRestricao ? editAluno.descRestricao.trim() || null : null,
+        possui_beneficio_governo: editAluno.temBeneficio,
+        qual_beneficio_governo: editAluno.temBeneficio ? editAluno.descBeneficio.trim() || null : null,
+        observacoes_gerais: editAluno.observacoes.trim() || null,
+      }
+
+      const { error: alunoError } = await supabase.from('alunos').update(alunoUpdate).eq('id_aluno', editAlunoId)
+
+      if (alunoError) {
+        console.error(alunoError)
+        erro('Erro ao atualizar dados específicos do aluno.')
+        return
+      }
+
+      // 3) Atualiza/insere matriculas
+      const insertsProgressoTotal: Array<Record<string, unknown>> = []
+
+      for (const bloco of editBlocosMatricula) {
+        const payload = {
+          numero_inscricao: bloco.numeroInscricao.trim(),
+          id_nivel_ensino: Number(bloco.nivelId),
+          id_status_matricula: Number(bloco.statusId),
+          modalidade: bloco.modalidade,
+          ano_letivo: Number(bloco.anoLetivo),
+          data_matricula: bloco.dataMatricula,
+          data_conclusao: bloco.dataConclusao.trim() ? bloco.dataConclusao : null,
+          id_turma: bloco.turmaId === '' ? null : Number(bloco.turmaId),
+        }
+
+        let idMatricula = bloco.idMatricula
+
+        if (idMatricula) {
+          const { error: upErr } = await supabase.from('matriculas').update(payload).eq('id_matricula', idMatricula)
+          if (upErr) {
+            console.error(upErr)
+            erro('Erro ao atualizar matrícula.')
+            return
+          }
+        } else {
+          const { data: ins, error: insErr } = await supabase
+            .from('matriculas')
+            .insert({ ...payload, id_aluno: editAlunoId })
+            .select('id_matricula')
+            .single<{ id_matricula: number }>()
+
+          if (insErr || !ins) {
+            console.error(insErr)
+            erro('Erro ao inserir nova matrícula.')
+            return
+          }
+          idMatricula = ins.id_matricula
+        }
+
+        const isPrecisaProgresso =
+          bloco.modalidade === 'Aproveitamento de Estudos' || bloco.modalidade === 'Progressão de Estudos'
+
+        if (isPrecisaProgresso && idMatricula) {
+          // Só gera/insere progresso em 2 cenários:
+          // (1) matrícula nova (não existia idMatricula antes), ou
+          // (2) usuário marcou “Regerar progresso”.
+          if (!bloco.idMatricula || bloco.regenerarProgresso) {
+            const { error: delProgErr } = await supabase
+              .from('progresso_aluno')
+              .delete()
+              .eq('id_matricula', idMatricula)
+            if (delProgErr) {
+              console.error(delProgErr)
+              aviso('Não foi possível limpar o progresso anterior (progresso_aluno).')
+            }
+
+            const inserts = gerarInsertsProgresso({
+              idMatricula,
+              nivelId: Number(bloco.nivelId),
+              modalidade: bloco.modalidade,
+              seriesConcluidasIds: bloco.seriesConcluidasIds,
+              disciplinasAproveitamentoConfigIds: bloco.disciplinasAproveitamentoConfigIds,
+              serieProgressaoId: bloco.serieProgressaoId,
+              disciplinasProgressaoIds: bloco.disciplinasProgressaoIds,
+              anosEscolaresDisponiveis,
+              statusDisciplinaDisponiveis,
+              configDisciplinaAnoDisponiveis,
+            })
+            insertsProgressoTotal.push(...inserts)
+          }
+        }
+      }
+
+      if (insertsProgressoTotal.length > 0) {
+        const { error: progError } = await supabase.from('progresso_aluno').insert(insertsProgressoTotal)
+        if (progError) {
+          console.error(progError)
+          aviso('Alterações salvas, mas houve erro ao registrar o progresso das disciplinas.')
+        }
+      }
+
+      await carregarDados()
+      sucesso('Aluno e matrícula(s) atualizados com sucesso.')
+      setEditarAberto(false)
+    } catch (e) {
+      console.error(e)
+      erro('Erro inesperado ao atualizar matrícula.')
+    } finally {
+      setSalvandoEdicao(false)
+    }
+  }
+
+  // ===== EXCLUSÃO =====
+
+  const abrirDialogExcluirMatricula = (matricula: MatriculaLista) => {
+    setMatriculaParaExcluir(matricula)
+    setDialogExcluirAberto(true)
+  }
+
+  const fecharDialogExcluirMatricula = () => {
+    if (excluindoMatricula) return
+    setDialogExcluirAberto(false)
+    setMatriculaParaExcluir(null)
+  }
+
+  const handleConfirmarExcluirMatricula = async () => {
+    if (!supabase || !matriculaParaExcluir) return
+
+    try {
+      setExcluindoMatricula(true)
+
+      const { error } = await supabase.from('matriculas').delete().eq('id_matricula', matriculaParaExcluir.id)
+
+      if (error) {
+        console.error(error)
+        if ((error as any).code === '23503') {
+          erro(
+            'Não é possível excluir esta matrícula porque existem registros vinculados (progresso, atendimentos ou protocolos).',
+          )
+        } else {
+          erro('Erro ao excluir matrícula.')
+        }
+        return
+      }
+
+      await carregarDados()
+
+      setMatriculaSelecionada((atual) => (atual && atual.id === matriculaParaExcluir.id ? null : atual))
+
+      sucesso('Matrícula excluída com sucesso.')
+      setDialogExcluirAberto(false)
+      setMatriculaParaExcluir(null)
+    } catch (e) {
+      console.error(e)
+      erro('Erro inesperado ao excluir matrícula.')
+    } finally {
+      setExcluindoMatricula(false)
+    }
+  }
+
+  // ===== FILTRO / BUSCA =====
+
+  const matriculasFiltradas = useMemo(() => {
+    let lista = [...matriculas]
+
+    const termo = busca.trim().toLowerCase()
+    if (termo) {
+      lista = lista.filter((m) => {
+        return (
+          m.alunoNome.toLowerCase().includes(termo) ||
+          (m.numeroInscricao ?? '').toLowerCase().includes(termo) ||
+          m.nivelNome.toLowerCase().includes(termo) ||
+          (m.turmaNome ?? '').toLowerCase().includes(termo) ||
+          (m.statusNome ?? '').toLowerCase().includes(termo) ||
+          (m.modalidade ?? '').toLowerCase().includes(termo) ||
+          (m.alunoNis ?? '').toLowerCase().includes(termo)
+        )
+      })
+    }
+
+    if (filtroAno !== 'todos') {
+      const ano = Number(filtroAno)
+      lista = lista.filter((m) => m.anoLetivo === ano)
+    }
+    if (filtroNivel !== 'todos') {
+      const nivelId = Number(filtroNivel)
+      lista = lista.filter((m) => m.nivelId === nivelId)
+    }
+    if (filtroStatus !== 'todos') {
+      lista = lista.filter((m) => m.statusNome === filtroStatus)
+    }
+
+    return lista
+  }, [matriculas, busca, filtroAno, filtroNivel, filtroStatus])
+
+  useEffect(() => {
+    setPage(0)
+  }, [busca, filtroAno, filtroNivel, filtroStatus])
+
+  const matriculasPaginadas = useMemo(
+    () =>
+      matriculasFiltradas.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage),
+    [matriculasFiltradas, page, rowsPerPage],
+  )
+
+  // ===== ESTILO DO CABEÇALHO (VERDE) =====
+
+  // Cores do Cabeçalho Verde (igual às outras tabelas)
+  const headerBgColor = theme.palette.mode === 'light' ? green[100] : alpha(green[900], 0.4)
+  const headerTextColor =
+    theme.palette.mode === 'light' ? theme.palette.success.dark : theme.palette.success.light
+
+  const zebraColor = theme.palette.mode === 'light' ? alpha(theme.palette.grey[400], 0.12) : alpha(theme.palette.common.white, 0.04)
+
+  const getStatusColor = (status: string | null) => {
+    if (!status) return theme.palette.text.secondary
+    const normalized = status.toLowerCase()
+    if (normalized.includes('ativo')) return theme.palette.success.main
+    if (normalized.includes('conclu')) return theme.palette.info.main
+    if (normalized.includes('tranc')) return theme.palette.warning.main
+    if (normalized.includes('evad')) return theme.palette.error.main
+    if (normalized.includes('transfer')) return theme.palette.secondary.main
+    return theme.palette.text.secondary
+  }
+
+  // === RENDER ===
+
+  return (
+    <Box
+      sx={{
+        p: { xs: 2, sm: 3 },
+        width: '100%',
+        maxWidth: '100vw',
+        mx: 'auto',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 3,
+        boxSizing: 'border-box',
+      }}
+    >
+      {/* Cabeçalho */}
+      <Stack
+        direction={{ xs: 'column', sm: 'row' }}
+        spacing={2}
+        alignItems={{ xs: 'flex-start', sm: 'center' }}
+        justifyContent="space-between"
+      >
+        <Box>
+          <Typography variant="h4" component="h1" fontWeight={700}>
+            Matrículas
+          </Typography>
 
           <Typography variant="body2" color="text.secondary">
-            Use o arquivo <strong>matriculas_import_2025_full_import.csv</strong>{' '}
-            (aluno.csv + PDFs + colunas de usuário/senha/foto) que geramos para
-            essa etapa.
+            Cadastre novos alunos, defina a modalidade (orientação, aproveitamento ou progressão) e acompanhe as matrículas do CEJA.
           </Typography>
+        </Box>
+
+        <Button variant="contained" startIcon={<AddIcon />} sx={{ fontWeight: 600 }} onClick={handleAbrirNovaMatricula}>
+          Nova matrícula
+        </Button>
+      </Stack>
+
+      {/* Filtros e busca */}
+      <Paper
+        elevation={0}
+        sx={{
+          p: 2,
+          borderRadius: 3,
+          border: `1px solid ${alpha(theme.palette.divider, 0.7)}`,
+        }}
+      >
+        <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems="stretch">
+          <TextField
+            fullWidth
+            size="small"
+            placeholder="Buscar por aluno, matrícula, NIS, turma, nível, modalidade ou status..."
+            value={busca}
+            onChange={(e) => setBusca(e.target.value)}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <SearchIcon color="action" />
+                </InputAdornment>
+              ),
+            }}
+          />
+
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ minWidth: { md: 420 } }}>
+            <FormControl size="small" fullWidth>
+              <InputLabel id="filtro-ano-label">Ano letivo</InputLabel>
+              <Select labelId="filtro-ano-label" label="Ano letivo" value={filtroAno} onChange={(e) => setFiltroAno(e.target.value)}>
+                <MenuItem value="todos">Todos</MenuItem>
+                {anosDisponiveis.map((ano) => (
+                  <MenuItem key={ano} value={String(ano)}>
+                    {ano}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+
+            <FormControl size="small" fullWidth>
+              <InputLabel id="filtro-nivel-label">Nível de ensino</InputLabel>
+              <Select
+                labelId="filtro-nivel-label"
+                label="Nível de ensino"
+                value={filtroNivel}
+                onChange={(e) => setFiltroNivel(e.target.value)}
+              >
+                <MenuItem value="todos">Todos</MenuItem>
+                {niveisDisponiveis.map((nivel) => (
+                  <MenuItem key={nivel.id_nivel_ensino} value={String(nivel.id_nivel_ensino)}>
+                    {nivel.nome}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+
+            <FormControl size="small" fullWidth>
+              <InputLabel id="filtro-status-label">Status</InputLabel>
+              <Select labelId="filtro-status-label" label="Status" value={filtroStatus} onChange={(e) => setFiltroStatus(e.target.value)}>
+                <MenuItem value="todos">Todos</MenuItem>
+                {statusDisponiveis.map((s) => (
+                  <MenuItem key={s.id_status_matricula} value={s.nome}>
+                    {s.nome}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Stack>
         </Stack>
       </Paper>
 
-      {linhasValidas.length > 0 && (
-        <Paper sx={{ p: 2, mb: 3 }}>
-          <Typography variant="h6" gutterBottom>
-            Resumo do que será importado
-          </Typography>
+      {/* Lista de matrículas */}
+      <TableContainer
+        component={Paper}
+        elevation={0}
+        variant="outlined"
+        sx={{
+          borderRadius: 3,
+          overflow: 'hidden',
+        }}
+      >
+        {carregando ? (
+          <Box sx={{ p: 4, display: 'flex', justifyContent: 'center' }}>
+            <CircularProgress />
+          </Box>
+        ) : matriculasFiltradas.length === 0 ? (
+          <Box sx={{ p: 4, textAlign: 'center' }}>
+            <Typography variant="body2" color="text.secondary">
+              Nenhuma matrícula encontrada com os filtros atuais.
+            </Typography>
+          </Box>
+        ) : isMobile ? (
+          // MOBILE: CARDS
+          <Box sx={{ p: 2 }}>
+            <Stack spacing={2}>
+              {matriculasFiltradas.map((m) => {
+                const statusColor = getStatusColor(m.statusNome ?? null)
+                return (
+                  <Paper key={m.id} variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
+                    <Stack spacing={1.5}>
+                      <Stack direction="row" spacing={2} alignItems="center">
+                        <AvatarAlunoMatricula
+                          supabase={supabase}
+                          idAluno={m.alunoId}
+                          nome={m.alunoNome}
+                          fotoUrl={m.alunoFotoUrl ?? undefined}
+                          sx={{
+                            bgcolor: m.alunoFotoUrl ? undefined : alpha(theme.palette.primary.main, 0.1),
+                            color: theme.palette.primary.main,
+                          }}
+                        />
+                        <Box sx={{ minWidth: 0 }}>
+                          <Typography variant="subtitle2" fontWeight={600} sx={{ wordBreak: 'break-word' }}>
+                            {m.alunoNome}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary" display="block">
+                            Matrícula: {m.numeroInscricao ?? '—'}
+                          </Typography>
+                          {m.alunoNis && (
+                            <Typography variant="caption" color="text.secondary" display="block">
+                              NIS: {m.alunoNis}
+                            </Typography>
+                          )}
+                        </Box>
+                      </Stack>
 
-          <Stack spacing={1} sx={{ mb: 2 }}>
-            <Typography variant="body2">
-              Matrículas (linhas válidas):{' '}
-              <strong>{linhasValidas.length}</strong>
-            </Typography>
-            <Typography variant="body2">
-              Fundamental:{' '}
-              <strong>{resumoPorNivel.fundamental}</strong> | Médio:{' '}
-              <strong>{resumoPorNivel.medio}</strong>
-            </Typography>
-            <Typography variant="body2">
-              Alunos únicos (para atualizar em <code>alunos</code>):{' '}
-              <strong>{totalAlunosParaUpsert}</strong>
-            </Typography>
-            <Typography variant="body2">
-              Formulários SASP (um por aluno):{' '}
-              <strong>{totalSaspParaInserir}</strong>
-            </Typography>
-            <Typography variant="body2">
-              Alunos com dados para criar usuário de login:{' '}
-              <strong>{totalUsuariosParaCriar}</strong>
-            </Typography>
-          </Stack>
+                      <Stack direction="row" spacing={1} flexWrap="wrap">
+                        <Chip icon={<SchoolIcon fontSize="small" />} label={m.nivelNome} size="small" variant="outlined" />
+                        {m.turmaNome && <Chip label={`Turma: ${m.turmaNome}`} size="small" variant="outlined" />}
+                        {m.turno && <Chip label={`Turno: ${m.turno}`} size="small" variant="outlined" />}
+                        {m.anoLetivo && <Chip icon={<EventIcon fontSize="small" />} label={`Ano: ${m.anoLetivo}`} size="small" variant="outlined" />}
+                        {m.modalidade && (
+                          <Chip
+                            label={m.modalidade}
+                            size="small"
+                            sx={{
+                              bgcolor: alpha(theme.palette.info.main, 0.06),
+                              color: theme.palette.info.main,
+                              fontWeight: 600,
+                            }}
+                          />
+                        )}
+                        {m.statusNome && (
+                          <Chip
+                            label={m.statusNome}
+                            size="small"
+                            sx={{
+                              bgcolor: alpha(statusColor, 0.08),
+                              color: statusColor,
+                              fontWeight: 600,
+                            }}
+                          />
+                        )}
+                      </Stack>
 
-          {resumoPorTurma.length > 0 && (
-            <>
-              <Typography variant="subtitle2" sx={{ mb: 1 }}>
-                Por turma:
-              </Typography>
-              <Table size="small">
-                <TableHead>
-                  <TableRow>
-                    <TableCell>Nível</TableCell>
-                    <TableCell>Turma</TableCell>
-                    <TableCell align="right">Qtde de matrículas</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {resumoPorTurma.map((t) => (
-                    <TableRow key={t.chave}>
-                      <TableCell>{t.nivel}</TableCell>
-                      <TableCell>{t.turma}</TableCell>
-                      <TableCell align="right">{t.total}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </>
-          )}
+                      <Stack spacing={0.25}>
+                        {m.dataMatricula && (
+                          <Typography variant="caption" color="text.secondary">
+                            Início: {m.dataMatricula}
+                          </Typography>
+                        )}
+                        {m.dataConclusao && (
+                          <Typography variant="caption" color="text.secondary">
+                            Conclusão: {m.dataConclusao}
+                          </Typography>
+                        )}
+                      </Stack>
 
-          <Divider sx={{ my: 2 }} />
-
-          <Stack
-            direction={{ xs: 'column', sm: 'row' }}
-            spacing={2}
-            alignItems="center"
-            justifyContent="space-between"
-          >
-            <Stack direction="row" spacing={1} alignItems="center">
-              <Checkbox
-                checked={somenteSimulacao}
-                onChange={(e) => setSomenteSimulacao(e.target.checked)}
-              />
-              <Typography variant="body2">
-                Somente simular (não gravar no banco)
-              </Typography>
+                      <Box sx={{ pt: 1, textAlign: 'right' }}>
+                        <Stack direction="row" spacing={1} justifyContent="flex-end">
+                          <Button size="small" variant="text" onClick={() => setMatriculaSelecionada(m)} disabled={salvandoEdicao || excluindoMatricula}>
+                            Ver ficha
+                          </Button>
+                          <Button size="small" variant="text" onClick={() => abrirDialogEditarMatricula(m)} disabled={salvandoEdicao || excluindoMatricula}>
+                            Editar
+                          </Button>
+                          <Button size="small" color="error" variant="text" onClick={() => abrirDialogExcluirMatricula(m)} disabled={excluindoMatricula}>
+                            Excluir
+                          </Button>
+                        </Stack>
+                      </Box>
+                    </Stack>
+                  </Paper>
+                )
+              })}
             </Stack>
-
-            <Button
-              variant="contained"
-              color={somenteSimulacao ? 'warning' : 'primary'}
-              startIcon={
-                somenteSimulacao ? <WarningAmberIcon /> : <DoneAllIcon />
-              }
-              disabled={importando}
-              onClick={handleImportar}
-            >
-              {somenteSimulacao
-                ? 'Simular importação'
-                : `Importar tudo (${linhasValidas.length} matrículas)`}
-            </Button>
-          </Stack>
-
-          {importando && (
-            <Box sx={{ mt: 2 }}>
-              <LinearProgress />
-              <Typography variant="body2" color="text.secondary">
-                Importando alunos, SASP e matrículas no Supabase...
-              </Typography>
-            </Box>
-          )}
-        </Paper>
-      )}
-
-      {csvRows.length > 0 && (
-        <Paper sx={{ p: 2, mb: 3 }}>
-          <Typography variant="subtitle1" gutterBottom>
-            Amostra das primeiras linhas do arquivo
-          </Typography>
-          <Table size="small">
-            <TableHead>
-              <TableRow>
-                <TableCell>id_aluno</TableCell>
-                <TableCell>Nome</TableCell>
-                <TableCell>Turma</TableCell>
-                <TableCell>Nível</TableCell>
-                <TableCell>Nº inscrição</TableCell>
-                <TableCell>Email final</TableCell>
-                <TableCell>Foto (arquivo)</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {csvRows.slice(0, 15).map((row, index) => (
-                <TableRow key={`${row.id_aluno}-${index}`}>
-                  <TableCell>{row.id_aluno}</TableCell>
-                  <TableCell>{row.nome_aluno}</TableCell>
-                  <TableCell>{row.turma_letra}</TableCell>
-                  <TableCell>
-                    {row.id_nivel_ensino === '1'
-                      ? 'Fundamental'
-                      : row.id_nivel_ensino === '2'
-                      ? 'Médio'
-                      : row.id_nivel_ensino}
+          </Box>
+        ) : (
+          // DESKTOP: TABELA
+          <>
+            <Table size="medium">
+              <TableHead>
+                <TableRow sx={{ bgcolor: headerBgColor }}>
+                  <TableCell sx={{ fontWeight: 700, color: headerTextColor }}>Aluno</TableCell>
+                  <TableCell sx={{ fontWeight: 700, color: headerTextColor }}>Matrícula / NIS</TableCell>
+                  <TableCell sx={{ fontWeight: 700, color: headerTextColor }}>Nível / Modalidade</TableCell>
+                  <TableCell sx={{ fontWeight: 700, color: headerTextColor }}>Turma / Turno</TableCell>
+                  <TableCell sx={{ fontWeight: 700, color: headerTextColor }}>Ano letivo</TableCell>
+                  <TableCell sx={{ fontWeight: 700, color: headerTextColor }}>Status</TableCell>
+                  <TableCell align="right" sx={{ fontWeight: 700, color: headerTextColor }}>
+                    Ações
                   </TableCell>
-                  <TableCell>{row.numero_inscricao}</TableCell>
-                  <TableCell>{row.email_final}</TableCell>
-                  <TableCell>{row.foto_aluno}</TableCell>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </Paper>
-      )}
+              </TableHead>
+              <TableBody>
+                {matriculasPaginadas.map((m, index) => {
+                  const isEven = index % 2 === 0
+                  const statusColor = getStatusColor(m.statusNome ?? null)
 
-      {erros.length > 0 && (
-        <Paper
-          sx={{
-            p: 2,
-            mb: 3,
-            borderColor: 'error.main',
-            borderWidth: 1,
-            borderStyle: 'solid',
-          }}
-        >
-          <Typography variant="subtitle1" color="error" gutterBottom>
-            Avisos / Erros encontrados
-          </Typography>
-          <Stack spacing={0.5}>
-            {erros.map((e, i) => (
-              <Typography key={i} variant="body2" color="error">
-                • {e}
+                  return (
+                    <TableRow
+                      key={m.id}
+                      hover
+                      sx={{
+                        bgcolor: isEven ? 'inherit' : zebraColor,
+                        '&:hover': {
+                          bgcolor: alpha(theme.palette.primary.main, 0.06),
+                        },
+                      }}
+                    >
+                      <TableCell>
+                        <Stack direction="row" spacing={1} alignItems="center">
+                          <AvatarAlunoMatricula
+                            supabase={supabase}
+                            idAluno={m.alunoId}
+                            nome={m.alunoNome}
+                            fotoUrl={m.alunoFotoUrl ?? undefined}
+                            sx={{
+                              width: 32,
+                              height: 32,
+                              bgcolor: m.alunoFotoUrl ? undefined : alpha(theme.palette.primary.main, 0.12),
+                              color: theme.palette.primary.main,
+                            }}
+                          />
+                          <Box>
+                            <Typography variant="body2" fontWeight={600}>
+                              {m.alunoNome}
+                            </Typography>
+                            {m.alunoEmail && (
+                              <Typography variant="caption" color="text.secondary" display="block">
+                                {m.alunoEmail}
+                              </Typography>
+                            )}
+                          </Box>
+                        </Stack>
+                      </TableCell>
+                      <TableCell>
+                        <Typography variant="body2">{m.numeroInscricao ?? '—'}</Typography>
+                        {m.alunoNis && (
+                          <Typography variant="caption" color="text.secondary" display="block">
+                            NIS: {m.alunoNis}
+                          </Typography>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <Typography variant="body2">{m.nivelNome}</Typography>
+                        {m.modalidade && (
+                          <Typography variant="caption" color="text.secondary" display="block">
+                            {m.modalidade}
+                          </Typography>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <Typography variant="body2">{m.turmaNome ?? '—'}</Typography>
+                        <Typography variant="caption" color="text.secondary" display="block">
+                          {m.turno ?? ''}
+                        </Typography>
+                      </TableCell>
+                      <TableCell>
+                        <Typography variant="body2">{m.anoLetivo ?? '—'}</Typography>
+                        {m.dataMatricula && (
+                          <Typography variant="caption" color="text.secondary" display="block">
+                            Início: {m.dataMatricula}
+                          </Typography>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {m.statusNome && (
+                          <Chip
+                            label={m.statusNome}
+                            size="small"
+                            sx={{
+                              bgcolor: alpha(statusColor, 0.08),
+                              color: statusColor,
+                              fontWeight: 600,
+                            }}
+                          />
+                        )}
+                      </TableCell>
+                      <TableCell align="right">
+                        <Stack direction="row" spacing={1} justifyContent="flex-end">
+                          <Tooltip title="Ver ficha completa do aluno e da matrícula">
+                            <span>
+                              <Button size="small" variant="text" onClick={() => setMatriculaSelecionada(m)} disabled={salvandoEdicao || excluindoMatricula}>
+                                Detalhes
+                              </Button>
+                            </span>
+                          </Tooltip>
+                          <Tooltip title="Editar aluno + matrículas (todos os níveis deste aluno)">
+                            <span>
+                              <IconButton size="small" onClick={() => abrirDialogEditarMatricula(m)} disabled={salvandoEdicao || excluindoMatricula}>
+                                <EditIcon fontSize="small" />
+                              </IconButton>
+                            </span>
+                          </Tooltip>
+                          <Tooltip title="Excluir matrícula">
+                            <span>
+                              <IconButton size="small" color="error" onClick={() => abrirDialogExcluirMatricula(m)} disabled={excluindoMatricula}>
+                                <DeleteOutlineIcon fontSize="small" />
+                              </IconButton>
+                            </span>
+                          </Tooltip>
+                        </Stack>
+                      </TableCell>
+                    </TableRow>
+                  )
+                })}
+              </TableBody>
+            </Table>
+
+            <TablePagination
+              component="div"
+              count={matriculasFiltradas.length}
+              page={page}
+              onPageChange={handleChangePage}
+              rowsPerPage={rowsPerPage}
+              onRowsPerPageChange={handleChangeRowsPerPage}
+              rowsPerPageOptions={[5, 10, 25]}
+              labelRowsPerPage="Linhas por página"
+            />
+          </>
+        )}
+      </TableContainer>
+
+      {/* Dialog de nova matrícula */}
+      <Dialog open={novaAberta} onClose={handleFecharNovaMatricula} fullWidth maxWidth="md">
+        <DialogTitle>Nova matrícula</DialogTitle>
+        <DialogContent dividers>
+          <Stack spacing={3} sx={{ mt: 1 }}>
+            {/* Seção: Dados do aluno */}
+            <Box>
+              <Typography variant="subtitle2" fontWeight={700} gutterBottom>
+                Dados do aluno
               </Typography>
-            ))}
+
+              {/* Avatar + upload */}
+              <Stack direction="row" spacing={2} alignItems="center" sx={{ mb: 2 }}>
+                <AvatarAlunoMatricula
+                  supabase={supabase}
+                  nome={novoAluno.nome || 'Aluno'}
+                  fotoUrl={novoAluno.fotoUrl || undefined}
+                  sx={{
+                    width: 64,
+                    height: 64,
+                    bgcolor: novoAluno.fotoUrl ? undefined : alpha(theme.palette.primary.main, 0.12),
+                    color: theme.palette.primary.main,
+                    fontSize: 28,
+                  }}
+                />
+                <Box>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    startIcon={<PhotoCameraIcon />}
+                    disabled={uploadingFotoNovoAluno || salvandoNova}
+                    onClick={() => fileInputFotoNovoRef.current?.click()}
+                    sx={{ mr: 1, mb: { xs: 1, sm: 0 } }}
+                  >
+                    {uploadingFotoNovoAluno ? 'Enviando...' : 'Enviar foto'}
+                  </Button>
+                  <Typography variant="caption" color="text.secondary" display="block">
+                    A foto será salva no perfil do aluno (tabela usuários).
+                  </Typography>
+                  <input
+                    ref={fileInputFotoNovoRef}
+                    type="file"
+                    accept="image/*"
+                    hidden
+                    onChange={(e) => {
+                      const file = e.target.files?.[0]
+                      if (file) void uploadFotoAluno(file, 'novo')
+                    }}
+                  />
+                </Box>
+              </Stack>
+
+              <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} sx={{ mb: 1.5 }}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Nome completo do aluno"
+                  value={novoAluno.nome}
+                  onChange={(e) => setNovoAluno((p) => ({ ...p, nome: e.target.value }))}
+                  disabled={salvandoNova}
+                  helperText="Obrigatório para criar o usuário do aluno."
+                />
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="E-mail do aluno (opcional)"
+                  type="email"
+                  value={novoAluno.email}
+                  onChange={(e) => setNovoAluno((p) => ({ ...p, email: e.target.value }))}
+                  disabled={salvandoNova}
+                  helperText="Se vazio, será gerado automaticamente (ex.: joao_silva@ceja.com)."
+                />
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="CPF (opcional)"
+                  value={novoAluno.cpf}
+                  onChange={(e) => setNovoAluno((p) => ({ ...p, cpf: e.target.value }))}
+                  disabled={salvandoNova}
+                  helperText="Se informado, será usado como senha inicial."
+                />
+              </Stack>
+
+              <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} sx={{ mb: 1.5 }}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Data de nascimento"
+                  type="date"
+                  value={novoAluno.dataNasc}
+                  onChange={(e) => setNovoAluno((p) => ({ ...p, dataNasc: e.target.value }))}
+                  InputLabelProps={{ shrink: true }}
+                  disabled={salvandoNova}
+                />
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Celular"
+                  value={novoAluno.celular}
+                  onChange={(e) => setNovoAluno((p) => ({ ...p, celular: e.target.value }))}
+                  disabled={salvandoNova}
+                />
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="NIS (opcional)"
+                  value={novoAluno.nis}
+                  onChange={(e) => setNovoAluno((p) => ({ ...p, nis: e.target.value }))}
+                  disabled={salvandoNova}
+                />
+              </Stack>
+
+              <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} sx={{ mb: 1.5 }}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Nome da mãe (opcional)"
+                  value={novoAluno.nomeMae}
+                  onChange={(e) => setNovoAluno((p) => ({ ...p, nomeMae: e.target.value }))}
+                  disabled={salvandoNova}
+                />
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Nome do pai (opcional)"
+                  value={novoAluno.nomePai}
+                  onChange={(e) => setNovoAluno((p) => ({ ...p, nomePai: e.target.value }))}
+                  disabled={salvandoNova}
+                />
+              </Stack>
+
+              <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} sx={{ mb: 1.5 }}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Logradouro"
+                  value={novoAluno.logradouro}
+                  onChange={(e) => setNovoAluno((p) => ({ ...p, logradouro: e.target.value }))}
+                  disabled={salvandoNova}
+                />
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Número"
+                  value={novoAluno.numeroEnd}
+                  onChange={(e) => setNovoAluno((p) => ({ ...p, numeroEnd: e.target.value }))}
+                  disabled={salvandoNova}
+                />
+              </Stack>
+
+              <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} sx={{ mb: 1.5 }}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Bairro"
+                  value={novoAluno.bairro}
+                  onChange={(e) => setNovoAluno((p) => ({ ...p, bairro: e.target.value }))}
+                  disabled={salvandoNova}
+                />
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Município"
+                  value={novoAluno.municipio}
+                  onChange={(e) => setNovoAluno((p) => ({ ...p, municipio: e.target.value }))}
+                  disabled={salvandoNova}
+                />
+              </Stack>
+
+              <TextField
+                fullWidth
+                size="small"
+                label="Ponto de referência (opcional)"
+                value={novoAluno.pontoRef}
+                onChange={(e) => setNovoAluno((p) => ({ ...p, pontoRef: e.target.value }))}
+                disabled={salvandoNova}
+                sx={{ mb: 1.5 }}
+              />
+
+              <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} sx={{ mb: 1.5 }}>
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={novoAluno.usaTransporte}
+                      onChange={(e) => setNovoAluno((p) => ({ ...p, usaTransporte: e.target.checked }))}
+                      disabled={salvandoNova}
+                      size="small"
+                    />
+                  }
+                  label="Usa transporte escolar"
+                />
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={novoAluno.temNecessidade}
+                      onChange={(e) => setNovoAluno((p) => ({ ...p, temNecessidade: e.target.checked }))}
+                      disabled={salvandoNova}
+                      size="small"
+                    />
+                  }
+                  label="Possui necessidade especial"
+                />
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={novoAluno.temRestricao}
+                      onChange={(e) => setNovoAluno((p) => ({ ...p, temRestricao: e.target.checked }))}
+                      disabled={salvandoNova}
+                      size="small"
+                    />
+                  }
+                  label="Restrição alimentar"
+                />
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={novoAluno.temBeneficio}
+                      onChange={(e) => setNovoAluno((p) => ({ ...p, temBeneficio: e.target.checked }))}
+                      disabled={salvandoNova}
+                      size="small"
+                    />
+                  }
+                  label="Benefício de governo"
+                />
+              </Stack>
+
+              <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} sx={{ mb: 1.5 }}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Descrição da necessidade especial"
+                  value={novoAluno.descNecessidade}
+                  onChange={(e) => setNovoAluno((p) => ({ ...p, descNecessidade: e.target.value }))}
+                  disabled={salvandoNova || !novoAluno.temNecessidade}
+                />
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Descrição da restrição alimentar"
+                  value={novoAluno.descRestricao}
+                  onChange={(e) => setNovoAluno((p) => ({ ...p, descRestricao: e.target.value }))}
+                  disabled={salvandoNova || !novoAluno.temRestricao}
+                />
+              </Stack>
+
+              <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} sx={{ mb: 1.5 }}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Benefício de governo (detalhes)"
+                  value={novoAluno.descBeneficio}
+                  onChange={(e) => setNovoAluno((p) => ({ ...p, descBeneficio: e.target.value }))}
+                  disabled={salvandoNova || !novoAluno.temBeneficio}
+                />
+              </Stack>
+
+              <TextField
+                fullWidth
+                size="small"
+                label="Observações gerais do aluno"
+                value={novoAluno.observacoes}
+                onChange={(e) => setNovoAluno((p) => ({ ...p, observacoes: e.target.value }))}
+                disabled={salvandoNova}
+                multiline
+                minRows={2}
+              />
+            </Box>
+
+            <Divider />
+
+            {/* Seção: Matrículas (múltiplos níveis) */}
+            <Box>
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems={{ xs: 'flex-start', sm: 'center' }} justifyContent="space-between">
+                <Box>
+                  <Typography variant="subtitle2" fontWeight={700} gutterBottom>
+                    Matrículas (por nível)
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Um aluno pode ter mais de uma matrícula (ex.: concluiu Fundamental e iniciou Médio). Cada matrícula tem número de inscrição e turma próprios.
+                  </Typography>
+                </Box>
+
+                <Stack direction="row" spacing={1}>
+                  <Button variant="outlined" size="small" onClick={adicionarBlocoNovo} disabled={salvandoNova}>
+                    Adicionar matrícula
+                  </Button>
+                  <Button variant="outlined" size="small" onClick={adicionarTodosNiveisNovo} disabled={salvandoNova || niveisDisponiveis.length === 0}>
+                    Adicionar todos os níveis
+                  </Button>
+                </Stack>
+              </Stack>
+
+              <Stack spacing={2} sx={{ mt: 2 }}>
+                {novoBlocosMatricula.map((bloco) => (
+                  <MatriculaNivelCard
+                    key={bloco.formId}
+                    modo="novo"
+                    form={bloco}
+                    setForm={(patch) =>
+                      setNovoBlocosMatricula((prev) =>
+                        prev.map((b) => (b.formId === bloco.formId ? { ...b, ...patch } : b)),
+                      )
+                    }
+                    removerBloco={
+                      novoBlocosMatricula.length > 1
+                        ? () => setNovoBlocosMatricula((prev) => prev.filter((b) => b.formId !== bloco.formId))
+                        : undefined
+                    }
+                    desabilitado={salvandoNova}
+                    niveisDisponiveis={niveisDisponiveis}
+                    statusDisponiveis={statusDisponiveis}
+                    turmasDisponiveis={turmasDisponiveis}
+                    disciplinasDisponiveis={disciplinasDisponiveis}
+                    anosEscolaresDisponiveis={anosEscolaresDisponiveis}
+                    configDisciplinaAnoDisponiveis={configDisciplinaAnoDisponiveis}
+                    themeMode={theme.palette.mode}
+                  />
+                ))}
+              </Stack>
+            </Box>
           </Stack>
-        </Paper>
+        </DialogContent>
+        <DialogActions sx={{ p: 2 }}>
+          <Button onClick={handleFecharNovaMatricula} disabled={salvandoNova}>
+            Cancelar
+          </Button>
+          <Button variant="contained" onClick={handleSalvarNovaMatricula} disabled={salvandoNova}>
+            {salvandoNova ? 'Salvando...' : 'Salvar matrícula(s)'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Dialog Editar matrícula (mesmo layout do cadastro) */}
+      <Dialog open={editarAberto} onClose={handleFecharEditarMatricula} fullWidth maxWidth="md">
+        <DialogTitle>Editar aluno e matrículas</DialogTitle>
+        <DialogContent dividers>
+          <Stack spacing={3} sx={{ mt: 1 }}>
+            {/* Seção: Dados do aluno (edição) */}
+            <Box>
+              <Typography variant="subtitle2" fontWeight={700} gutterBottom>
+                Dados do aluno
+              </Typography>
+
+              {/* Avatar + upload */}
+              <Stack direction="row" spacing={2} alignItems="center" sx={{ mb: 2 }}>
+                <AvatarAlunoMatricula
+                  supabase={supabase}
+                  idAluno={editAlunoId}
+                  nome={editAluno.nome || 'Aluno'}
+                  fotoUrl={editAluno.fotoUrl || undefined}
+                  sx={{
+                    width: 64,
+                    height: 64,
+                    bgcolor: editAluno.fotoUrl ? undefined : alpha(theme.palette.primary.main, 0.12),
+                    color: theme.palette.primary.main,
+                    fontSize: 28,
+                  }}
+                />
+                <Box>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    startIcon={<PhotoCameraIcon />}
+                    disabled={uploadingFotoEditAluno || salvandoEdicao || excluindoMatricula}
+                    onClick={() => fileInputFotoEditRef.current?.click()}
+                    sx={{ mr: 1, mb: { xs: 1, sm: 0 } }}
+                  >
+                    {uploadingFotoEditAluno ? 'Enviando...' : 'Enviar foto'}
+                  </Button>
+                  <Typography variant="caption" color="text.secondary" display="block">
+                    Atualiza o campo usuarios.foto_url (não altera Auth).
+                  </Typography>
+                  <input
+                    ref={fileInputFotoEditRef}
+                    type="file"
+                    accept="image/*"
+                    hidden
+                    onChange={(e) => {
+                      const file = e.target.files?.[0]
+                      if (file) void uploadFotoAluno(file, 'edit')
+                    }}
+                  />
+                </Box>
+              </Stack>
+
+              <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} sx={{ mb: 1.5 }}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Nome completo do aluno"
+                  value={editAluno.nome}
+                  onChange={(e) => setEditAluno((p) => ({ ...p, nome: e.target.value }))}
+                  disabled={salvandoEdicao || excluindoMatricula}
+                />
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="E-mail (tabela usuários)"
+                  type="email"
+                  value={editAluno.email}
+                  onChange={(e) => setEditAluno((p) => ({ ...p, email: e.target.value }))}
+                  disabled={salvandoEdicao || excluindoMatricula}
+                  helperText="Obs.: alterar aqui não altera o e-mail de login no Auth."
+                />
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="CPF (tabela usuários)"
+                  value={editAluno.cpf}
+                  onChange={(e) => setEditAluno((p) => ({ ...p, cpf: e.target.value }))}
+                  disabled={salvandoEdicao || excluindoMatricula}
+                />
+              </Stack>
+
+              <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} sx={{ mb: 1.5 }}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Data de nascimento"
+                  type="date"
+                  value={editAluno.dataNasc}
+                  onChange={(e) => setEditAluno((p) => ({ ...p, dataNasc: e.target.value }))}
+                  InputLabelProps={{ shrink: true }}
+                  disabled={salvandoEdicao || excluindoMatricula}
+                />
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Celular"
+                  value={editAluno.celular}
+                  onChange={(e) => setEditAluno((p) => ({ ...p, celular: e.target.value }))}
+                  disabled={salvandoEdicao || excluindoMatricula}
+                />
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="NIS (tabela alunos)"
+                  value={editAluno.nis}
+                  onChange={(e) => setEditAluno((p) => ({ ...p, nis: e.target.value }))}
+                  disabled={salvandoEdicao || excluindoMatricula}
+                />
+              </Stack>
+
+              <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} sx={{ mb: 1.5 }}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Nome da mãe (tabela alunos)"
+                  value={editAluno.nomeMae}
+                  onChange={(e) => setEditAluno((p) => ({ ...p, nomeMae: e.target.value }))}
+                  disabled={salvandoEdicao || excluindoMatricula}
+                />
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Nome do pai (tabela alunos)"
+                  value={editAluno.nomePai}
+                  onChange={(e) => setEditAluno((p) => ({ ...p, nomePai: e.target.value }))}
+                  disabled={salvandoEdicao || excluindoMatricula}
+                />
+              </Stack>
+
+              <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} sx={{ mb: 1.5 }}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Logradouro"
+                  value={editAluno.logradouro}
+                  onChange={(e) => setEditAluno((p) => ({ ...p, logradouro: e.target.value }))}
+                  disabled={salvandoEdicao || excluindoMatricula}
+                />
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Número"
+                  value={editAluno.numeroEnd}
+                  onChange={(e) => setEditAluno((p) => ({ ...p, numeroEnd: e.target.value }))}
+                  disabled={salvandoEdicao || excluindoMatricula}
+                />
+              </Stack>
+
+              <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} sx={{ mb: 1.5 }}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Bairro"
+                  value={editAluno.bairro}
+                  onChange={(e) => setEditAluno((p) => ({ ...p, bairro: e.target.value }))}
+                  disabled={salvandoEdicao || excluindoMatricula}
+                />
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Município"
+                  value={editAluno.municipio}
+                  onChange={(e) => setEditAluno((p) => ({ ...p, municipio: e.target.value }))}
+                  disabled={salvandoEdicao || excluindoMatricula}
+                />
+              </Stack>
+
+              <TextField
+                fullWidth
+                size="small"
+                label="Ponto de referência (opcional)"
+                value={editAluno.pontoRef}
+                onChange={(e) => setEditAluno((p) => ({ ...p, pontoRef: e.target.value }))}
+                disabled={salvandoEdicao || excluindoMatricula}
+                sx={{ mb: 1.5 }}
+              />
+
+              <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} sx={{ mb: 1.5 }}>
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={editAluno.usaTransporte}
+                      onChange={(e) => setEditAluno((p) => ({ ...p, usaTransporte: e.target.checked }))}
+                      disabled={salvandoEdicao || excluindoMatricula}
+                      size="small"
+                    />
+                  }
+                  label="Usa transporte escolar"
+                />
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={editAluno.temNecessidade}
+                      onChange={(e) => setEditAluno((p) => ({ ...p, temNecessidade: e.target.checked }))}
+                      disabled={salvandoEdicao || excluindoMatricula}
+                      size="small"
+                    />
+                  }
+                  label="Possui necessidade especial"
+                />
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={editAluno.temRestricao}
+                      onChange={(e) => setEditAluno((p) => ({ ...p, temRestricao: e.target.checked }))}
+                      disabled={salvandoEdicao || excluindoMatricula}
+                      size="small"
+                    />
+                  }
+                  label="Restrição alimentar"
+                />
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={editAluno.temBeneficio}
+                      onChange={(e) => setEditAluno((p) => ({ ...p, temBeneficio: e.target.checked }))}
+                      disabled={salvandoEdicao || excluindoMatricula}
+                      size="small"
+                    />
+                  }
+                  label="Benefício de governo"
+                />
+              </Stack>
+
+              <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} sx={{ mb: 1.5 }}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Descrição da necessidade especial"
+                  value={editAluno.descNecessidade}
+                  onChange={(e) => setEditAluno((p) => ({ ...p, descNecessidade: e.target.value }))}
+                  disabled={salvandoEdicao || excluindoMatricula || !editAluno.temNecessidade}
+                />
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Descrição da restrição alimentar"
+                  value={editAluno.descRestricao}
+                  onChange={(e) => setEditAluno((p) => ({ ...p, descRestricao: e.target.value }))}
+                  disabled={salvandoEdicao || excluindoMatricula || !editAluno.temRestricao}
+                />
+              </Stack>
+
+              <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} sx={{ mb: 1.5 }}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Benefício de governo (detalhes)"
+                  value={editAluno.descBeneficio}
+                  onChange={(e) => setEditAluno((p) => ({ ...p, descBeneficio: e.target.value }))}
+                  disabled={salvandoEdicao || excluindoMatricula || !editAluno.temBeneficio}
+                />
+              </Stack>
+
+              <TextField
+                fullWidth
+                size="small"
+                label="Observações gerais do aluno"
+                value={editAluno.observacoes}
+                onChange={(e) => setEditAluno((p) => ({ ...p, observacoes: e.target.value }))}
+                disabled={salvandoEdicao || excluindoMatricula}
+                multiline
+                minRows={2}
+              />
+            </Box>
+
+            <Divider />
+
+            {/* Seção: Matrículas (múltiplos níveis) — edição */}
+            <Box>
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems={{ xs: 'flex-start', sm: 'center' }} justifyContent="space-between">
+                <Box>
+                  <Typography variant="subtitle2" fontWeight={700} gutterBottom>
+                    Matrículas (por nível)
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Edite as matrículas existentes (um bloco por matrícula) e, se necessário, adicione novas matrículas para outros níveis.
+                  </Typography>
+                </Box>
+
+                <Stack direction="row" spacing={1}>
+                  <Button variant="outlined" size="small" onClick={adicionarBlocoEdit} disabled={salvandoEdicao || excluindoMatricula}>
+                    Adicionar matrícula
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={adicionarTodosNiveisEdit}
+                    disabled={salvandoEdicao || excluindoMatricula || niveisDisponiveis.length === 0}
+                  >
+                    Adicionar todos os níveis
+                  </Button>
+                </Stack>
+              </Stack>
+
+              <Stack spacing={2} sx={{ mt: 2 }}>
+                {editBlocosMatricula.map((bloco) => (
+                  <MatriculaNivelCard
+                    key={bloco.formId}
+                    modo="editar"
+                    form={bloco}
+                    setForm={(patch) =>
+                      setEditBlocosMatricula((prev) =>
+                        prev.map((b) => (b.formId === bloco.formId ? { ...b, ...patch } : b)),
+                      )
+                    }
+                    removerBloco={
+                      !bloco.idMatricula && editBlocosMatricula.length > 1
+                        ? () =>
+                            setEditBlocosMatricula((prev) =>
+                              prev.filter((b) => b.formId !== bloco.formId),
+                            )
+                        : undefined
+                    }
+                    desabilitado={salvandoEdicao || excluindoMatricula}
+                    niveisDisponiveis={niveisDisponiveis}
+                    statusDisponiveis={statusDisponiveis}
+                    turmasDisponiveis={turmasDisponiveis}
+                    disciplinasDisponiveis={disciplinasDisponiveis}
+                    anosEscolaresDisponiveis={anosEscolaresDisponiveis}
+                    configDisciplinaAnoDisponiveis={configDisciplinaAnoDisponiveis}
+                    themeMode={theme.palette.mode}
+                  />
+                ))}
+              </Stack>
+            </Box>
+          </Stack>
+        </DialogContent>
+        <DialogActions sx={{ p: 2 }}>
+          <Button onClick={handleFecharEditarMatricula} disabled={salvandoEdicao || excluindoMatricula}>
+            Cancelar
+          </Button>
+          <Button variant="contained" onClick={handleSalvarEdicaoMatricula} disabled={salvandoEdicao || excluindoMatricula}>
+            {salvandoEdicao ? 'Salvando...' : 'Salvar alterações'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Dialog de confirmação de exclusão */}
+      <Dialog open={dialogExcluirAberto} onClose={fecharDialogExcluirMatricula} fullWidth maxWidth="xs">
+        <DialogTitle>Confirmar exclusão</DialogTitle>
+        <DialogContent sx={{ pt: 2 }}>
+          <Typography variant="body2" sx={{ mb: 1.5 }}>
+            Tem certeza de que deseja excluir a matrícula do aluno{' '}
+            <strong>{matriculaParaExcluir?.alunoNome ?? 'selecionado'}</strong>?
+          </Typography>
+          {matriculaParaExcluir?.numeroInscricao && (
+            <Typography variant="body2" color="text.secondary">
+              Matrícula: {matriculaParaExcluir.numeroInscricao}
+            </Typography>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ p: 2.5, pt: 0 }}>
+          <Button onClick={fecharDialogExcluirMatricula} disabled={excluindoMatricula}>
+            Cancelar
+          </Button>
+          <Button variant="contained" color="error" onClick={handleConfirmarExcluirMatricula} disabled={excluindoMatricula}>
+            {excluindoMatricula ? 'Excluindo...' : 'Excluir matrícula'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Dialog de ficha completa (aluno + matrícula) */}
+      {matriculaSelecionada && (
+        <Dialog open={!!matriculaSelecionada} onClose={() => setMatriculaSelecionada(null)} fullWidth maxWidth="md">
+          <DialogTitle>Ficha do aluno e da matrícula</DialogTitle>
+          <DialogContent dividers>
+            <Stack spacing={3}>
+              {/* Cabeçalho com foto + nome */}
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems={{ xs: 'flex-start', sm: 'center' }}>
+                <AvatarAlunoMatricula
+                  supabase={supabase}
+                  idAluno={matriculaSelecionada.alunoId}
+                  nome={matriculaSelecionada.alunoNome}
+                  fotoUrl={matriculaSelecionada.alunoFotoUrl ?? undefined}
+                  sx={{
+                    width: 72,
+                    height: 72,
+                    bgcolor: matriculaSelecionada.alunoFotoUrl ? undefined : alpha(theme.palette.primary.main, 0.12),
+                    color: theme.palette.primary.main,
+                    fontSize: 32,
+                  }}
+                />
+                <Box sx={{ flex: 1 }}>
+                  <Typography variant="h6" fontWeight={700}>
+                    {matriculaSelecionada.alunoNome}
+                  </Typography>
+                  {matriculaSelecionada.alunoEmail && (
+                    <Typography variant="body2" color="text.secondary">
+                      {matriculaSelecionada.alunoEmail}
+                    </Typography>
+                  )}
+                  <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ mt: 1 }}>
+                    {matriculaSelecionada.alunoNis && (
+                      <Chip size="small" icon={<AssignmentIndIcon fontSize="small" />} label={`NIS: ${matriculaSelecionada.alunoNis}`} variant="outlined" />
+                    )}
+                    {matriculaSelecionada.dataNascimento && (
+                      <Chip size="small" icon={<EventIcon fontSize="small" />} label={`Nasc.: ${matriculaSelecionada.dataNascimento}`} variant="outlined" />
+                    )}
+                    {matriculaSelecionada.cpf && <Chip size="small" label={`CPF: ${matriculaSelecionada.cpf}`} variant="outlined" />}
+                  </Stack>
+                </Box>
+              </Stack>
+
+              <Divider />
+
+              {/* Filiação e endereço */}
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+                <Box sx={{ flex: 1 }}>
+                  <Typography variant="subtitle2" fontWeight={700} gutterBottom>
+                    Filiação
+                  </Typography>
+                  <Typography variant="body2">Mãe: {matriculaSelecionada.alunoNomeMae ?? 'Não informado'}</Typography>
+                  <Typography variant="body2">Pai: {matriculaSelecionada.alunoNomePai ?? 'Não informado'}</Typography>
+                </Box>
+
+                <Box sx={{ flex: 1 }}>
+                  <Typography variant="subtitle2" fontWeight={700} gutterBottom>
+                    Endereço
+                  </Typography>
+                  <Typography variant="body2">
+                    <HomeIcon fontSize="inherit" style={{ marginRight: 4 }} />
+                    {matriculaSelecionada.logradouro ?? 'Não informado'}
+                    {matriculaSelecionada.numeroEndereco && `, ${matriculaSelecionada.numeroEndereco}`}
+                  </Typography>
+                  <Typography variant="body2">
+                    {matriculaSelecionada.bairro ?? '—'} - {matriculaSelecionada.municipio ?? '—'}
+                  </Typography>
+                  {matriculaSelecionada.pontoReferencia && <Typography variant="body2">Ref.: {matriculaSelecionada.pontoReferencia}</Typography>}
+                </Box>
+              </Stack>
+
+              {/* Situação escolar da matrícula */}
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+                <Box sx={{ flex: 1 }}>
+                  <Typography variant="subtitle2" fontWeight={700} gutterBottom>
+                    Matrícula
+                  </Typography>
+                  <Typography variant="body2">Nº de inscrição: {matriculaSelecionada.numeroInscricao ?? '—'}</Typography>
+                  <Typography variant="body2">Nível de ensino: {matriculaSelecionada.nivelNome}</Typography>
+                  <Typography variant="body2">Modalidade: {matriculaSelecionada.modalidade ?? '—'}</Typography>
+                  <Typography variant="body2">Ano letivo: {matriculaSelecionada.anoLetivo ?? '—'}</Typography>
+                </Box>
+
+                <Box sx={{ flex: 1 }}>
+                  <Typography variant="subtitle2" fontWeight={700} gutterBottom>
+                    Turma e datas
+                  </Typography>
+                  <Typography variant="body2">Turma: {matriculaSelecionada.turmaNome ?? '—'}</Typography>
+                  <Typography variant="body2">Turno: {matriculaSelecionada.turno ?? '—'}</Typography>
+                  <Typography variant="body2">Início: {matriculaSelecionada.dataMatricula ?? '—'}</Typography>
+                  <Typography variant="body2">Conclusão: {matriculaSelecionada.dataConclusao ?? '—'}</Typography>
+                  <Typography variant="body2">Status: {matriculaSelecionada.statusNome ?? '—'}</Typography>
+                </Box>
+              </Stack>
+
+              {/* Informações complementares */}
+              <Box>
+                <Typography variant="subtitle2" fontWeight={700} gutterBottom>
+                  Informações complementares
+                </Typography>
+                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} flexWrap="wrap">
+                  <Chip
+                    size="small"
+                    icon={<ElderlyIcon fontSize="small" />}
+                    label={matriculaSelecionada.usaTransporteEscolar ? 'Usa transporte escolar' : 'Não usa transporte escolar'}
+                    variant="outlined"
+                  />
+                  <Chip
+                    size="small"
+                    icon={<AccessibleIcon fontSize="small" />}
+                    label={matriculaSelecionada.possuiNecessidadeEspecial ? 'Possui necessidade especial' : 'Sem necessidade especial'}
+                    variant="outlined"
+                  />
+                  <Chip
+                    size="small"
+                    icon={<RestaurantIcon fontSize="small" />}
+                    label={matriculaSelecionada.possuiRestricaoAlimentar ? 'Restrição alimentar' : 'Sem restrição alimentar'}
+                    variant="outlined"
+                  />
+                  <Chip
+                    size="small"
+                    icon={<LocalAtmIcon fontSize="small" />}
+                    label={matriculaSelecionada.possuiBeneficioGoverno ? 'Benefício de governo' : 'Sem benefício de governo'}
+                    variant="outlined"
+                  />
+                </Stack>
+
+                {matriculaSelecionada.qualNecessidadeEspecial && (
+                  <Typography variant="body2" sx={{ mt: 1 }}>
+                    Necessidade especial: {matriculaSelecionada.qualNecessidadeEspecial}
+                  </Typography>
+                )}
+                {matriculaSelecionada.qualRestricaoAlimentar && <Typography variant="body2">Restrição alimentar: {matriculaSelecionada.qualRestricaoAlimentar}</Typography>}
+                {matriculaSelecionada.qualBeneficioGoverno && <Typography variant="body2">Benefício de governo: {matriculaSelecionada.qualBeneficioGoverno}</Typography>}
+                {matriculaSelecionada.observacoesGerais && (
+                  <Box sx={{ mt: 1.5 }}>
+                    <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
+                      Observações gerais
+                    </Typography>
+                    <Typography variant="body2">{matriculaSelecionada.observacoesGerais}</Typography>
+                  </Box>
+                )}
+              </Box>
+            </Stack>
+          </DialogContent>
+          <DialogActions sx={{ p: 2 }}>
+            <Button onClick={() => setMatriculaSelecionada(null)}>Fechar</Button>
+          </DialogActions>
+        </Dialog>
       )}
     </Box>
-  );
-};
+  )
+}
 
-export default SecretariaImportarMatriculasPage;
+export default SecretariaMatriculasPage

@@ -12,6 +12,7 @@ import DescriptionIcon from '@mui/icons-material/Description'
 import AssignmentIndIcon from '@mui/icons-material/AssignmentInd'
 import ListAltIcon from '@mui/icons-material/ListAlt'
 import CategoryIcon from '@mui/icons-material/Category'
+import HistoryEduIcon from '@mui/icons-material/HistoryEdu'
 
 import type { PapelUsuario } from '../contextos/AuthContext'
 
@@ -108,6 +109,13 @@ export const menusPorContexto: Record<ContextoPainel, ItemMenuConfig[]> = {
       rotulo: 'Relatórios e fichas',
       caminho: '/secretaria/relatorios-fichas',
       icone: <DescriptionIcon />,
+      grupo: 'Relatórios',
+    },
+    {
+      id: 'admin-sec-historico',
+      rotulo: 'Histórico',
+      caminho: '/secretaria/historico',
+      icone: <HistoryEduIcon />,
       grupo: 'Relatórios',
     },
 
@@ -217,6 +225,13 @@ export const menusPorContexto: Record<ContextoPainel, ItemMenuConfig[]> = {
       icone: <DescriptionIcon />,
       grupo: 'Relatórios',
     },
+    {
+      id: 'sec-historico',
+      rotulo: 'Histórico',
+      caminho: '/secretaria/historico',
+      icone: <HistoryEduIcon />,
+      grupo: 'Relatórios',
+    },
   ],
 
   /**
@@ -312,6 +327,13 @@ export const menusPorContexto: Record<ContextoPainel, ItemMenuConfig[]> = {
       grupo: 'Secretaria',
     },
     {
+      id: 'coord-historico',
+      rotulo: 'Histórico',
+      caminho: '/secretaria/historico',
+      icone: <HistoryEduIcon />,
+      grupo: 'Secretaria',
+    },
+    {
       id: 'coord-sasp',
       rotulo: 'SASP',
       caminho: '/coordenacao/sasp',
@@ -391,6 +413,13 @@ export const menusPorContexto: Record<ContextoPainel, ItemMenuConfig[]> = {
       rotulo: 'Relatórios e fichas',
       caminho: '/secretaria/relatorios-fichas',
       icone: <DescriptionIcon />,
+      grupo: 'Secretaria',
+    },
+    {
+      id: 'dir-historico',
+      rotulo: 'Histórico',
+      caminho: '/secretaria/historico',
+      icone: <HistoryEduIcon />,
       grupo: 'Secretaria',
     },
     {

@@ -7,7 +7,6 @@ import {
   AccordionDetails,
   AccordionSummary,
   Alert,
-  Avatar,
   Box,
   Button,
   Checkbox,
@@ -42,17 +41,26 @@ import {
 import { alpha } from '@mui/material/styles'
 
 import ArrowBackIcon from '@mui/icons-material/ArrowBack'
-import PersonIcon from '@mui/icons-material/Person'
 import EditIcon from '@mui/icons-material/Edit'
 import WarningAmberIcon from '@mui/icons-material/WarningAmber'
 import DeleteIcon from '@mui/icons-material/Delete'
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
 import AddIcon from '@mui/icons-material/Add'
 import CloseIcon from '@mui/icons-material/Close'
+import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf'
 
 import { useSupabase } from '../../contextos/SupabaseContext'
 import { useNotificacaoContext } from '../../contextos/NotificacaoContext'
 import { useAuth } from '../../contextos/AuthContext'
+import AvatarAlunoFicha from './ficha-acompanhamento/components/AvatarAlunoFicha'
+import { baixarFichaAcompanhamentoPdf, montarEnderecoPdf, montarHistoricoPdfRows } from './ficha-acompanhamento/pdf/gerarFichaAcompanhamentoPdf'
+import {
+  carregarFotoAlunoDataUrl,
+  formatarRegistroAtividadeLinha,
+  limparResumoTransferencia,
+  resolverFotoAlunoUrl,
+  sessaoDeveAparecerNoHistorico,
+} from './ficha-acompanhamento/utils'
 
 // ===================== Helpers =====================
 
@@ -454,6 +462,15 @@ const TIPOS = {
   RECUPERACAO: 5,
 } as const
 
+function sessaoHasActivityType(sessao: { atividades?: Array<{ id_tipo_protocolo?: number | null }> | null }, type: 'AT' | 'AV' | 'RE') {
+  const typeMap: Record<'AT' | 'AV' | 'RE', number[]> = {
+    AT: [TIPOS.PESQUISA, TIPOS.COMPLEMENTAR],
+    AV: [TIPOS.AVALIACAO, TIPOS.ASO],
+    RE: [TIPOS.RECUPERACAO],
+  }
+  return (sessao.atividades || []).some((a) => typeMap[type].includes(Number(a.id_tipo_protocolo)))
+}
+
 // ===================== Types =====================
 
 type TipoProtocoloRow = {
@@ -468,6 +485,14 @@ type UsuarioJoin = {
   foto_url?: string | null
   cpf?: string | null
   data_nascimento?: string | null
+  celular?: string | null
+  logradouro?: string | null
+  numero_endereco?: string | null
+  bairro?: string | null
+  municipio?: string | null
+  ponto_referencia?: string | null
+  facebook_url?: string | null
+  instagram_url?: string | null
 }
 
 type AlunoJoin = {
@@ -585,8 +610,9 @@ function FichaHeader(props: {
   anosCursados?: string
   peDeMeia: PeDeMeiaResultado
   isPCD: boolean
+  supabase: any
 }) {
-  const { progresso, anosCursados, peDeMeia, isPCD } = props
+  const { progresso, anosCursados, peDeMeia, isPCD, supabase } = props
 
   const disc = first(progresso.disciplinas)
   const mat = first(progresso.matriculas)
@@ -626,9 +652,14 @@ function FichaHeader(props: {
         alignItems={{ xs: 'center', sm: 'center' }}
         sx={{ width: '100%', minWidth: 0 }}
       >
-        <Avatar sx={{ width: 86, height: 86, flexShrink: 0 }} src={user?.foto_url ?? undefined} variant="rounded">
-          <PersonIcon sx={{ fontSize: 60 }} />
-        </Avatar>
+        <AvatarAlunoFicha
+          supabase={supabase}
+          idAluno={aluno?.id_aluno ?? null}
+          fotoUrl={user?.foto_url ?? null}
+          nome={user?.name ?? 'Aluno'}
+          variant="rounded"
+          sx={{ width: 86, height: 86, flexShrink: 0 }}
+        />
 
         <Box sx={{ width: '100%', minWidth: 0 }}>
           <Typography
@@ -919,14 +950,6 @@ function HistoricoAtendimentos(props: {
   const theme = useTheme()
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'))
 
-  const hasActivityType = (sessao: SessaoHistorico, type: 'AT' | 'AV' | 'RE') => {
-    const typeMap: Record<'AT' | 'AV' | 'RE', number[]> = {
-      AT: [TIPOS.PESQUISA, TIPOS.COMPLEMENTAR],
-      AV: [TIPOS.AVALIACAO, TIPOS.ASO],
-      RE: [TIPOS.RECUPERACAO],
-    }
-    return (sessao.atividades || []).some((a) => typeMap[type].includes(Number(a.id_tipo_protocolo)))
-  }
 
   // ======= MOBILE: cards =======
   if (isMobile) {
@@ -941,15 +964,8 @@ function HistoricoAtendimentos(props: {
         ) : (
           <Stack spacing={1.5}>
             {sessoes.map((sessao) => {
-              const registroTexto = (sessao.atividades || [])
-                .map((at) => {
-                  const tipoNome = first(at.tipos_protocolo)?.nome ?? 'Atividade'
-                  const status = at.status || 'N/D'
-                  const nota =
-                    at.nota !== null && at.nota !== undefined ? ` (Nota ${Number(at.nota).toFixed(1).replace('.', ',')})` : ''
-                  return `${tipoNome} #${at.numero_protocolo}: ${status}${nota}`
-                })
-                .join('\n')
+              const registroTexto = (sessao.atividades || []).map((at) => formatarRegistroAtividadeLinha(at)).join('\n')
+              const resumoLimpo = limparResumoTransferencia(sessao.resumo_atividades)
 
               return (
                 <Paper
@@ -989,20 +1005,20 @@ function HistoricoAtendimentos(props: {
                       <Chip
                         size="small"
                         label="AT"
-                        color={hasActivityType(sessao, 'AT') ? 'info' : 'default'}
-                        variant={hasActivityType(sessao, 'AT') ? 'filled' : 'outlined'}
+                        color={sessaoHasActivityType(sessao, 'AT') ? 'info' : 'default'}
+                        variant={sessaoHasActivityType(sessao, 'AT') ? 'filled' : 'outlined'}
                       />
                       <Chip
                         size="small"
                         label="AV"
-                        color={hasActivityType(sessao, 'AV') ? 'info' : 'default'}
-                        variant={hasActivityType(sessao, 'AV') ? 'filled' : 'outlined'}
+                        color={sessaoHasActivityType(sessao, 'AV') ? 'info' : 'default'}
+                        variant={sessaoHasActivityType(sessao, 'AV') ? 'filled' : 'outlined'}
                       />
                       <Chip
                         size="small"
                         label="RE"
-                        color={hasActivityType(sessao, 'RE') ? 'info' : 'default'}
-                        variant={hasActivityType(sessao, 'RE') ? 'filled' : 'outlined'}
+                        color={sessaoHasActivityType(sessao, 'RE') ? 'info' : 'default'}
+                        variant={sessaoHasActivityType(sessao, 'RE') ? 'filled' : 'outlined'}
                       />
                     </Stack>
 
@@ -1012,9 +1028,9 @@ function HistoricoAtendimentos(props: {
                       {registroTexto || '-'}
                     </Typography>
 
-                    {sessao.resumo_atividades ? (
+                    {resumoLimpo ? (
                       <Typography variant="body2" color="text.secondary" sx={{ whiteSpace: 'pre-wrap', fontStyle: 'italic' }}>
-                        {sessao.resumo_atividades}
+                        {resumoLimpo}
                       </Typography>
                     ) : null}
                   </Stack>
@@ -1053,29 +1069,23 @@ function HistoricoAtendimentos(props: {
           <TableBody>
             {sessoes.length > 0 ? (
               sessoes.map((sessao) => {
-                const registroTexto = (sessao.atividades || [])
-                  .map((at) => {
-                    const tipoNome = first(at.tipos_protocolo)?.nome ?? 'Atividade'
-                    const status = at.status || 'N/D'
-                    const nota = at.nota !== null && at.nota !== undefined ? ` - Nota: ${Number(at.nota).toFixed(1)}` : ''
-                    return `${tipoNome} (#${at.numero_protocolo}) (${status})${nota}`
-                  })
-                  .join('; ')
+                const registroTexto = (sessao.atividades || []).map((at) => formatarRegistroAtividadeLinha(at)).join('; ')
+                const resumoLimpo = limparResumoTransferencia(sessao.resumo_atividades)
 
                 return (
                   <TableRow key={sessao.id_sessao}>
                     <TableCell>{formatDateBR(sessao.hora_entrada)}</TableCell>
                     <TableCell>{`${formatTimeBR(sessao.hora_entrada)} - ${sessao.hora_saida ? formatTimeBR(sessao.hora_saida) : '...'}`}</TableCell>
                     <TableCell align="center">X</TableCell>
-                    <TableCell align="center">{hasActivityType(sessao, 'AT') ? 'X' : ''}</TableCell>
-                    <TableCell align="center">{hasActivityType(sessao, 'AV') ? 'X' : ''}</TableCell>
-                    <TableCell align="center">{hasActivityType(sessao, 'RE') ? 'X' : ''}</TableCell>
+                    <TableCell align="center">{sessaoHasActivityType(sessao, 'AT') ? 'X' : ''}</TableCell>
+                    <TableCell align="center">{sessaoHasActivityType(sessao, 'AV') ? 'X' : ''}</TableCell>
+                    <TableCell align="center">{sessaoHasActivityType(sessao, 'RE') ? 'X' : ''}</TableCell>
                     <TableCell>{sessao.professor_nome || 'N/A'}</TableCell>
                     <TableCell>
                       <Typography variant="body2">{registroTexto || '-'}</Typography>
-                      {sessao.resumo_atividades ? (
+                      {resumoLimpo ? (
                         <Typography variant="body2" sx={{ fontStyle: 'italic', mt: 1, whiteSpace: 'pre-wrap' }}>
-                          {sessao.resumo_atividades}
+                          {resumoLimpo}
                         </Typography>
                       ) : null}
                     </TableCell>
@@ -1168,7 +1178,7 @@ function EditHistoricoModal(props: {
 
     setHoraEntrada(sessao.hora_entrada ?? '')
     setHoraSaida(sessao.hora_saida ?? '')
-    setResumo(sessao.resumo_atividades ?? '')
+    setResumo(limparResumoTransferencia(sessao.resumo_atividades))
     setDeletedIds([])
     setErroLocal('')
 
@@ -1378,7 +1388,7 @@ function EditHistoricoModal(props: {
             ) : (
               <Stack spacing={1}>
                 {atividades.map((a, idx) => {
-                  const tipoNome = tipos.find((t) => t.id_tipo_protocolo === a.id_tipo_protocolo)?.nome ?? `Tipo #${a.id_tipo_protocolo}`
+                  const tipoNome = tipos.find((t) => t.id_tipo_protocolo === a.id_tipo_protocolo)?.nome ?? `Tipo ${a.id_tipo_protocolo}`
                   const showNota = !(a.id_tipo_protocolo === TIPOS.PESQUISA || a.id_tipo_protocolo === TIPOS.ASO)
                   const maxProt = Math.max(1, totalProtocolos || 1)
 
@@ -1839,6 +1849,7 @@ export default function FichaAcompanhamentoPage() {
   const [protocolos, setProtocolos] = useState<ProtocoloState[]>([])
   const [sessoes, setSessoes] = useState<SessaoHistorico[]>([])
   const [observacoes, setObservacoes] = useState<string>('')
+  const [gerandoPdf, setGerandoPdf] = useState(false)
 
   const [tiposProtocolo, setTiposProtocolo] = useState<TipoProtocoloRow[]>([])
 
@@ -1851,6 +1862,8 @@ export default function FichaAcompanhamentoPage() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [sessaoParaExcluir, setSessaoParaExcluir] = useState<SessaoHistorico | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
+
+  const sessoesHistorico = useMemo(() => sessoes.filter((sessao) => sessaoDeveAparecerNoHistorico(sessao)), [sessoes])
 
   const totalProtocolos = useMemo(() => (faixas?.length ? faixas[faixas.length - 1].fim : 0), [faixas])
 
@@ -2068,7 +2081,7 @@ export default function FichaAcompanhamentoPage() {
               qual_beneficio_governo,
               possui_necessidade_especial,
               qual_necessidade_especial,
-              usuarios(name,email,foto_url,cpf,data_nascimento)
+              usuarios(name,email,foto_url,cpf,data_nascimento,celular,logradouro,numero_endereco,bairro,municipio,ponto_referencia,facebook_url,instagram_url)
             )
           )
         `
@@ -2112,7 +2125,7 @@ export default function FichaAcompanhamentoPage() {
             const ano = first(c?.anos_escolares) as any
             return {
               id_ano_escolar: Number(c.id_ano_escolar),
-              nome_ano: String(ano?.nome_ano ?? `Ano #${c.id_ano_escolar}`),
+              nome_ano: String(ano?.nome_ano ?? `Ano ${c.id_ano_escolar}`),
               quantidade_protocolos: Number(c.quantidade_protocolos ?? 0),
               id_nivel_ensino: ano?.id_nivel_ensino != null ? Number(ano.id_nivel_ensino) : null,
             }
@@ -2517,6 +2530,83 @@ export default function FichaAcompanhamentoPage() {
 
   const anosCursados = useMemo(() => '', [])
 
+  const handleGerarPdf = useCallback(async () => {
+    if (!supabase || !progresso) return
+
+    const mat = first(progresso.matriculas)
+    const aluno = first(mat?.alunos)
+    const user = first(aluno?.usuarios)
+    const disciplina = first(progresso.disciplinas)?.nome_disciplina ?? '-'
+    const nivel = first(mat?.niveis_ensino)?.nome ?? '-'
+
+    const sessoesOrdenadas = [...sessoes].sort((a, b) => new Date(a.hora_entrada).getTime() - new Date(b.hora_entrada).getTime())
+    const sessoesParaPdf = sessoesHistorico.map((sessao) => ({
+      ...sessao,
+      hasAT: sessaoHasActivityType(sessao, 'AT'),
+      hasAV: sessaoHasActivityType(sessao, 'AV'),
+      hasRE: sessaoHasActivityType(sessao, 'RE'),
+    }))
+    const primeiraSessao = sessoesOrdenadas[0] ?? null
+    const ultimaSessao = sessoesOrdenadas[sessoesOrdenadas.length - 1] ?? null
+
+    const modalidadeNormalizada = normalizarTexto(String(mat?.modalidade ?? ''))
+    const situacao = modalidadeNormalizada.includes('orient')
+      ? 'ORIENT'
+      : modalidadeNormalizada.includes('aproveit')
+        ? 'APROVEIT'
+        : gradeData?.mediaFinal != null
+          ? 'CLASSIF'
+          : 'PROGR'
+
+    setGerandoPdf(true)
+    try {
+      const fotoResolvida = await resolverFotoAlunoUrl(supabase as any, aluno?.id_aluno ?? null, user?.foto_url ?? null)
+      const fotoDataUrl = await carregarFotoAlunoDataUrl(supabase as any, aluno?.id_aluno ?? null, user?.foto_url ?? null)
+
+      await baixarFichaAcompanhamentoPdf(
+        {
+          numeroInscricao: String(mat?.numero_inscricao ?? ''),
+          nivel: String(nivel || '-'),
+          disciplina: String(disciplina || '-'),
+          inicio: formatDateBR(primeiraSessao?.hora_entrada ?? mat?.data_matricula ?? null),
+          termino: formatDateBR(ultimaSessao?.hora_saida ?? ultimaSessao?.hora_entrada ?? null),
+          nome: String(user?.name ?? 'Aluno'),
+          nomeSocial: '',
+          telefone: user?.celular ?? '',
+          dataNascimento: user?.data_nascimento ?? '',
+          endereco: montarEnderecoPdf({
+            logradouro: user?.logradouro ?? '',
+            numero_endereco: user?.numero_endereco ?? '',
+            bairro: user?.bairro ?? '',
+            municipio: user?.municipio ?? '',
+            ponto_referencia: user?.ponto_referencia ?? '',
+          }),
+          bairro: String(user?.bairro ?? ''),
+          pontoReferencia: String(user?.ponto_referencia ?? ''),
+          whatsapp: user?.celular ?? '',
+          facebook: String(user?.facebook_url ?? ''),
+          instagram: String(user?.instagram_url ?? ''),
+          email: String(user?.email ?? ''),
+          situacao,
+          gradeData,
+          historico: montarHistoricoPdfRows(sessoesParaPdf),
+          observacoes: observacoes || '',
+          assinaturaProfessor: String(ultimaSessao?.professor_nome ?? usuario?.email ?? ''),
+          fotoUrl: fotoResolvida ?? user?.foto_url ?? '',
+          fotoDataUrl: fotoDataUrl ?? '',
+        },
+        `ficha-acompanhamento-${String(mat?.numero_inscricao ?? 'aluno')}.pdf`
+      )
+
+      sucesso('PDF da ficha gerado com sucesso.')
+    } catch (e: any) {
+      console.error(e)
+      erro(e?.message || 'Falha ao gerar PDF da ficha.')
+    } finally {
+      if (mountedRef.current) setGerandoPdf(false)
+    }
+  }, [supabase, progresso, sessoes, sessoesHistorico, gradeData, observacoes, usuario?.email, sucesso, erro])
+
   if (!supabase) {
     return (
       <Alert severity="warning" sx={{ m: 2 }}>
@@ -2552,22 +2642,40 @@ export default function FichaAcompanhamentoPage() {
         overflowX: 'hidden',
       }}
     >
-      <Box sx={{ display: 'flex', alignItems: 'center', mb: 2, minWidth: 0 }}>
-        <IconButton onClick={() => navigate(-1)}>
-          <ArrowBackIcon />
-        </IconButton>
-        <Typography
-          variant="h4"
-          sx={{
-            fontWeight: 900,
-            ml: 1,
-            minWidth: 0,
-            overflowWrap: 'anywhere',
-          }}
+      <Stack
+        direction={{ xs: 'column', sm: 'row' }}
+        alignItems={{ xs: 'stretch', sm: 'center' }}
+        justifyContent="space-between"
+        spacing={1.5}
+        sx={{ mb: 2, minWidth: 0 }}
+      >
+        <Box sx={{ display: 'flex', alignItems: 'center', minWidth: 0 }}>
+          <IconButton onClick={() => navigate(-1)}>
+            <ArrowBackIcon />
+          </IconButton>
+          <Typography
+            variant="h4"
+            sx={{
+              fontWeight: 900,
+              ml: 1,
+              minWidth: 0,
+              overflowWrap: 'anywhere',
+            }}
+          >
+            Ficha de Acompanhamento
+          </Typography>
+        </Box>
+
+        <Button
+          variant="contained"
+          startIcon={<PictureAsPdfIcon />}
+          onClick={() => void handleGerarPdf()}
+          disabled={gerandoPdf}
+          sx={{ alignSelf: { xs: 'stretch', sm: 'center' } }}
         >
-          Ficha de Acompanhamento
-        </Typography>
-      </Box>
+          {gerandoPdf ? 'Gerando PDF...' : 'Gerar PDF'}
+        </Button>
+      </Stack>
 
       <Paper
         variant="outlined"
@@ -2602,7 +2710,7 @@ export default function FichaAcompanhamentoPage() {
         </Stack>
       </Paper>
 
-      <FichaHeader progresso={progresso} anosCursados={anosCursados} peDeMeia={peDeMeia} isPCD={isPCD} />
+      <FichaHeader progresso={progresso} anosCursados={anosCursados} peDeMeia={peDeMeia} isPCD={isPCD} supabase={supabase} />
 
       <GradeDeNotas gradeData={gradeData} />
 
@@ -2613,7 +2721,7 @@ export default function FichaAcompanhamentoPage() {
         onDataChange={fetchData}
       />
 
-      <HistoricoAtendimentos sessoes={sessoes} onEdit={handleOpenHistoricoModal} onDelete={handleOpenDeleteDialog} />
+      <HistoricoAtendimentos sessoes={sessoesHistorico} onEdit={handleOpenHistoricoModal} onDelete={handleOpenDeleteDialog} />
 
       <ObservacoesEditaveis initialText={observacoes} progressoId={progresso.id_progresso} onSave={handleSaveObservacoes} />
 

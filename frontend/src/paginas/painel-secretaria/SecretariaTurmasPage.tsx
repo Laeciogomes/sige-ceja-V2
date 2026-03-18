@@ -499,7 +499,7 @@ const SecretariaTurmasPage: FC = () => {
             Turmas
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            Gerencie as turmas do CEJA e acompanhe quantos alunos estão ativos
+            Gerencie as turmas do CEJA e acompanhe quantos alunos estão ativos. A mesma turma pode continuar por mais de um ano até o aluno concluir as disciplinas.
             em cada turma.
           </Typography>
         </Box>
@@ -683,10 +683,10 @@ const SecretariaTurmasPage: FC = () => {
             </FormControl>
 
             <FormControl size="small" sx={{ minWidth: 130 }}>
-              <InputLabel id="filtro-ano-label">Ano letivo</InputLabel>
+              <InputLabel id="filtro-ano-label">Ano de referência</InputLabel>
               <Select
                 labelId="filtro-ano-label"
-                label="Ano letivo"
+                label="Ano de referência"
                 value={filtroAno}
                 onChange={(e) => setFiltroAno(e.target.value)}
               >
@@ -810,10 +810,10 @@ const SecretariaTurmasPage: FC = () => {
                               variant="caption"
                               color="text.secondary"
                             >
-                              Nível / Ano letivo
+                              Nível / Ano de referência
                             </Typography>
                             <Typography variant="body2">
-                              {getNomeNivel(turma.id_nivel_ensino)} • Ano letivo{' '}
+                              {getNomeNivel(turma.id_nivel_ensino)} • Referência{' '}
                               {turma.ano_letivo}
                             </Typography>
                           </Stack>
@@ -912,7 +912,7 @@ const SecretariaTurmasPage: FC = () => {
                       <TableCell
                         sx={{ fontWeight: 'bold', color: headerTextColor }}
                       >
-                        Nível / Ano letivo
+                        Nível / Ano de referência
                       </TableCell>
                       <TableCell
                         sx={{ fontWeight: 'bold', color: headerTextColor }}
@@ -987,7 +987,7 @@ const SecretariaTurmasPage: FC = () => {
                                 variant="caption"
                                 color="text.secondary"
                               >
-                                Ano letivo {turma.ano_letivo}
+                                Referência {turma.ano_letivo}
                               </Typography>
                             </Stack>
                           </TableCell>
@@ -1171,12 +1171,13 @@ const SecretariaTurmasPage: FC = () => {
                 </FormControl>
 
                 <TextField
-                  label="Ano letivo"
+                  label="Ano de referência"
                   type="number"
                   fullWidth
                   value={formAnoLetivo}
                   onChange={(e) => setFormAnoLetivo(e.target.value)}
                   inputProps={{ min: 2000, max: 2100 }}
+                  helperText="Campo de referência histórica. Não obriga abrir uma turma nova a cada ano."
                   required
                 />
               </Stack>

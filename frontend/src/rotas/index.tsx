@@ -25,6 +25,7 @@ import SecretariaSalasPage from '../paginas/painel-secretaria/SecretariaSalasPag
 import SecretariaProtocolosPage from '../paginas/painel-secretaria/SecretariaProtocolosPage'
 import SecretariaTurmaAlunosPage from '../paginas/painel-secretaria/SecretariaTurmaAlunosPage'
 import SecretariaRelatoriosFichasPage from '../paginas/painel-secretaria/SecretariaRelatoriosFichasPage'
+import SecretariaHistoricoPage from '../paginas/painel-secretaria/SecretariaHistoricoPage'
 
 // Professor
 import ProfessorAtendimentosPage from '../paginas/painel-professor/ProfessorAtendimentosPage'
@@ -103,6 +104,7 @@ export const AppRoutes: React.FC = () => {
             path="relatorios-fichas"
             element={<SecretariaRelatoriosFichasPage />}
           />
+          <Route path="historico" element={<SecretariaHistoricoPage />} />
         </Route>
 
         {/* PROFESSORES */}
@@ -143,6 +145,7 @@ export const AppRoutes: React.FC = () => {
                 'ADMIN',
                 'COORDENACAO',
                 'DIRETOR',
+                'SECRETARIA',
               ]}
             >
               <FichaAcompanhamentoPage />

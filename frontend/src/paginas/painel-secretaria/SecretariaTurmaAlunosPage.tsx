@@ -533,7 +533,7 @@ const SecretariaTurmaAlunosPage: FC = () => {
               </Typography>
               {turma && (
                 <Typography variant="body2" color="text.secondary">
-                  {nivel?.nome ?? 'Nível não informado'} • Ano letivo{' '}
+                  {nivel?.nome ?? 'Nível não informado'} • Ano de referência{' '}
                   {turma.ano_letivo} • {turma.turno ? turma.turno : 'Multiturno'}
                 </Typography>
               )}
