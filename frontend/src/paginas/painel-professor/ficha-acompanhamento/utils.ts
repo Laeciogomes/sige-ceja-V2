@@ -129,6 +129,71 @@ async function downloadStorageAsDataUrl(supabase: SupabaseLike, bucket: string, 
   }
 }
 
+function isNomeArquivoImagem(nome: string): boolean {
+  return /\.(png|jpe?g|webp|gif|bmp|svg)$/i.test(String(nome ?? '').trim())
+}
+
+function selecionarArquivoMaisRecente(entries: Array<{ name: string }> | null | undefined, prefix: string): string | undefined {
+  const nomes = (entries ?? [])
+    .map((item) => String(item?.name ?? '').trim())
+    .filter(Boolean)
+    .filter((name) => name.startsWith(prefix))
+    .filter(isNomeArquivoImagem)
+    .sort((a, b) => b.localeCompare(a))
+
+  return nomes[0]
+}
+
+async function buscarCaminhoFotoAlunoNoStorage(
+  supabase: SupabaseLike,
+  idAluno?: number | null,
+  bucket = 'avatars'
+): Promise<string | undefined> {
+  if (!supabase || !idAluno) return undefined
+
+  const storage = supabase.storage.from(bucket)
+  const prefix = `aluno-${idAluno}-`
+
+  const procurarEmPasta = async (pasta: string): Promise<string | undefined> => {
+    const { data, error } = await storage.list(pasta, {
+      limit: 200,
+      offset: 0,
+      sortBy: { column: 'name', order: 'desc' },
+    } as any)
+
+    if (error) return undefined
+
+    const arquivo = selecionarArquivoMaisRecente(data as Array<{ name: string }> | null | undefined, prefix)
+    if (!arquivo) return undefined
+    return pasta ? `${pasta}/${arquivo}` : arquivo
+  }
+
+  for (const pasta of ['', 'alunos', 'alunos/alunos']) {
+    const encontrado = await procurarEmPasta(pasta)
+    if (encontrado) return encontrado
+  }
+
+  const { data: raiz, error: erroRaiz } = await storage.list('', {
+    limit: 200,
+    offset: 0,
+    sortBy: { column: 'name', order: 'asc' },
+  } as any)
+
+  if (erroRaiz) return undefined
+
+  for (const item of raiz ?? []) {
+    const nome = String(item?.name ?? '').trim()
+    if (!nome || isNomeArquivoImagem(nome)) continue
+
+    for (const pasta of [nome, `${nome}/alunos`]) {
+      const encontrado = await procurarEmPasta(pasta)
+      if (encontrado) return encontrado
+    }
+  }
+
+  return undefined
+}
+
 export function resolverFotoUrl(fotoUrl?: string | null, bucket = 'avatars'): string | undefined {
   const raw = String(fotoUrl ?? '').trim()
   if (!raw) return undefined
@@ -155,26 +220,15 @@ export async function resolverFotoAlunoUrl(
 ): Promise<string | undefined> {
   const direta = resolverFotoUrlComVersao(fotoUrl, bucket)
   if (direta) return direta
-  if (!supabase || !idAluno) return undefined
 
-  const prefix = `aluno-${idAluno}-`
-  const { data, error } = await supabase.storage.from(bucket).list('alunos', {
-    limit: 50,
-    search: prefix,
-    sortBy: { column: 'name', order: 'desc' },
-  } as any)
-
-  if (error) {
-    console.warn('[resolverFotoAlunoUrl] Falha ao listar bucket avatars/alunos.', error)
+  try {
+    const caminhoFallback = await buscarCaminhoFotoAlunoNoStorage(supabase, idAluno, bucket)
+    if (!caminhoFallback) return undefined
+    return resolverFotoUrlComVersao(caminhoFallback, bucket)
+  } catch (error) {
+    console.warn('[resolverFotoAlunoUrl] Falha ao localizar foto do aluno no storage.', error)
     return undefined
   }
-
-  const arquivo = (data ?? [])
-    .filter((item) => typeof item?.name === 'string' && item.name.startsWith(prefix))
-    .sort((a, b) => String(b.name).localeCompare(String(a.name)))[0]
-
-  if (!arquivo?.name) return undefined
-  return resolverFotoUrlComVersao(`alunos/${arquivo.name}`, bucket)
 }
 
 export async function carregarFotoAlunoDataUrl(
@@ -198,31 +252,18 @@ export async function carregarFotoAlunoDataUrl(
     if (viaFetch) return viaFetch
   }
 
-  if (!supabase || !idAluno) return undefined
+  try {
+    const caminhoFallback = await buscarCaminhoFotoAlunoNoStorage(supabase, idAluno, bucket)
+    if (!caminhoFallback) return undefined
 
-  const prefix = `aluno-${idAluno}-`
-  const { data, error } = await supabase.storage.from(bucket).list('alunos', {
-    limit: 50,
-    search: prefix,
-    sortBy: { column: 'name', order: 'desc' },
-  } as any)
+    const viaDownload = await downloadStorageAsDataUrl(supabase, bucket, caminhoFallback)
+    if (viaDownload) return viaDownload
 
-  if (error) {
-    console.warn('[carregarFotoAlunoDataUrl] Falha ao listar bucket avatars/alunos.', error)
+    return await fetchAsDataUrl(resolverFotoUrlComVersao(caminhoFallback, bucket))
+  } catch (error) {
+    console.warn('[carregarFotoAlunoDataUrl] Falha ao localizar foto do aluno no storage.', error)
     return undefined
   }
-
-  const arquivo = (data ?? [])
-    .filter((item) => typeof item?.name === 'string' && item.name.startsWith(prefix))
-    .sort((a, b) => String(b.name).localeCompare(String(a.name)))[0]
-
-  if (!arquivo?.name) return undefined
-
-  const caminhoFallback = `alunos/${arquivo.name}`
-  const viaDownload = await downloadStorageAsDataUrl(supabase, bucket, caminhoFallback)
-  if (viaDownload) return viaDownload
-
-  return await fetchAsDataUrl(resolverFotoUrlComVersao(caminhoFallback, bucket))
 }
 
 function ehLinhaTransferencia(linha?: string | null): boolean {

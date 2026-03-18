@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 
-import { resolverFotoAlunoUrl } from '../painel-professor/ficha-acompanhamento/utils'
+import { carregarFotoAlunoDataUrl, resolverFotoAlunoUrl } from '../painel-professor/ficha-acompanhamento/utils'
 
 export type SupabaseLike = SupabaseClient | null
 
@@ -236,6 +236,8 @@ export async function resolverFotoAlunoPainel(
   idAluno?: number | null,
   fotoUrl?: string | null,
 ): Promise<string | undefined> {
+  const dataUrl = await carregarFotoAlunoDataUrl(supabase, idAluno, fotoUrl)
+  if (dataUrl) return dataUrl
   return await resolverFotoAlunoUrl(supabase, idAluno, fotoUrl)
 }
 
