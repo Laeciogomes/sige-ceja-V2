@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Alert,
   Autocomplete,
-  Avatar,
   Box,
   Button,
   Card,
@@ -46,6 +45,7 @@ import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
 import AddIcon from '@mui/icons-material/Add'
 import MeetingRoomIcon from '@mui/icons-material/MeetingRoom'
 import SchoolIcon from '@mui/icons-material/School'
+import AvatarAlunoFicha from './ficha-acompanhamento/components/AvatarAlunoFicha'
 
 // Contextos
 import { useSupabase } from '../../contextos/SupabaseContext'
@@ -934,9 +934,12 @@ export default function AcompanhamentoPage() {
                 >
                   <CardContent sx={{ flexGrow: 1, pb: 1 }}>
                     <Stack direction="row" spacing={2} alignItems="center" sx={{ mb: 1.5 }}>
-                      <Avatar
-                        src={a.aluno_foto_url ?? undefined}
-                        alt={a.aluno_nome}
+                      <AvatarAlunoFicha
+                        supabase={supabase as any}
+                        idAluno={a.id_aluno}
+                        fotoUrl={a.aluno_foto_url ?? null}
+                        nome={a.aluno_nome}
+                        variant="circular"
                         sx={{ width: 56, height: 56, border: '2px solid', borderColor: 'primary.main' }}
                       />
                       <Box sx={{ minWidth: 0, flex: 1 }}>
@@ -1030,9 +1033,12 @@ export default function AcompanhamentoPage() {
               >
                 <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems={{ sm: 'center' }} justifyContent="space-between">
                   <Stack direction="row" spacing={2} alignItems="center">
-                    <Avatar
-                      src={alunoAtual.aluno_foto_url ?? undefined}
-                      alt={alunoAtual.aluno_nome}
+                    <AvatarAlunoFicha
+                      supabase={supabase as any}
+                      idAluno={alunoAtual.id_aluno}
+                      fotoUrl={alunoAtual.aluno_foto_url ?? null}
+                      nome={alunoAtual.aluno_nome}
+                      variant="circular"
                       sx={{ width: 64, height: 64, border: '2px solid', borderColor: 'primary.main' }}
                     />
                     <Box>
