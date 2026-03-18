@@ -68,6 +68,7 @@ import CloseIcon from '@mui/icons-material/Close'
 
 import { useSupabase } from '../../contextos/SupabaseContext'
 import { useNotificacaoContext } from '../../contextos/NotificacaoContext'
+import { criarUsuarioAuthAluno } from './alunoAuth'
 
 // Tipo de usuário ALUNO na tabela tipos_usuario
 const TIPO_USUARIO_ALUNO_ID = 5
@@ -325,21 +326,6 @@ const parseMultiNumber = (raw: unknown): number[] => {
       .filter((n) => Number.isFinite(n))
   }
   return []
-}
-
-const gerarEmailAutomatico = (nome: string): string => {
-  const slug = nome
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .replace(/[^a-zA-Z\s]/g, '')
-    .trim()
-    .split(/\s+/)
-
-  const primeiro = slug[0] ?? 'aluno'
-  const ultimo = slug.length > 1 ? slug[slug.length - 1] : 'ceja'
-
-  return `${primeiro}_${ultimo}@ceja.com`
 }
 
 const SUPABASE_PUBLIC_STORAGE_BASE = (() => {
@@ -1734,39 +1720,25 @@ const SecretariaMatriculasPage: FC = () => {
       return
     }
 
-    const emailFinal = emailDigitado ?? gerarEmailAutomatico(nome)
     const senhaFinal = cpf && cpf.length >= 3 ? cpf : `Ceja@${new Date().getFullYear()}`
 
     try {
       setSalvandoNova(true)
 
-      // 1) Cria usuário de autenticação (OBS: signUp pode trocar a sessão em ambientes sem confirmação de e-mail)
-      const { data: sessAntesData } = await supabase.auth.getSession()
-      const sessAntes = sessAntesData.session
-
-      const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
-        email: emailFinal,
-        password: senhaFinal,
+      const authAluno = await criarUsuarioAuthAluno({
+        supabase,
+        nome,
+        emailDigitado,
+        cpf,
+        senha: senhaFinal,
       })
 
-      if (signUpError || !signUpData?.user) {
-        console.error(signUpError)
-        erro('Erro ao criar usuário de autenticação do aluno.')
+      if (!authAluno.ok) {
+        erro(authAluno.mensagem)
         return
       }
 
-      const authUserId = signUpData.user.id
-
-      // Se o signUp devolveu sessão (ambiente sem confirmação de e-mail), restaura a sessão anterior
-      if (sessAntes && signUpData.session) {
-        const { error: setSessErr } = await supabase.auth.setSession({
-          access_token: sessAntes.access_token,
-          refresh_token: sessAntes.refresh_token,
-        })
-        if (setSessErr) {
-          console.warn('Não foi possível restaurar a sessão anterior após signUp:', setSessErr)
-        }
-      }
+      const { authUserId, emailFinal } = authAluno
 
       // 2) Cria registro em public.usuarios
       const usuarioPayload: Partial<UsuarioRow> & { id: string; id_tipo_usuario: number; status: string } = {
@@ -1793,7 +1765,7 @@ const SecretariaMatriculasPage: FC = () => {
 
       if (usuarioError) {
         console.error(usuarioError)
-        erro('Erro ao salvar dados básicos do aluno (usuário).')
+        erro(`Erro ao salvar dados básicos do aluno (usuário). O acesso ${emailFinal} já foi criado no Authentication.`)
         return
       }
 
@@ -1821,7 +1793,7 @@ const SecretariaMatriculasPage: FC = () => {
 
       if (alunoError || !alunoData) {
         console.error(alunoError)
-        erro('Erro ao salvar dados específicos do aluno.')
+        erro(`Erro ao salvar dados específicos do aluno. O acesso ${emailFinal} já existe no Authentication.`)
         return
       }
 
@@ -1849,7 +1821,7 @@ const SecretariaMatriculasPage: FC = () => {
 
       if (insertMatriculasError || !matriculasInseridas || matriculasInseridas.length === 0) {
         console.error(insertMatriculasError)
-        erro('Erro ao salvar a(s) matrícula(s) do aluno.')
+        erro(`Erro ao salvar a(s) matrícula(s) do aluno. O acesso ${emailFinal} já existe no Authentication.`)
         return
       }
 
