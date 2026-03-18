@@ -9,7 +9,6 @@ import {
   AccordionDetails,
   AccordionSummary,
   Alert,
-  Avatar,
   Box,
   Button,
   Checkbox,
@@ -53,6 +52,7 @@ import CloseIcon from '@mui/icons-material/Close'
 
 import { useSupabase } from '../../contextos/SupabaseContext'
 import { useNotificacaoContext } from '../../contextos/NotificacaoContext'
+import AvatarAlunoFicha from '../painel-professor/ficha-acompanhamento/components/AvatarAlunoFicha'
 
 // ===================== Helpers =====================
 
@@ -1078,9 +1078,7 @@ export default function SaspPage() {
                           >
                             <TableCell>
                               <Stack direction="row" spacing={1} alignItems="center">
-                                <Avatar src={r.foto_url ?? undefined} sx={{ width: 28, height: 28 }}>
-                                  {r.nome?.[0]?.toUpperCase() ?? 'A'}
-                                </Avatar>
+                                <AvatarAlunoFicha supabase={supabase} idAluno={r.id_aluno} fotoUrl={r.foto_url} nome={r.nome} sx={{ width: 28, height: 28 }} />
                                 <Box sx={{ minWidth: 0 }}>
                                   <Typography variant="body2" fontWeight={800} noWrap sx={{ maxWidth: 240 }}>
                                     {r.nome}
@@ -1148,9 +1146,13 @@ export default function SaspPage() {
               <>
                 {/* Cabeçalho do aluno */}
                 <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems={{ xs: 'flex-start', sm: 'center' }}>
-                  <Avatar src={alunoSelecionado.foto_url ?? undefined} sx={{ width: 56, height: 56 }}>
-                    {alunoSelecionado.nome?.[0]?.toUpperCase() ?? 'A'}
-                  </Avatar>
+                  <AvatarAlunoFicha
+                    supabase={supabase}
+                    idAluno={alunoSelecionado.id_aluno}
+                    fotoUrl={alunoSelecionado.foto_url}
+                    nome={alunoSelecionado.nome}
+                    sx={{ width: 56, height: 56 }}
+                  />
 
                   <Box sx={{ flex: 1, minWidth: 0 }}>
                     <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between">

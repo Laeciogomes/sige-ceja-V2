@@ -68,7 +68,6 @@ import CloseIcon from '@mui/icons-material/Close'
 
 import { useSupabase } from '../../contextos/SupabaseContext'
 import { useNotificacaoContext } from '../../contextos/NotificacaoContext'
-import { criarUsuarioAuthAluno } from './alunoAuth'
 
 // Tipo de usuário ALUNO na tabela tipos_usuario
 const TIPO_USUARIO_ALUNO_ID = 5
@@ -326,6 +325,21 @@ const parseMultiNumber = (raw: unknown): number[] => {
       .filter((n) => Number.isFinite(n))
   }
   return []
+}
+
+const gerarEmailAutomatico = (nome: string): string => {
+  const slug = nome
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-zA-Z\s]/g, '')
+    .trim()
+    .split(/\s+/)
+
+  const primeiro = slug[0] ?? 'aluno'
+  const ultimo = slug.length > 1 ? slug[slug.length - 1] : 'ceja'
+
+  return `${primeiro}_${ultimo}@ceja.com`
 }
 
 const SUPABASE_PUBLIC_STORAGE_BASE = (() => {
@@ -837,6 +851,7 @@ const MatriculaNivelCard: FC<MatriculaNivelCardProps> = (props) => {
                   disciplinasAproveitamentoConfigIds: [],
                   serieProgressaoId: '',
                   disciplinasProgressaoIds: [],
+                  regenerarProgresso: modo === 'editar' && !!form.idMatricula ? true : form.regenerarProgresso,
                 })
               }
               disabled={desabilitado}
@@ -890,6 +905,7 @@ const MatriculaNivelCard: FC<MatriculaNivelCardProps> = (props) => {
                   disciplinasAproveitamentoConfigIds: [],
                   serieProgressaoId: '',
                   disciplinasProgressaoIds: [],
+                  regenerarProgresso: modo === 'editar' && !!form.idMatricula ? true : form.regenerarProgresso,
                 })
               }}
               disabled={desabilitado || form.nivelId === ''}
@@ -908,7 +924,18 @@ const MatriculaNivelCard: FC<MatriculaNivelCardProps> = (props) => {
               labelId={`status-label-${form.formId}`}
               label="Status"
               value={form.statusId === '' ? '' : String(form.statusId)}
-              onChange={(e) => setForm({ statusId: e.target.value === '' ? '' : Number(e.target.value) })}
+              onChange={(e) => {
+                const proximoStatusId = e.target.value === '' ? '' : Number(e.target.value)
+                const statusSelecionado = statusDisponiveis.find(
+                  (item) => item.id_status_matricula === Number(proximoStatusId),
+                )
+                const ehConcluido = normalizarTexto(statusSelecionado?.nome ?? '').includes('conclu')
+
+                setForm({
+                  statusId: proximoStatusId,
+                  dataConclusao: ehConcluido && !form.dataConclusao ? hojeISO() : form.dataConclusao,
+                })
+              }}
               disabled={desabilitado || form.nivelId === ''}
             >
               <MenuItem value="">
@@ -981,7 +1008,7 @@ const MatriculaNivelCard: FC<MatriculaNivelCardProps> = (props) => {
                   disabled={desabilitado || form.nivelId === ''}
                 />
               }
-              label="Regerar progresso (progresso_aluno)"
+              label="Regenerar progresso (progresso_aluno)"
             />
           )}
         </Stack>
@@ -1016,6 +1043,7 @@ const MatriculaNivelCard: FC<MatriculaNivelCardProps> = (props) => {
                     disciplinasAproveitamentoConfigIds: form.disciplinasAproveitamentoConfigIds.filter((id) =>
                       configIdsValidos.has(id),
                     ),
+                    regenerarProgresso: modo === 'editar' && !!form.idMatricula ? true : form.regenerarProgresso,
                   })
                 }}
                 renderValue={(selected) => {
@@ -1046,6 +1074,7 @@ const MatriculaNivelCard: FC<MatriculaNivelCardProps> = (props) => {
                 onChange={(e) =>
                   setForm({
                     disciplinasAproveitamentoConfigIds: parseMultiNumber(e.target.value),
+                    regenerarProgresso: modo === 'editar' && !!form.idMatricula ? true : form.regenerarProgresso,
                   })
                 }
                 renderValue={(selected) => {
@@ -1098,6 +1127,7 @@ const MatriculaNivelCard: FC<MatriculaNivelCardProps> = (props) => {
                   setForm({
                     serieProgressaoId: e.target.value === '' ? '' : Number(e.target.value),
                     disciplinasProgressaoIds: [],
+                    regenerarProgresso: modo === 'editar' && !!form.idMatricula ? true : form.regenerarProgresso,
                   })
                 }
                 disabled={desabilitado || seriesDoNivel.length === 0}
@@ -1120,7 +1150,12 @@ const MatriculaNivelCard: FC<MatriculaNivelCardProps> = (props) => {
                 multiple
                 label="Disciplinas a cursar"
                 value={form.disciplinasProgressaoIds}
-                onChange={(e) => setForm({ disciplinasProgressaoIds: parseMultiNumber(e.target.value) })}
+                onChange={(e) =>
+                  setForm({
+                    disciplinasProgressaoIds: parseMultiNumber(e.target.value),
+                    regenerarProgresso: modo === 'editar' && !!form.idMatricula ? true : form.regenerarProgresso,
+                  })
+                }
                 renderValue={(selected) => {
                   const ids = selected as number[]
                   const nomes = disciplinasDaSerieProgressao
@@ -1308,6 +1343,215 @@ const SecretariaMatriculasPage: FC = () => {
     const ativo = statusDisponiveis.find((s) => s.nome.toLowerCase().includes('ativo'))
     return ativo?.id_status_matricula ?? statusDisponiveis[0]?.id_status_matricula ?? null
   }, [statusDisponiveis])
+
+  const statusMatriculaConcluidaId = useMemo(() => {
+    const concluido = statusDisponiveis.find((status) => normalizarTexto(status.nome).includes('conclu'))
+    return concluido?.id_status_matricula ?? null
+  }, [statusDisponiveis])
+
+  const statusDisciplinaAprovadoId = useMemo(() => {
+    const aprovado = statusDisciplinaDisponiveis.find((status) => {
+      const nome = normalizarTexto(status.nome)
+      return nome.includes('aprov') && !nome.includes('reprov')
+    })
+    return aprovado?.id_status_disciplina ?? null
+  }, [statusDisciplinaDisponiveis])
+
+  const statusDisciplinaAproveitamentoId = useMemo(() => {
+    const aproveitamento = statusDisciplinaDisponiveis.find((status) =>
+      normalizarTexto(status.nome).includes('aproveit'),
+    )
+    return aproveitamento?.id_status_disciplina ?? null
+  }, [statusDisciplinaDisponiveis])
+
+  const idsStatusDisciplinaAbertos = useMemo(() => {
+    return new Set(
+      statusDisciplinaDisponiveis
+        .filter((status) => {
+          const nome = normalizarTexto(status.nome)
+          return nome.includes('a cursar') || nome.includes('em curso') || nome.includes('pend')
+        })
+        .map((status) => Number(status.id_status_disciplina)),
+    )
+  }, [statusDisciplinaDisponiveis])
+
+  const sincronizarProgressoMatricula = useCallback(
+    async (idMatricula: number, bloco: MatriculaFormState): Promise<{ ok: true } | { ok: false; msg: string }> => {
+      if (!supabase) return { ok: false, msg: 'Supabase indisponível para sincronizar o progresso.' }
+
+      const precisaSincronizar =
+        bloco.modalidade === 'Aproveitamento de Estudos' ||
+        bloco.modalidade === 'Progressão de Estudos' ||
+        !!bloco.regenerarProgresso
+
+      if (!precisaSincronizar) return { ok: true }
+
+      const desejadosBase = gerarInsertsProgresso({
+        idMatricula,
+        nivelId: Number(bloco.nivelId),
+        modalidade: bloco.modalidade,
+        seriesConcluidasIds: bloco.seriesConcluidasIds,
+        disciplinasAproveitamentoConfigIds: bloco.disciplinasAproveitamentoConfigIds,
+        serieProgressaoId: bloco.serieProgressaoId,
+        disciplinasProgressaoIds: bloco.disciplinasProgressaoIds,
+        anosEscolaresDisponiveis,
+        statusDisciplinaDisponiveis,
+        configDisciplinaAnoDisponiveis,
+      })
+
+      const matriculaConcluida =
+        statusMatriculaConcluidaId != null && Number(bloco.statusId) === Number(statusMatriculaConcluidaId)
+      const dataConclusaoPadrao = bloco.dataConclusao.trim() || hojeISO()
+
+      const desejados = desejadosBase.map((item) => {
+        const statusAtual = Number(item.id_status_disciplina ?? 0)
+        const isAproveitamento =
+          statusDisciplinaAproveitamentoId != null &&
+          statusAtual === Number(statusDisciplinaAproveitamentoId)
+        const isAberto = idsStatusDisciplinaAbertos.has(statusAtual)
+
+        if (matriculaConcluida && !isAproveitamento && isAberto && statusDisciplinaAprovadoId != null) {
+          return {
+            ...item,
+            id_status_disciplina: Number(statusDisciplinaAprovadoId),
+            data_conclusao: dataConclusaoPadrao,
+            observacoes: 'Disciplina marcada como concluída automaticamente porque a matrícula foi encerrada.',
+          }
+        }
+
+        return item
+      })
+
+      const { data: atuaisData, error: atuaisError } = await supabase
+        .from('progresso_aluno')
+        .select('id_progresso, id_matricula, id_ano_escolar, id_disciplina, id_status_disciplina, observacoes, data_conclusao')
+        .eq('id_matricula', idMatricula)
+
+      if (atuaisError) {
+        console.error(atuaisError)
+        return { ok: false, msg: 'Não foi possível ler o progresso atual da matrícula.' }
+      }
+
+      const atuais = (atuaisData ?? []) as Array<
+        ProgressoAlunoRow & { id_progresso: number; observacoes?: string | null; data_conclusao?: string | null }
+      >
+
+      const keyOf = (row: { id_ano_escolar: number; id_disciplina: number }) =>
+        `${Number(row.id_ano_escolar)}::${Number(row.id_disciplina)}`
+
+      const atualByKey = new Map(atuais.map((row) => [keyOf(row), row]))
+      const desejadoByKey = new Map(
+        desejados.map((row) => [keyOf(row as { id_ano_escolar: number; id_disciplina: number }), row]),
+      )
+
+      for (const [key, desejado] of desejadoByKey.entries()) {
+        const atual = atualByKey.get(key)
+        if (!atual) continue
+
+        const mudouStatus = Number(atual.id_status_disciplina) !== Number(desejado.id_status_disciplina)
+        const mudouObservacao = String(atual.observacoes ?? '') !== String(desejado.observacoes ?? '')
+        const mudouConclusao = String(atual.data_conclusao ?? '') !== String(desejado.data_conclusao ?? '')
+
+        if (!mudouStatus && !mudouObservacao && !mudouConclusao) continue
+
+        const { data: upData, error: upError } = await supabase
+          .from('progresso_aluno')
+          .update({
+            id_status_disciplina: desejado.id_status_disciplina,
+            observacoes: desejado.observacoes ?? null,
+            data_conclusao: desejado.data_conclusao ?? null,
+          })
+          .eq('id_progresso', atual.id_progresso)
+          .select('id_progresso')
+          .maybeSingle()
+
+        if (upError) {
+          console.error(upError)
+          return { ok: false, msg: 'Falha ao atualizar o progresso das disciplinas da matrícula.' }
+        }
+
+        if (!upData) {
+          return {
+            ok: false,
+            msg: 'Nenhum item de progresso foi atualizado. Verifique as permissões de UPDATE (RLS) da tabela progresso_aluno.',
+          }
+        }
+      }
+
+      const inserts = desejados.filter((row) => !atualByKey.has(keyOf(row as { id_ano_escolar: number; id_disciplina: number })))
+      if (inserts.length > 0) {
+        const { data: insData, error: insError } = await supabase
+          .from('progresso_aluno')
+          .insert(inserts)
+          .select('id_progresso')
+
+        if (insError) {
+          console.error(insError)
+          return { ok: false, msg: 'Falha ao inserir o progresso das disciplinas da matrícula.' }
+        }
+
+        if (!insData || insData.length !== inserts.length) {
+          return {
+            ok: false,
+            msg: 'O Supabase não confirmou todos os inserts em progresso_aluno. Verifique permissões de INSERT/RLS.',
+          }
+        }
+      }
+
+      const obsoletos = atuais.filter((row) => !desejadoByKey.has(keyOf(row)))
+      if (obsoletos.length > 0) {
+        const idsObsoletos = obsoletos.map((row) => row.id_progresso)
+
+        const { data: vinculosData, error: vinculosError } = await supabase
+          .from('registros_atendimento')
+          .select('id_progresso')
+          .in('id_progresso', idsObsoletos)
+          .limit(1)
+
+        if (vinculosError) {
+          console.error(vinculosError)
+          return { ok: false, msg: 'Não foi possível validar os vínculos do progresso antes de remover disciplinas antigas.' }
+        }
+
+        if ((vinculosData ?? []).length > 0) {
+          return {
+            ok: false,
+            msg: 'As disciplinas antigas não puderam ser removidas porque já existem atendimentos/protocolos vinculados a elas. Nesse caso, não é seguro trocar a composição da matrícula existente.',
+          }
+        }
+
+        const { data: delData, error: delError } = await supabase
+          .from('progresso_aluno')
+          .delete()
+          .in('id_progresso', idsObsoletos)
+          .select('id_progresso')
+
+        if (delError) {
+          console.error(delError)
+          return { ok: false, msg: 'Falha ao remover disciplinas antigas do progresso da matrícula.' }
+        }
+
+        if (!delData || delData.length !== idsObsoletos.length) {
+          return {
+            ok: false,
+            msg: 'O Supabase não confirmou a remoção das disciplinas antigas. Verifique permissões de DELETE/RLS em progresso_aluno.',
+          }
+        }
+      }
+
+      return { ok: true }
+    },
+    [
+      supabase,
+      anosEscolaresDisponiveis,
+      configDisciplinaAnoDisponiveis,
+      statusDisciplinaDisponiveis,
+      statusMatriculaConcluidaId,
+      statusDisciplinaAprovadoId,
+      statusDisciplinaAproveitamentoId,
+      idsStatusDisciplinaAbertos,
+    ],
+  )
 
   // ===== Upload foto (genérico) =====
   const uploadFotoAluno = async (file: File, alvo: 'novo' | 'edit') => {
@@ -1720,25 +1964,39 @@ const SecretariaMatriculasPage: FC = () => {
       return
     }
 
+    const emailFinal = emailDigitado ?? gerarEmailAutomatico(nome)
     const senhaFinal = cpf && cpf.length >= 3 ? cpf : `Ceja@${new Date().getFullYear()}`
 
     try {
       setSalvandoNova(true)
 
-      const authAluno = await criarUsuarioAuthAluno({
-        supabase,
-        nome,
-        emailDigitado,
-        cpf,
-        senha: senhaFinal,
+      // 1) Cria usuário de autenticação (OBS: signUp pode trocar a sessão em ambientes sem confirmação de e-mail)
+      const { data: sessAntesData } = await supabase.auth.getSession()
+      const sessAntes = sessAntesData.session
+
+      const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+        email: emailFinal,
+        password: senhaFinal,
       })
 
-      if (!authAluno.ok) {
-        erro(authAluno.mensagem)
+      if (signUpError || !signUpData?.user) {
+        console.error(signUpError)
+        erro('Erro ao criar usuário de autenticação do aluno.')
         return
       }
 
-      const { authUserId, emailFinal } = authAluno
+      const authUserId = signUpData.user.id
+
+      // Se o signUp devolveu sessão (ambiente sem confirmação de e-mail), restaura a sessão anterior
+      if (sessAntes && signUpData.session) {
+        const { error: setSessErr } = await supabase.auth.setSession({
+          access_token: sessAntes.access_token,
+          refresh_token: sessAntes.refresh_token,
+        })
+        if (setSessErr) {
+          console.warn('Não foi possível restaurar a sessão anterior após signUp:', setSessErr)
+        }
+      }
 
       // 2) Cria registro em public.usuarios
       const usuarioPayload: Partial<UsuarioRow> & { id: string; id_tipo_usuario: number; status: string } = {
@@ -1765,7 +2023,7 @@ const SecretariaMatriculasPage: FC = () => {
 
       if (usuarioError) {
         console.error(usuarioError)
-        erro(`Erro ao salvar dados básicos do aluno (usuário). O acesso ${emailFinal} já foi criado no Authentication.`)
+        erro('Erro ao salvar dados básicos do aluno (usuário).')
         return
       }
 
@@ -1793,7 +2051,7 @@ const SecretariaMatriculasPage: FC = () => {
 
       if (alunoError || !alunoData) {
         console.error(alunoError)
-        erro(`Erro ao salvar dados específicos do aluno. O acesso ${emailFinal} já existe no Authentication.`)
+        erro('Erro ao salvar dados específicos do aluno.')
         return
       }
 
@@ -1821,7 +2079,7 @@ const SecretariaMatriculasPage: FC = () => {
 
       if (insertMatriculasError || !matriculasInseridas || matriculasInseridas.length === 0) {
         console.error(insertMatriculasError)
-        erro(`Erro ao salvar a(s) matrícula(s) do aluno. O acesso ${emailFinal} já existe no Authentication.`)
+        erro('Erro ao salvar a(s) matrícula(s) do aluno.')
         return
       }
 
@@ -1999,11 +2257,21 @@ const SecretariaMatriculasPage: FC = () => {
         foto_url: editAluno.fotoUrl || null,
       }
 
-      const { error: usuarioError } = await supabase.from('usuarios').update(usuarioUpdate).eq('id', editUserId)
+      const { data: usuarioAtualizado, error: usuarioError } = await supabase
+        .from('usuarios')
+        .update(usuarioUpdate)
+        .eq('id', editUserId)
+        .select('id')
+        .maybeSingle()
 
       if (usuarioError) {
         console.error(usuarioError)
         erro('Erro ao atualizar dados do usuário (aluno).')
+        return
+      }
+
+      if (!usuarioAtualizado) {
+        erro('Nenhum dado do usuário foi atualizado. Verifique as permissões de UPDATE (RLS) da tabela usuarios.')
         return
       }
 
@@ -2022,7 +2290,12 @@ const SecretariaMatriculasPage: FC = () => {
         observacoes_gerais: editAluno.observacoes.trim() || null,
       }
 
-      const { error: alunoError } = await supabase.from('alunos').update(alunoUpdate).eq('id_aluno', editAlunoId)
+      const { data: alunoAtualizado, error: alunoError } = await supabase
+        .from('alunos')
+        .update(alunoUpdate)
+        .eq('id_aluno', editAlunoId)
+        .select('id_aluno')
+        .maybeSingle()
 
       if (alunoError) {
         console.error(alunoError)
@@ -2030,8 +2303,12 @@ const SecretariaMatriculasPage: FC = () => {
         return
       }
 
+      if (!alunoAtualizado) {
+        erro('Nenhum dado da tabela alunos foi atualizado. Verifique as permissões de UPDATE (RLS).')
+        return
+      }
+
       // 3) Atualiza/insere matriculas
-      const insertsProgressoTotal: Array<Record<string, unknown>> = []
 
       for (const bloco of editBlocosMatricula) {
         const payload = {
@@ -2048,10 +2325,19 @@ const SecretariaMatriculasPage: FC = () => {
         let idMatricula = bloco.idMatricula
 
         if (idMatricula) {
-          const { error: upErr } = await supabase.from('matriculas').update(payload).eq('id_matricula', idMatricula)
+          const { data: matriculaAtualizada, error: upErr } = await supabase
+            .from('matriculas')
+            .update(payload)
+            .eq('id_matricula', idMatricula)
+            .select('id_matricula')
+            .maybeSingle()
           if (upErr) {
             console.error(upErr)
             erro('Erro ao atualizar matrícula.')
+            return
+          }
+          if (!matriculaAtualizada) {
+            erro('Nenhuma matrícula foi atualizada. Verifique as permissões de UPDATE (RLS) da tabela matriculas.')
             return
           }
         } else {
@@ -2069,45 +2355,12 @@ const SecretariaMatriculasPage: FC = () => {
           idMatricula = ins.id_matricula
         }
 
-        const isPrecisaProgresso =
-          bloco.modalidade === 'Aproveitamento de Estudos' || bloco.modalidade === 'Progressão de Estudos'
-
-        if (isPrecisaProgresso && idMatricula) {
-          // Só gera/insere progresso em 2 cenários:
-          // (1) matrícula nova (não existia idMatricula antes), ou
-          // (2) usuário marcou “Regerar progresso”.
-          if (!bloco.idMatricula || bloco.regenerarProgresso) {
-            const { error: delProgErr } = await supabase
-              .from('progresso_aluno')
-              .delete()
-              .eq('id_matricula', idMatricula)
-            if (delProgErr) {
-              console.error(delProgErr)
-              aviso('Não foi possível limpar o progresso anterior (progresso_aluno).')
-            }
-
-            const inserts = gerarInsertsProgresso({
-              idMatricula,
-              nivelId: Number(bloco.nivelId),
-              modalidade: bloco.modalidade,
-              seriesConcluidasIds: bloco.seriesConcluidasIds,
-              disciplinasAproveitamentoConfigIds: bloco.disciplinasAproveitamentoConfigIds,
-              serieProgressaoId: bloco.serieProgressaoId,
-              disciplinasProgressaoIds: bloco.disciplinasProgressaoIds,
-              anosEscolaresDisponiveis,
-              statusDisciplinaDisponiveis,
-              configDisciplinaAnoDisponiveis,
-            })
-            insertsProgressoTotal.push(...inserts)
+        if (idMatricula) {
+          const sync = await sincronizarProgressoMatricula(idMatricula, bloco)
+          if (!sync.ok) {
+            erro(sync.msg)
+            return
           }
-        }
-      }
-
-      if (insertsProgressoTotal.length > 0) {
-        const { error: progError } = await supabase.from('progresso_aluno').insert(insertsProgressoTotal)
-        if (progError) {
-          console.error(progError)
-          aviso('Alterações salvas, mas houve erro ao registrar o progresso das disciplinas.')
         }
       }
 
