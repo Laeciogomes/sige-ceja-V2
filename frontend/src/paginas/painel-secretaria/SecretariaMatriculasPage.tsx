@@ -2329,17 +2329,101 @@ const SecretariaMatriculasPage: FC = () => {
     try {
       setExcluindoMatricula(true)
 
-      const { error } = await supabase.from('matriculas').delete().eq('id_matricula', matriculaParaExcluir.id)
+      const idMatricula = Number(matriculaParaExcluir.id)
 
-      if (error) {
-        console.error(error)
-        if ((error as any).code === '23503') {
-          erro(
-            'Não é possível excluir esta matrícula porque existem registros vinculados (progresso, atendimentos ou protocolos).',
-          )
+      const { data: progressoExistente, error: progressoError } = await supabase
+        .from('progresso_aluno')
+        .select('id_progresso')
+        .eq('id_matricula', idMatricula)
+
+      if (progressoError) {
+        console.error(progressoError)
+        erro('Não foi possível verificar o progresso vinculado à matrícula antes da exclusão.')
+        return
+      }
+
+      const idsProgresso = (progressoExistente ?? [])
+        .map((item: any) => Number(item?.id_progresso))
+        .filter((id) => Number.isFinite(id))
+
+      if (idsProgresso.length > 0) {
+        const [registrosResp, sessoesResp] = await Promise.all([
+          supabase
+            .from('registros_atendimento')
+            .select('id_atividade')
+            .in('id_progresso', idsProgresso)
+            .limit(1),
+          supabase
+            .from('sessoes_atendimento')
+            .select('id_sessao')
+            .in('id_progresso', idsProgresso)
+            .limit(1),
+        ])
+
+        if (registrosResp.error) {
+          console.error(registrosResp.error)
+          erro('Não foi possível verificar os protocolos vinculados à matrícula antes da exclusão.')
+          return
+        }
+
+        if (sessoesResp.error) {
+          console.error(sessoesResp.error)
+          erro('Não foi possível verificar os atendimentos vinculados à matrícula antes da exclusão.')
+          return
+        }
+
+        if ((registrosResp.data ?? []).length > 0 || (sessoesResp.data ?? []).length > 0) {
+          erro('Não é possível excluir esta matrícula porque existem atendimentos ou protocolos vinculados a ela.')
+          return
+        }
+      }
+
+      const { error: acompanhamentoError } = await supabase
+        .from('acompanhamento_aluno')
+        .delete()
+        .eq('id_matricula', idMatricula)
+
+      if (acompanhamentoError) {
+        console.error(acompanhamentoError)
+        erro('Não foi possível excluir os registros de acompanhamento vinculados à matrícula.')
+        return
+      }
+
+      if (idsProgresso.length > 0) {
+        const { error: deleteProgressoError } = await supabase
+          .from('progresso_aluno')
+          .delete()
+          .eq('id_matricula', idMatricula)
+
+        if (deleteProgressoError) {
+          console.error(deleteProgressoError)
+          if ((deleteProgressoError as any).code === '23503') {
+            erro('Não é possível excluir esta matrícula porque existem registros vinculados ao progresso do aluno.')
+          } else {
+            erro('Não foi possível excluir o progresso vinculado à matrícula.')
+          }
+          return
+        }
+      }
+
+      const { data: matriculaExcluida, error: deleteMatriculaError } = await supabase
+        .from('matriculas')
+        .delete()
+        .eq('id_matricula', idMatricula)
+        .select('id_matricula')
+
+      if (deleteMatriculaError) {
+        console.error(deleteMatriculaError)
+        if ((deleteMatriculaError as any).code === '23503') {
+          erro('Não é possível excluir esta matrícula porque ainda existem registros vinculados a ela.')
         } else {
           erro('Erro ao excluir matrícula.')
         }
+        return
+      }
+
+      if (!matriculaExcluida || matriculaExcluida.length === 0) {
+        erro('A matrícula não foi excluída. Verifique as permissões do perfil no Supabase.')
         return
       }
 
