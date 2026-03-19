@@ -642,10 +642,11 @@ const gerarInsertsProgresso = (args: {
     configDisciplinaAnoDisponiveis,
   } = args
 
+  const isOrientacao = modalidade === 'Orientação de Estudos'
   const isAproveitamento = modalidade === 'Aproveitamento de Estudos'
   const isProgressao = modalidade === 'Progressão de Estudos'
 
-  if (!isAproveitamento && !isProgressao) return []
+  if (!isOrientacao && !isAproveitamento && !isProgressao) return []
   if (statusDisciplinaDisponiveis.length === 0) return []
   if (anosEscolaresDisponiveis.length === 0) return []
   if (configDisciplinaAnoDisponiveis.length === 0) return []
@@ -667,6 +668,26 @@ const gerarInsertsProgresso = (args: {
   )
 
   const inserts: Array<Record<string, unknown>> = []
+
+  if (isOrientacao) {
+    anosNivel.forEach((serie) => {
+      const configs = configDisciplinaAnoDisponiveis.filter(
+        (c) => c.id_ano_escolar === serie.id_ano_escolar,
+      )
+
+      configs.forEach((c) => {
+        inserts.push({
+          id_matricula: idMatricula,
+          id_disciplina: c.id_disciplina,
+          id_ano_escolar: serie.id_ano_escolar,
+          id_status_disciplina: statusACursar.id_status_disciplina,
+          nota_final: null,
+          data_conclusao: null,
+          observacoes: 'Disciplina definida para cursar no CEJA em todas as séries do nível (Orientação de Estudos).',
+        })
+      })
+    })
+  }
 
   if (isAproveitamento) {
     const seriesACursarSet = new Set(seriesConcluidasIds)
@@ -967,6 +988,11 @@ const MatriculaNivelCard: FC<MatriculaNivelCardProps> = (props) => {
                 </MenuItem>
               ))}
             </Select>
+            {form.modalidade === 'Orientação de Estudos' && (
+              <FormHelperText>
+                Na Orientação de Estudos, o sistema registra automaticamente todas as disciplinas de todas as séries deste nível como A Cursar.
+              </FormHelperText>
+            )}
           </FormControl>
 
           <FormControl fullWidth size="small">
@@ -2230,7 +2256,9 @@ const SecretariaMatriculasPage: FC = () => {
         }
 
         const isPrecisaProgresso =
-          bloco.modalidade === 'Aproveitamento de Estudos' || bloco.modalidade === 'Progressão de Estudos'
+          bloco.modalidade === 'Orientação de Estudos' ||
+          bloco.modalidade === 'Aproveitamento de Estudos' ||
+          bloco.modalidade === 'Progressão de Estudos'
 
         if (isPrecisaProgresso && idMatricula) {
           // Só gera/insere progresso em 2 cenários:
