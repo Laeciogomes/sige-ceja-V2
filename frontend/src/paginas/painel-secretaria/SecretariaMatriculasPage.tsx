@@ -68,9 +68,29 @@ import CloseIcon from '@mui/icons-material/Close'
 
 import { useSupabase } from '../../contextos/SupabaseContext'
 import { useNotificacaoContext } from '../../contextos/NotificacaoContext'
+import { createClient } from '@supabase/supabase-js'
 
 // Tipo de usuário ALUNO na tabela tipos_usuario
 const TIPO_USUARIO_ALUNO_ID = 5
+
+
+const criarClienteAuthIsolado = () => {
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined
+  const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined
+
+  if (!supabaseUrl || !supabaseAnonKey) {
+    throw new Error('Supabase não configurado para criação isolada de autenticação.')
+  }
+
+  return createClient(supabaseUrl, supabaseAnonKey, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+      storageKey: `sige-ceja-auth-isolado-${Math.random().toString(36).slice(2)}`,
+    },
+  })
+}
 
 // Modalidades do enum modalidade_matricula_enum
 const MODALIDADES_MATRICULA = [
@@ -526,12 +546,11 @@ const buscarFotoAlunoFallback = async (
   }
 }
 
-interface ConfigDisciplinaAproveitamentoOption {
-  id_config: number
+interface DisciplinaAproveitamentoOption {
   id_disciplina: number
-  id_ano_escolar: number
-  nome_ano: string
   nome_disciplina: string
+  seriesIds: number[]
+  nomesSeries: string[]
 }
 
 interface ProgressoAlunoRow {
@@ -661,7 +680,7 @@ const gerarInsertsProgresso = (args: {
         )
 
         configs.forEach((c) => {
-          const vaiCursarNoCeja = disciplinasACursarSet.has(c.id_config)
+          const vaiCursarNoCeja = disciplinasACursarSet.has(c.id_disciplina)
 
           inserts.push({
             id_matricula: idMatricula,
@@ -673,7 +692,7 @@ const gerarInsertsProgresso = (args: {
             nota_final: null,
             data_conclusao: null,
             observacoes: vaiCursarNoCeja
-              ? 'Disciplina definida para cursar no CEJA (Aproveitamento de Estudos).'
+              ? 'Disciplina definida para cursar no CEJA em todas as séries selecionadas (Aproveitamento de Estudos).'
               : 'Disciplina registrada como concluída fora do CEJA (Aproveitamento de Estudos / Encceja / outra escola).',
           })
         })
@@ -773,7 +792,7 @@ const MatriculaNivelCard: FC<MatriculaNivelCardProps> = (props) => {
       .sort((a, b) => a.nome_ano.localeCompare(b.nome_ano))
   }, [anosEscolaresDisponiveis, nivelIdNum])
 
-  const disciplinasAproveitamentoOptions = useMemo<ConfigDisciplinaAproveitamentoOption[]>(() => {
+  const disciplinasAproveitamentoOptions = useMemo<DisciplinaAproveitamentoOption[]>(() => {
     if (form.seriesConcluidasIds.length === 0) return []
 
     const seriesSet = new Set(form.seriesConcluidasIds)
@@ -782,21 +801,41 @@ const MatriculaNivelCard: FC<MatriculaNivelCardProps> = (props) => {
       disciplinasDisponiveis.map((disciplina) => [disciplina.id_disciplina, disciplina.nome_disciplina]),
     )
 
-    return configDisciplinaAnoDisponiveis
+    const agrupado = new Map<number, DisciplinaAproveitamentoOption>()
+
+    configDisciplinaAnoDisponiveis
       .filter((config) => seriesSet.has(config.id_ano_escolar))
-      .map((config) => ({
-        id_config: config.id_config,
-        id_disciplina: config.id_disciplina,
-        id_ano_escolar: config.id_ano_escolar,
-        nome_ano: anoNomeById.get(config.id_ano_escolar) ?? `Série ${config.id_ano_escolar}`,
-        nome_disciplina:
-          disciplinaNomeById.get(config.id_disciplina) ?? `Disciplina ${config.id_disciplina}`,
-      }))
-      .sort((a, b) => {
-        const serie = a.nome_ano.localeCompare(b.nome_ano, 'pt-BR')
-        if (serie !== 0) return serie
-        return a.nome_disciplina.localeCompare(b.nome_disciplina, 'pt-BR')
+      .forEach((config) => {
+        const existente = agrupado.get(config.id_disciplina)
+        const nomeDisciplina =
+          disciplinaNomeById.get(config.id_disciplina) ?? `Disciplina ${config.id_disciplina}`
+        const nomeSerie = anoNomeById.get(config.id_ano_escolar) ?? `Série ${config.id_ano_escolar}`
+
+        if (existente) {
+          if (!existente.seriesIds.includes(config.id_ano_escolar)) {
+            existente.seriesIds.push(config.id_ano_escolar)
+          }
+          if (!existente.nomesSeries.includes(nomeSerie)) {
+            existente.nomesSeries.push(nomeSerie)
+          }
+          return
+        }
+
+        agrupado.set(config.id_disciplina, {
+          id_disciplina: config.id_disciplina,
+          nome_disciplina: nomeDisciplina,
+          seriesIds: [config.id_ano_escolar],
+          nomesSeries: [nomeSerie],
+        })
       })
+
+    return Array.from(agrupado.values())
+      .map((disciplina) => ({
+        ...disciplina,
+        seriesIds: [...disciplina.seriesIds].sort((a, b) => a - b),
+        nomesSeries: [...disciplina.nomesSeries].sort((a, b) => a.localeCompare(b, 'pt-BR')),
+      }))
+      .sort((a, b) => a.nome_disciplina.localeCompare(b.nome_disciplina, 'pt-BR'))
   }, [
     configDisciplinaAnoDisponiveis,
     disciplinasDisponiveis,
@@ -1021,7 +1060,7 @@ const MatriculaNivelCard: FC<MatriculaNivelCardProps> = (props) => {
               Aproveitamento de Estudos — Séries e disciplinas a cursar no CEJA
             </Typography>
             <Typography variant="body2" color="text.secondary">
-              Selecione as séries (anos escolares) que o aluno vai cursar no CEJA. Depois marque somente as disciplinas que ele cursará no CEJA. O que não for marcado nessas séries será salvo como concluído por outra escola, Encceja ou aproveitamento.
+              Selecione as séries (anos escolares) que o aluno vai cursar no CEJA. Depois marque as disciplinas que ele cursará no CEJA. Cada disciplina marcada valerá para todas as séries selecionadas. O que não for marcado nessas séries será salvo como concluído por outra escola, Encceja ou aproveitamento.
             </Typography>
 
             <FormControl fullWidth size="small">
@@ -1033,16 +1072,16 @@ const MatriculaNivelCard: FC<MatriculaNivelCardProps> = (props) => {
                 value={form.seriesConcluidasIds}
                 onChange={(e) => {
                   const proximasSeries = parseMultiNumber(e.target.value)
-                  const configIdsValidos = new Set(
+                  const disciplinasValidas = new Set(
                     configDisciplinaAnoDisponiveis
                       .filter((config) => proximasSeries.includes(config.id_ano_escolar))
-                      .map((config) => config.id_config),
+                      .map((config) => config.id_disciplina),
                   )
 
                   setForm({
                     seriesConcluidasIds: proximasSeries,
                     disciplinasAproveitamentoConfigIds: form.disciplinasAproveitamentoConfigIds.filter((id) =>
-                      configIdsValidos.has(id),
+                      disciplinasValidas.has(id),
                     ),
                     regenerarProgresso: modo === 'editar' || form.regenerarProgresso,
                   })
@@ -1081,27 +1120,27 @@ const MatriculaNivelCard: FC<MatriculaNivelCardProps> = (props) => {
                 renderValue={(selected) => {
                   const ids = selected as number[]
                   const nomes = disciplinasAproveitamentoOptions
-                    .filter((disc) => ids.includes(disc.id_config))
-                    .map((disc) => `${disc.nome_ano} — ${disc.nome_disciplina}`)
+                    .filter((disc) => ids.includes(disc.id_disciplina))
+                    .map((disc) => disc.nome_disciplina)
                   return nomes.join(', ')
                 }}
                 disabled={desabilitado || disciplinasAproveitamentoOptions.length === 0}
               >
                 {disciplinasAproveitamentoOptions.map((disciplina) => (
-                  <MenuItem key={disciplina.id_config} value={disciplina.id_config}>
+                  <MenuItem key={disciplina.id_disciplina} value={disciplina.id_disciplina}>
                     <Checkbox
                       size="small"
-                      checked={form.disciplinasAproveitamentoConfigIds.includes(disciplina.id_config)}
+                      checked={form.disciplinasAproveitamentoConfigIds.includes(disciplina.id_disciplina)}
                     />
                     <ListItemText
                       primary={disciplina.nome_disciplina}
-                      secondary={disciplina.nome_ano}
+                      secondary={`Aplicar às séries selecionadas: ${disciplina.nomesSeries.join(', ')}`}
                     />
                   </MenuItem>
                 ))}
               </Select>
               <FormHelperText>
-                Marque as disciplinas que o aluno vai cursar no CEJA. As não marcadas serão registradas como concluídas por outra escola, Encceja ou aproveitamento.
+                Marque somente as disciplinas que o aluno vai cursar no CEJA. Cada disciplina marcada será aplicada a todas as séries selecionadas acima. As não marcadas serão registradas como concluídas por outra escola, Encceja ou aproveitamento.
               </FormHelperText>
             </FormControl>
           </Stack>
@@ -1284,15 +1323,8 @@ const SecretariaMatriculasPage: FC = () => {
             new Set(
               rows
                 .filter((row) => !idsStatusDisciplinaConcluida.has(Number(row.id_status_disciplina)))
-                .map((row) => {
-                  const config = configDisciplinaAnoDisponiveis.find(
-                    (item) =>
-                      Number(item.id_ano_escolar) === Number(row.id_ano_escolar) &&
-                      Number(item.id_disciplina) === Number(row.id_disciplina),
-                  )
-                  return config?.id_config ?? null
-                })
-                .filter((value): value is number => Number.isFinite(Number(value))),
+                .map((row) => Number(row.id_disciplina))
+                .filter(Number.isFinite),
             ),
           )
 
@@ -1814,17 +1846,16 @@ const SecretariaMatriculasPage: FC = () => {
       const emailFoiDigitado = !!emailDigitado
       const emailsCandidatos = emailFoiDigitado ? [emailDigitado] : gerarEmailsAutomaticosCandidatos(nome, cpf)
 
-      // 1) Cria usuário de autenticação (OBS: signUp pode trocar a sessão em ambientes sem confirmação de e-mail)
-      const { data: sessAntesData } = await supabase.auth.getSession()
-      const sessAntes = sessAntesData.session
+      // 1) Cria usuário de autenticação em cliente isolado para não trocar a sessão do operador atual
+      const supabaseAuthIsolado = criarClienteAuthIsolado()
 
       let emailFinal = emailsCandidatos[0]
-      let signUpData: Awaited<ReturnType<typeof supabase.auth.signUp>>['data'] | null = null
-      let signUpError: Awaited<ReturnType<typeof supabase.auth.signUp>>['error'] | null = null
+      let signUpData: Awaited<ReturnType<typeof supabaseAuthIsolado.auth.signUp>>['data'] | null = null
+      let signUpError: Awaited<ReturnType<typeof supabaseAuthIsolado.auth.signUp>>['error'] | null = null
 
       for (const emailCandidato of emailsCandidatos) {
         emailFinal = emailCandidato
-        const tentativa = await supabase.auth.signUp({
+        const tentativa = await supabaseAuthIsolado.auth.signUp({
           email: emailCandidato,
           password: senhaFinal,
         })
@@ -1855,16 +1886,7 @@ const SecretariaMatriculasPage: FC = () => {
 
       const authUserId = signUpData.user.id
 
-      // Se o signUp devolveu sessão (ambiente sem confirmação de e-mail), restaura a sessão anterior
-      if (sessAntes && signUpData.session) {
-        const { error: setSessErr } = await supabase.auth.setSession({
-          access_token: sessAntes.access_token,
-          refresh_token: sessAntes.refresh_token,
-        })
-        if (setSessErr) {
-          console.warn('Não foi possível restaurar a sessão anterior após signUp:', setSessErr)
-        }
-      }
+      // Como o signUp roda em cliente isolado, a sessão do operador atual não é trocada.
 
       // 2) Cria registro em public.usuarios
       const usuarioPayload: Partial<UsuarioRow> & { id: string; id_tipo_usuario: number; status: string } = {
