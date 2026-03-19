@@ -327,19 +327,32 @@ const parseMultiNumber = (raw: unknown): number[] => {
   return []
 }
 
-const gerarEmailAutomatico = (nome: string): string => {
-  const slug = nome
+const slugNomeParaEmail = (nome: string): string[] =>
+  nome
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
     .replace(/[^a-zA-Z\s]/g, '')
     .trim()
     .split(/\s+/)
+    .filter(Boolean)
 
+const somenteDigitos = (valor: string): string => (valor ?? '').replace(/\D/g, '')
+
+const gerarEmailAutomatico = (nome: string, cpf?: string | null, sufixoExtra?: string): string => {
+  const slug = slugNomeParaEmail(nome)
   const primeiro = slug[0] ?? 'aluno'
   const ultimo = slug.length > 1 ? slug[slug.length - 1] : 'ceja'
+  const cpfDigitos = somenteDigitos(cpf ?? '')
+  const base = sufixoExtra || (cpfDigitos ? cpfDigitos.slice(-6) : Date.now().toString().slice(-6))
 
-  return `${primeiro}_${ultimo}@ceja.com`
+  return `${primeiro}.${ultimo}.${base}@ceja.com`
+}
+
+const gerarEmailsAutomaticosCandidatos = (nome: string, cpf?: string | null): string[] => {
+  const base = gerarEmailAutomatico(nome, cpf)
+  const [local, dominio = 'ceja.com'] = base.split('@')
+  return [base, `${local}.2@${dominio}`, `${local}.3@${dominio}`, `${local}.4@${dominio}`]
 }
 
 const SUPABASE_PUBLIC_STORAGE_BASE = (() => {
@@ -635,59 +648,61 @@ const gerarInsertsProgresso = (args: {
 
   const inserts: Array<Record<string, unknown>> = []
 
-  if (isAproveitamento && seriesConcluidasIds.length > 0) {
-    const seriesSelecionadasSet = new Set(seriesConcluidasIds)
-    const disciplinasACursarSet = new Set(disciplinasAproveitamentoConfigIds)
+  if (isAproveitamento) {
+    const seriesConcluidasSet = new Set(seriesConcluidasIds)
+    const disciplinasConcluidasSet = new Set(disciplinasAproveitamentoConfigIds)
 
-    anosNivel
-      .filter((serie) => seriesSelecionadasSet.has(serie.id_ano_escolar))
-      .forEach((serie) => {
-        const configs = configDisciplinaAnoDisponiveis.filter(
-          (c) => c.id_ano_escolar === serie.id_ano_escolar,
-        )
+    anosNivel.forEach((serie) => {
+      const configs = configDisciplinaAnoDisponiveis.filter(
+        (c) => c.id_ano_escolar === serie.id_ano_escolar,
+      )
 
-        configs.forEach((c) => {
-          const disciplinaACursar = disciplinasACursarSet.has(c.id_config)
+      configs.forEach((c) => {
+        const disciplinaConcluida =
+          seriesConcluidasSet.has(serie.id_ano_escolar) &&
+          disciplinasConcluidasSet.has(c.id_config)
 
-          inserts.push({
-            id_matricula: idMatricula,
-            id_disciplina: c.id_disciplina,
-            id_ano_escolar: serie.id_ano_escolar,
-            id_status_disciplina: disciplinaACursar
-              ? statusACursar.id_status_disciplina
-              : statusConcluida.id_status_disciplina,
-            nota_final: null,
-            data_conclusao: null,
-            observacoes: disciplinaACursar
-              ? 'Disciplina definida como A Cursar no CEJA (Aproveitamento de Estudos).'
-              : 'Disciplina registrada como concluída por aproveitamento, outra escola ou Encceja.',
-          })
+        inserts.push({
+          id_matricula: idMatricula,
+          id_disciplina: c.id_disciplina,
+          id_ano_escolar: serie.id_ano_escolar,
+          id_status_disciplina: disciplinaConcluida
+            ? statusConcluida.id_status_disciplina
+            : statusACursar.id_status_disciplina,
+          nota_final: null,
+          data_conclusao: null,
+          observacoes: disciplinaConcluida
+            ? 'Disciplina concluída por aproveitamento de estudos.'
+            : seriesConcluidasSet.has(serie.id_ano_escolar)
+              ? 'Disciplina não aproveitada; mantida como A Cursar.'
+              : 'Disciplina marcada como A Cursar após aproveitamento de estudos.',
         })
       })
+    })
   }
 
-  if (isProgressao && serieProgressaoId !== '') {
+  if (
+    isProgressao &&
+    serieProgressaoId !== '' &&
+    disciplinasProgressaoIds.length > 0
+  ) {
     const serieIdNum = Number(serieProgressaoId)
-    const disciplinasACursarSet = new Set(disciplinasProgressaoIds)
     const configs = configDisciplinaAnoDisponiveis.filter(
-      (c) => c.id_ano_escolar === serieIdNum,
+      (c) =>
+        c.id_ano_escolar === serieIdNum &&
+        disciplinasProgressaoIds.includes(c.id_disciplina),
     )
 
     configs.forEach((c) => {
-      const disciplinaACursar = disciplinasACursarSet.has(c.id_disciplina)
-
       inserts.push({
         id_matricula: idMatricula,
         id_disciplina: c.id_disciplina,
         id_ano_escolar: serieIdNum,
-        id_status_disciplina: disciplinaACursar
-          ? statusACursar.id_status_disciplina
-          : statusConcluida.id_status_disciplina,
+        id_status_disciplina: statusACursar.id_status_disciplina,
         nota_final: null,
         data_conclusao: null,
-        observacoes: disciplinaACursar
-          ? 'Disciplina definida como A Cursar no CEJA (Progressão de Estudos).'
-          : 'Disciplina registrada como concluída por aproveitamento, outra escola ou Encceja.',
+        observacoes:
+          'Disciplina definida como A Cursar na matrícula de Progressão de Estudos.',
       })
     })
   }
@@ -1002,18 +1017,18 @@ const MatriculaNivelCard: FC<MatriculaNivelCardProps> = (props) => {
         {isAproveitamento && form.nivelId !== '' && (
           <Stack spacing={1.5}>
             <Typography variant="subtitle2" fontWeight={800}>
-              Aproveitamento de Estudos — Séries e disciplinas a cursar no CEJA
+              Aproveitamento de Estudos — Séries e disciplinas concluídas
             </Typography>
             <Typography variant="body2" color="text.secondary">
-              Selecione as séries e as disciplinas que o aluno ainda vai cursar no CEJA. As demais disciplinas dessas séries serão salvas como concluídas por outra escola, Encceja ou aproveitamento.
+              Primeiro selecione as séries (anos escolares) já concluídas em outra escola. Depois marque somente as disciplinas realmente concluídas nessas séries. As demais disciplinas continuarão como &quot;A Cursar&quot;.
             </Typography>
 
             <FormControl fullWidth size="small">
-              <InputLabel id={`series-concluidas-label-${form.formId}`}>Séries a cursar no CEJA</InputLabel>
+              <InputLabel id={`series-concluidas-label-${form.formId}`}>Séries concluídas</InputLabel>
               <Select
                 labelId={`series-concluidas-label-${form.formId}`}
                 multiple
-                label="Séries a cursar no CEJA"
+                label="Séries concluídas"
                 value={form.seriesConcluidasIds}
                 onChange={(e) => {
                   const proximasSeries = parseMultiNumber(e.target.value)
@@ -1049,11 +1064,11 @@ const MatriculaNivelCard: FC<MatriculaNivelCardProps> = (props) => {
             </FormControl>
 
             <FormControl fullWidth size="small">
-              <InputLabel id={`disciplinas-aproveitamento-label-${form.formId}`}>Disciplinas a cursar no CEJA</InputLabel>
+              <InputLabel id={`disciplinas-aproveitamento-label-${form.formId}`}>Disciplinas concluídas</InputLabel>
               <Select
                 labelId={`disciplinas-aproveitamento-label-${form.formId}`}
                 multiple
-                label="Disciplinas a cursar no CEJA"
+                label="Disciplinas concluídas"
                 value={form.disciplinasAproveitamentoConfigIds}
                 onChange={(e) =>
                   setForm({
@@ -1083,7 +1098,7 @@ const MatriculaNivelCard: FC<MatriculaNivelCardProps> = (props) => {
                 ))}
               </Select>
               <FormHelperText>
-                Marque somente as disciplinas que o aluno vai cursar no CEJA. As não marcadas serão registradas como concluídas.
+                Marque somente as disciplinas efetivamente concluídas. As não marcadas serão registradas como A Cursar.
               </FormHelperText>
             </FormControl>
           </Stack>
@@ -1093,10 +1108,11 @@ const MatriculaNivelCard: FC<MatriculaNivelCardProps> = (props) => {
         {isProgressao && form.nivelId !== '' && (
           <Stack spacing={1.5}>
             <Typography variant="subtitle2" fontWeight={800}>
-              Progressão de Estudos — Série e disciplinas a cursar no CEJA
+              Progressão de Estudos — Série e disciplinas
             </Typography>
             <Typography variant="body2" color="text.secondary">
-              Selecione a série (ano escolar) e as disciplinas que o aluno vai cursar no CEJA. As disciplinas não marcadas nessa série serão registradas como concluídas.
+              Selecione a série (ano escolar) e as disciplinas que o aluno irá cursar no CEJA.
+              As disciplinas serão registradas com status &quot;A Cursar&quot;.
             </Typography>
 
             <FormControl fullWidth size="small">
@@ -1125,11 +1141,11 @@ const MatriculaNivelCard: FC<MatriculaNivelCardProps> = (props) => {
             </FormControl>
 
             <FormControl fullWidth size="small">
-              <InputLabel id={`disciplinas-progressao-label-${form.formId}`}>Disciplinas a cursar no CEJA</InputLabel>
+              <InputLabel id={`disciplinas-progressao-label-${form.formId}`}>Disciplinas a cursar</InputLabel>
               <Select
                 labelId={`disciplinas-progressao-label-${form.formId}`}
                 multiple
-                label="Disciplinas a cursar no CEJA"
+                label="Disciplinas a cursar"
                 value={form.disciplinasProgressaoIds}
                 onChange={(e) => setForm({ disciplinasProgressaoIds: parseMultiNumber(e.target.value) })}
                 renderValue={(selected) => {
@@ -1253,13 +1269,13 @@ const SecretariaMatriculasPage: FC = () => {
         if (rows.length === 0) return bloco
 
         if (bloco.modalidade === 'Aproveitamento de Estudos') {
+          const concluidas = rows.filter((row) => idsStatusDisciplinaConcluida.has(Number(row.id_status_disciplina)))
           const seriesConcluidasIds = Array.from(
-            new Set(rows.map((row) => Number(row.id_ano_escolar)).filter(Number.isFinite)),
+            new Set(concluidas.map((row) => Number(row.id_ano_escolar)).filter(Number.isFinite)),
           )
           const disciplinasAproveitamentoConfigIds = Array.from(
             new Set(
-              rows
-                .filter((row) => !idsStatusDisciplinaConcluida.has(Number(row.id_status_disciplina)))
+              concluidas
                 .map((row) => {
                   const config = configDisciplinaAnoDisponiveis.find(
                     (item) =>
@@ -1282,12 +1298,7 @@ const SecretariaMatriculasPage: FC = () => {
         if (bloco.modalidade === 'Progressão de Estudos') {
           const serieProgressaoId = rows[0]?.id_ano_escolar ? Number(rows[0].id_ano_escolar) : ''
           const disciplinasProgressaoIds = Array.from(
-            new Set(
-              rows
-                .filter((row) => !idsStatusDisciplinaConcluida.has(Number(row.id_status_disciplina)))
-                .map((row) => Number(row.id_disciplina))
-                .filter(Number.isFinite),
-            ),
+            new Set(rows.map((row) => Number(row.id_disciplina)).filter(Number.isFinite)),
           )
 
           return {
@@ -1689,18 +1700,10 @@ const SecretariaMatriculasPage: FC = () => {
       if (b.modalidade === 'Aproveitamento de Estudos') {
         const precisaDefinirAproveitamento =
           opts.modo === 'novo' || !b.idMatricula || b.regenerarProgresso
-        if (precisaDefinirAproveitamento) {
-          if (b.seriesConcluidasIds.length === 0) {
-            return {
-              ok: false,
-              msg: `Selecione ao menos uma série no bloco ${idx + 1} (Aproveitamento).`,
-            }
-          }
-          if (b.disciplinasAproveitamentoConfigIds.length === 0) {
-            return {
-              ok: false,
-              msg: `Selecione ao menos uma disciplina que o aluno vai cursar no CEJA no bloco ${idx + 1} (Aproveitamento).`,
-            }
+        if (precisaDefinirAproveitamento && b.seriesConcluidasIds.length > 0 && b.disciplinasAproveitamentoConfigIds.length === 0) {
+          return {
+            ok: false,
+            msg: `Selecione as disciplinas concluídas das séries marcadas no bloco ${idx + 1} (Aproveitamento).`,
           }
         }
       }
@@ -1717,7 +1720,7 @@ const SecretariaMatriculasPage: FC = () => {
           if (b.disciplinasProgressaoIds.length === 0)
             return {
               ok: false,
-              msg: `Selecione ao menos uma disciplina que o aluno vai cursar no CEJA no bloco ${idx + 1} (Progressão).`,
+              msg: `Selecione ao menos uma disciplina no bloco ${idx + 1} (Progressão).`,
             }
         }
       }
@@ -1744,24 +1747,88 @@ const SecretariaMatriculasPage: FC = () => {
       return
     }
 
-    const emailFinal = emailDigitado ?? gerarEmailAutomatico(nome)
     const senhaFinal = cpf && cpf.length >= 3 ? cpf : `Ceja@${new Date().getFullYear()}`
 
     try {
       setSalvandoNova(true)
 
+      if (emailDigitado) {
+        const { data: usuarioMesmoEmail, error: usuarioMesmoEmailError } = await supabase
+          .from('usuarios')
+          .select('id, name, email')
+          .ilike('email', emailDigitado)
+          .limit(1)
+
+        if (usuarioMesmoEmailError) {
+          console.error(usuarioMesmoEmailError)
+          erro('Não foi possível validar o e-mail informado antes de salvar a matrícula.')
+          return
+        }
+
+        if ((usuarioMesmoEmail ?? []).length > 0) {
+          erro('Já existe um usuário cadastrado com este e-mail. Abra o cadastro existente e lance apenas a matrícula.')
+          return
+        }
+      }
+
+      if (cpf) {
+        const { data: usuarioMesmoCpf, error: usuarioMesmoCpfError } = await supabase
+          .from('usuarios')
+          .select('id, name, cpf')
+          .eq('cpf', cpf)
+          .limit(1)
+
+        if (usuarioMesmoCpfError) {
+          console.error(usuarioMesmoCpfError)
+          erro('Não foi possível validar o CPF informado antes de salvar a matrícula.')
+          return
+        }
+
+        if ((usuarioMesmoCpf ?? []).length > 0) {
+          erro('Já existe um usuário cadastrado com este CPF. Abra o cadastro existente e lance apenas a matrícula.')
+          return
+        }
+      }
+
+      const emailFoiDigitado = !!emailDigitado
+      const emailsCandidatos = emailFoiDigitado ? [emailDigitado] : gerarEmailsAutomaticosCandidatos(nome, cpf)
+
       // 1) Cria usuário de autenticação (OBS: signUp pode trocar a sessão em ambientes sem confirmação de e-mail)
       const { data: sessAntesData } = await supabase.auth.getSession()
       const sessAntes = sessAntesData.session
 
-      const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
-        email: emailFinal,
-        password: senhaFinal,
-      })
+      let emailFinal = emailsCandidatos[0]
+      let signUpData: Awaited<ReturnType<typeof supabase.auth.signUp>>['data'] | null = null
+      let signUpError: Awaited<ReturnType<typeof supabase.auth.signUp>>['error'] | null = null
+
+      for (const emailCandidato of emailsCandidatos) {
+        emailFinal = emailCandidato
+        const tentativa = await supabase.auth.signUp({
+          email: emailCandidato,
+          password: senhaFinal,
+        })
+
+        signUpData = tentativa.data
+        signUpError = tentativa.error
+
+        if (!signUpError && signUpData?.user) break
+
+        const jaRegistrado = String(tentativa.error?.message ?? '').toLowerCase().includes('already registered')
+        if (!jaRegistrado || emailFoiDigitado) break
+      }
 
       if (signUpError || !signUpData?.user) {
         console.error(signUpError)
-        erro('Erro ao criar usuário de autenticação do aluno.')
+        const jaRegistrado = String(signUpError?.message ?? '').toLowerCase().includes('already registered')
+        if (jaRegistrado) {
+          erro(
+            emailFoiDigitado
+              ? 'Este e-mail já está registrado no acesso do sistema. Use outro e-mail ou abra o cadastro existente do aluno.'
+              : 'O login automático gerado para este aluno entrou em conflito com um cadastro já existente. Informe um e-mail manualmente ou revise se o aluno já foi cadastrado antes.',
+          )
+        } else {
+          erro('Erro ao criar usuário de autenticação do aluno.')
+        }
         return
       }
 
@@ -1803,7 +1870,7 @@ const SecretariaMatriculasPage: FC = () => {
 
       if (usuarioError) {
         console.error(usuarioError)
-        erro('Erro ao salvar dados básicos do aluno (usuário).')
+        erro(`O acesso do aluno foi criado (${emailFinal}), mas houve erro ao salvar os dados básicos em usuários. Não tente cadastrar novamente com o mesmo e-mail.`)
         return
       }
 
@@ -1831,7 +1898,7 @@ const SecretariaMatriculasPage: FC = () => {
 
       if (alunoError || !alunoData) {
         console.error(alunoError)
-        erro('Erro ao salvar dados específicos do aluno.')
+        erro(`O acesso do aluno foi criado (${emailFinal}), mas houve erro ao salvar os dados específicos do aluno. Não tente cadastrar novamente com o mesmo e-mail.`)
         return
       }
 
@@ -1859,7 +1926,7 @@ const SecretariaMatriculasPage: FC = () => {
 
       if (insertMatriculasError || !matriculasInseridas || matriculasInseridas.length === 0) {
         console.error(insertMatriculasError)
-        erro('Erro ao salvar a(s) matrícula(s) do aluno.')
+        erro(`O acesso do aluno foi criado (${emailFinal}), mas houve erro ao salvar a(s) matrícula(s). Não tente cadastrar novamente com o mesmo e-mail.`)
         return
       }
 
