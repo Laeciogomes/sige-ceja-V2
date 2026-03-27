@@ -119,20 +119,61 @@ const SecretariaRelatoriosFichasPage: React.FC = () => {
     setBuscandoAluno(true)
     try {
       const mapa = new Map<number, AlunoOpcao>()
+      const matriculaPorAluno = new Map<number, string | null>()
+      const usuarioPorId = new Map<string, UsuarioJoin>()
+      const alunoPorId = new Map<number, { id_aluno: number; user_id?: string | null }>()
 
-      const adicionarOpcao = (item: any) => {
+      const adicionarOpcao = (payload: {
+        id_aluno: number
+        nome?: string | null
+        email?: string | null
+        foto_url?: string | null
+        cpf?: string | null
+        numero_inscricao?: string | null
+      }) => {
+        const idAluno = Number(payload.id_aluno ?? 0)
+        if (!idAluno) return
+
+        mapa.set(idAluno, {
+          id_aluno: idAluno,
+          nome: String(payload.nome ?? `Aluno ${idAluno}`),
+          email: payload.email ?? null,
+          foto_url: payload.foto_url ?? null,
+          cpf: payload.cpf ?? null,
+          numero_inscricao: payload.numero_inscricao ?? null,
+        })
+      }
+
+      const adicionarOpcaoPorJoin = (item: any) => {
         const usuario = first(item?.usuarios) as UsuarioJoin | null
         const matricula = first(item?.matriculas) as MatriculaJoin | null
         const idAluno = Number(item?.id_aluno ?? 0)
         if (!idAluno) return
 
-        mapa.set(idAluno, {
+        adicionarOpcao({
           id_aluno: idAluno,
-          nome: String(usuario?.name ?? `Aluno ${idAluno}`),
+          nome: usuario?.name ?? null,
           email: usuario?.email ?? null,
           foto_url: usuario?.foto_url ?? null,
           cpf: usuario?.cpf ?? null,
           numero_inscricao: matricula?.numero_inscricao ?? null,
+        })
+      }
+
+      const materializar = (alunoIds: number[]) => {
+        alunoIds.forEach((idAluno) => {
+          const aluno = alunoPorId.get(idAluno)
+          if (!aluno) return
+
+          const usuario = usuarioPorId.get(String(aluno.user_id ?? ''))
+          adicionarOpcao({
+            id_aluno: idAluno,
+            nome: usuario?.name ?? null,
+            email: usuario?.email ?? null,
+            foto_url: usuario?.foto_url ?? null,
+            cpf: usuario?.cpf ?? null,
+            numero_inscricao: matriculaPorAluno.get(idAluno) ?? null,
+          })
         })
       }
 
@@ -158,60 +199,124 @@ const SecretariaRelatoriosFichasPage: React.FC = () => {
         .limit(25)
 
       if (erroNome) throw erroNome
-      ;(alunosPorNome ?? []).forEach(adicionarOpcao)
+      ;(alunosPorNome ?? []).forEach(adicionarOpcaoPorJoin)
 
       if (buscaNumerica) {
-        const filtrosCpf = cpfFormatado
-          ? `usuarios.cpf.ilike.%${somenteDigitos}%,usuarios.cpf.ilike.%${cpfFormatado}%`
-          : `usuarios.cpf.ilike.%${somenteDigitos}%`
-
-        const { data: alunosPorCpf, error: erroCpf } = await supabase
-          .from('alunos')
-          .select(
-            `
-            id_aluno,
-            usuarios!inner(
-              id,
-              name,
-              email,
-              foto_url,
-              cpf
-            ),
-            matriculas(
-              numero_inscricao
-            )
-          `,
-          )
-          .or(filtrosCpf)
-          .order('id_aluno', { ascending: false })
+        let usuariosQuery = supabase
+          .from('usuarios')
+          .select('id, name, email, foto_url, cpf')
           .limit(25)
 
+        if (cpfFormatado) {
+          usuariosQuery = usuariosQuery.or(`cpf.ilike.%${somenteDigitos}%,cpf.ilike.%${cpfFormatado}%`)
+        } else {
+          usuariosQuery = usuariosQuery.ilike('cpf', `%${somenteDigitos}%`)
+        }
+
+        const { data: usuariosCpf, error: erroCpf } = await usuariosQuery
         if (erroCpf) throw erroCpf
-        ;(alunosPorCpf ?? []).forEach(adicionarOpcao)
 
-        const { data: alunosPorMatricula, error: erroMatricula } = await supabase
-          .from('alunos')
-          .select(
-            `
-            id_aluno,
-            usuarios!inner(
-              id,
-              name,
-              email,
-              foto_url,
-              cpf
-            ),
-            matriculas!inner(
-              numero_inscricao
-            )
-          `,
-          )
-          .ilike('matriculas.numero_inscricao', `%${somenteDigitos}%`)
-          .order('id_aluno', { ascending: false })
-          .limit(25)
+        const userIdsCpf = ((usuariosCpf ?? []) as UsuarioJoin[])
+          .map((u: any) => String(u?.id ?? ''))
+          .filter(Boolean)
+
+        ;(usuariosCpf ?? []).forEach((u: any) => {
+          usuarioPorId.set(String(u.id), u as UsuarioJoin)
+        })
+
+        if (userIdsCpf.length > 0) {
+          const { data: alunosCpf, error: erroAlunosCpf } = await supabase
+            .from('alunos')
+            .select('id_aluno, user_id')
+            .in('user_id', userIdsCpf)
+            .limit(25)
+
+          if (erroAlunosCpf) throw erroAlunosCpf
+
+          const alunoIdsCpf = ((alunosCpf ?? []) as any[])
+            .map((a) => Number(a.id_aluno))
+            .filter((n) => Number.isFinite(n) && n > 0)
+
+          ;(alunosCpf ?? []).forEach((a: any) => {
+            alunoPorId.set(Number(a.id_aluno), { id_aluno: Number(a.id_aluno), user_id: a.user_id ?? null })
+          })
+
+          if (alunoIdsCpf.length > 0) {
+            const { data: matsCpf, error: erroMatsCpf } = await supabase
+              .from('matriculas')
+              .select('id_aluno, numero_inscricao')
+              .in('id_aluno', alunoIdsCpf)
+              .limit(100)
+
+            if (erroMatsCpf) throw erroMatsCpf
+
+            ;(matsCpf ?? []).forEach((m: any) => {
+              const idAluno = Number(m?.id_aluno ?? 0)
+              if (idAluno && !matriculaPorAluno.has(idAluno)) {
+                matriculaPorAluno.set(idAluno, m?.numero_inscricao ?? null)
+              }
+            })
+
+            materializar(alunoIdsCpf)
+          }
+        }
+
+        const { data: matsEncontradas, error: erroMatricula } = await supabase
+          .from('matriculas')
+          .select('id_aluno, numero_inscricao')
+          .ilike('numero_inscricao', `%${somenteDigitos}%`)
+          .limit(50)
 
         if (erroMatricula) throw erroMatricula
-        ;(alunosPorMatricula ?? []).forEach(adicionarOpcao)
+
+        const alunoIdsMat = ((matsEncontradas ?? []) as any[])
+          .map((m) => Number(m?.id_aluno ?? 0))
+          .filter((n) => Number.isFinite(n) && n > 0)
+
+        ;(matsEncontradas ?? []).forEach((m: any) => {
+          const idAluno = Number(m?.id_aluno ?? 0)
+          if (idAluno && !matriculaPorAluno.has(idAluno)) {
+            matriculaPorAluno.set(idAluno, m?.numero_inscricao ?? null)
+          }
+        })
+
+        if (alunoIdsMat.length > 0) {
+          const { data: alunosMat, error: erroAlunosMat } = await supabase
+            .from('alunos')
+            .select('id_aluno, user_id')
+            .in('id_aluno', alunoIdsMat)
+            .limit(50)
+
+          if (erroAlunosMat) throw erroAlunosMat
+
+          ;(alunosMat ?? []).forEach((a: any) => {
+            alunoPorId.set(Number(a.id_aluno), { id_aluno: Number(a.id_aluno), user_id: a.user_id ?? null })
+          })
+
+          const userIdsMat = Array.from(
+            new Set(
+              ((alunosMat ?? []) as any[])
+                .map((a) => String(a?.user_id ?? ''))
+                .filter(Boolean),
+            ),
+          )
+
+          if (userIdsMat.length > 0) {
+            const { data: usuariosMat, error: erroUsuariosMat } = await supabase
+              .from('usuarios')
+              .select('id, name, email, foto_url, cpf')
+              .in('id', userIdsMat)
+              .limit(50)
+
+            if (erroUsuariosMat) throw erroUsuariosMat
+
+            ;(usuariosMat ?? []).forEach((u: any) => {
+              usuarioPorId.set(String(u.id), u as UsuarioJoin)
+            })
+          }
+
+          materializar(alunoIdsMat)
+        }
       }
 
       setOpcoesAluno(Array.from(mapa.values()).slice(0, 25))
@@ -470,6 +575,7 @@ const SecretariaRelatoriosFichasPage: React.FC = () => {
             noOptionsText={
               buscaAluno.trim().length < 2 ? 'Digite pelo menos 2 caracteres...' : 'Nenhum aluno encontrado'
             }
+            filterOptions={(x) => x}
             renderInput={(params) => (
               <TextField
                 {...params}
