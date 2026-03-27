@@ -5,7 +5,6 @@ import { RootLayout } from '../layouts/RootLayout'
 import { LoginPage } from '../paginas/Autenticacao/LoginPage'
 import { NovaSenhaPage } from '../paginas/Autenticacao/NovaSenhaPage'
 
-// Dashboard principal (admin)
 import { DashboardPage } from '../paginas/painel-administracao/DashboardPage'
 
 import { PaginaSimples } from '../paginas/PaginaSimples'
@@ -16,7 +15,6 @@ import ConfiguracoesPage from '../paginas/Configuracoes/ConfiguracoesPage'
 import { useAuth } from '../contextos/AuthContext'
 import { RotaPorPapel } from '../componentes/navegacao/RotaPorPapel'
 
-// Páginas da Secretaria
 import SecretariaLayout from '../paginas/painel-secretaria/SecretariaLayout'
 import SecretariaUsuariosPage from '../paginas/painel-secretaria/SecretariaUsuariosPage'
 import SecretariaTurmasPage from '../paginas/painel-secretaria/SecretariaTurmasPage'
@@ -28,20 +26,16 @@ import SecretariaProtocolosPage from '../paginas/painel-secretaria/SecretariaPro
 import SecretariaTurmaAlunosPage from '../paginas/painel-secretaria/SecretariaTurmaAlunosPage'
 import SecretariaRelatoriosFichasPage from '../paginas/painel-secretaria/SecretariaRelatoriosFichasPage'
 import SecretariaHistoricoPage from '../paginas/painel-secretaria/SecretariaHistoricoPage'
+import SecretariaPontoGestaoPage from '../paginas/painel-secretaria/SecretariaPontoGestaoPage'
 
-// Professor
 import ProfessorAtendimentosPage from '../paginas/painel-professor/ProfessorAtendimentosPage'
 import AcompanhamentoPage from '../paginas/painel-professor/AcompanhamentoPage'
-import ProfessorPontoPage from '../paginas/painel-professor/ProfessorPontoPage'
+import PontoDigitalPage from '../paginas/ponto/PontoDigitalPage'
 
-// SASP (Coordenação/Direção)
 import SaspPage from '../paginas/painel-coordenacao/SaspPage'
-
-// ✅ Ficha (rota igual ao ZIP: /fichas/:id_progresso)
 import FichaAcompanhamentoPage from '../paginas/painel-professor/FichaAcompanhamentoPage'
 
 export const AppRoutes: React.FC = () => {
-  // Inclui "carregando" para evitar redirecionar enquanto a sessão está sendo restaurada
   const { usuario, carregando } = useAuth() as {
     usuario: any
     carregando?: boolean
@@ -55,24 +49,19 @@ export const AppRoutes: React.FC = () => {
 
   return (
     <Routes>
-      {/* LOGIN */}
       <Route
         path="/login"
         element={autenticado ? <Navigate to="/" replace /> : <LoginPage />}
       />
 
-      {/* ROTA PÚBLICA PARA REDEFINIÇÃO DE SENHA (link do e-mail do Supabase) */}
       <Route path="/nova-senha" element={<NovaSenhaPage />} />
 
-      {/* ROTAS PROTEGIDAS */}
       <Route
         path="/"
         element={autenticado ? <RootLayout /> : <Navigate to="/login" replace />}
       >
-        {/* Dashboard geral */}
         <Route index element={<DashboardPage />} />
 
-        {/* SECRETARIA */}
         <Route
           path="secretaria"
           element={
@@ -108,9 +97,9 @@ export const AppRoutes: React.FC = () => {
             element={<SecretariaRelatoriosFichasPage />}
           />
           <Route path="historico" element={<SecretariaHistoricoPage />} />
+          <Route path="ponto" element={<SecretariaPontoGestaoPage />} />
         </Route>
 
-        {/* PROFESSORES */}
         <Route
           path="professores"
           element={
@@ -139,16 +128,6 @@ export const AppRoutes: React.FC = () => {
         />
 
         <Route
-          path="professores/ponto"
-          element={
-            <RotaPorPapel papeisPermitidos={['PROFESSOR', 'ADMIN']}>
-              <ProfessorPontoPage />
-            </RotaPorPapel>
-          }
-        />
-
-        {/* ✅ FICHA (igual ZIP) */}
-        <Route
           path="fichas/:id_progresso"
           element={
             <RotaPorPapel
@@ -165,7 +144,6 @@ export const AppRoutes: React.FC = () => {
           }
         />
 
-        {/* COORDENAÇÃO */}
         <Route
           path="coordenacao"
           element={
@@ -191,7 +169,6 @@ export const AppRoutes: React.FC = () => {
           }
         />
 
-        {/* DIREÇÃO */}
         <Route
           path="direcao"
           element={
@@ -217,7 +194,6 @@ export const AppRoutes: React.FC = () => {
           }
         />
 
-        {/* ALUNOS */}
         <Route
           path="alunos"
           element={
@@ -243,15 +219,30 @@ export const AppRoutes: React.FC = () => {
           }
         />
 
-        {/* PERFIL E CONFIG */}
+        <Route
+          path="ponto"
+          element={
+            <RotaPorPapel
+              papeisPermitidos={[
+                'SECRETARIA',
+                'ADMIN',
+                'COORDENACAO',
+                'DIRETOR',
+                'PROFESSOR',
+                'AVALIADOR',
+              ]}
+            >
+              <PontoDigitalPage />
+            </RotaPorPapel>
+          }
+        />
+
         <Route path="perfil" element={<PerfilPage />} />
         <Route path="config" element={<ConfiguracoesPage />} />
 
-        {/* CORINGA */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
 
-      {/* CORINGA FORA */}
       <Route
         path="*"
         element={

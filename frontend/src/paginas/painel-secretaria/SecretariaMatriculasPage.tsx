@@ -359,6 +359,29 @@ const slugNomeParaEmail = (nome: string): string[] =>
 
 const somenteDigitos = (valor: string): string => (valor ?? '').replace(/\D/g, '')
 
+const formatarCPFInput = (valor: string): string => {
+  const v = somenteDigitos(valor).slice(0, 11)
+  if (v.length <= 3) return v
+  if (v.length <= 6) return `${v.slice(0, 3)}.${v.slice(3)}`
+  if (v.length <= 9) return `${v.slice(0, 3)}.${v.slice(3, 6)}.${v.slice(6)}`
+  return `${v.slice(0, 3)}.${v.slice(3, 6)}.${v.slice(6, 9)}-${v.slice(9, 11)}`
+}
+
+const formatarTelefoneInput = (valor: string): string => {
+  const v = somenteDigitos(valor).slice(0, 11)
+  if (!v) return ''
+  if (v.length <= 2) return `(${v}`
+  if (v.length <= 6) return `(${v.slice(0, 2)}) ${v.slice(2)}`
+  if (v.length <= 10) return `(${v.slice(0, 2)}) ${v.slice(2, 6)}-${v.slice(6)}`
+  return `(${v.slice(0, 2)}) ${v.slice(2, 3)} ${v.slice(3, 7)}-${v.slice(7, 11)}`
+}
+
+const formatarNISInput = (valor: string): string => somenteDigitos(valor).slice(0, 11)
+
+const formatarNumeroInscricaoInput = (valor: string): string => somenteDigitos(valor).slice(0, 20)
+
+const formatarAnoLetivoInput = (valor: string): string => somenteDigitos(valor).slice(0, 4)
+
 const gerarEmailAutomatico = (nome: string, cpf?: string | null, sufixoExtra?: string): string => {
   const slug = slugNomeParaEmail(nome)
   const primeiro = slug[0] ?? 'aluno'
@@ -944,7 +967,7 @@ const MatriculaNivelCard: FC<MatriculaNivelCardProps> = (props) => {
             size="small"
             label="Número de inscrição"
             value={form.numeroInscricao}
-            onChange={(e) => setForm({ numeroInscricao: e.target.value })}
+            onChange={(e) => setForm({ numeroInscricao: formatarNumeroInscricaoInput(e.target.value) })}
             disabled={desabilitado || form.nivelId === ''}
             helperText="Obrigatório (tabela matriculas.numero_inscricao é NOT NULL)."
           />
@@ -955,7 +978,7 @@ const MatriculaNivelCard: FC<MatriculaNivelCardProps> = (props) => {
             label="Ano de referência da matrícula"
             type="number"
             value={form.anoLetivo}
-            onChange={(e) => setForm({ anoLetivo: e.target.value })}
+            onChange={(e) => setForm({ anoLetivo: formatarAnoLetivoInput(e.target.value) })}
             disabled={desabilitado || form.nivelId === ''}
             helperText="Usado para histórico, relatórios e regras de benefício. Não obriga trocar a turma a cada ano."
           />
@@ -1813,7 +1836,7 @@ const SecretariaMatriculasPage: FC = () => {
 
     const nome = novoAluno.nome.trim()
     const emailDigitado = novoAluno.email.trim().toLowerCase() || null
-    const cpf = novoAluno.cpf.trim() || null
+    const cpf = somenteDigitos(novoAluno.cpf) || null
 
     if (!nome) {
       erro('Informe pelo menos o nome completo do aluno.')
@@ -1922,9 +1945,9 @@ const SecretariaMatriculasPage: FC = () => {
         username: null,
         email: emailFinal,
         data_nascimento: novoAluno.dataNasc || null,
-        cpf: novoAluno.cpf.trim() || null,
+        cpf: somenteDigitos(novoAluno.cpf) || null,
         rg: null,
-        celular: novoAluno.celular.trim() || null,
+        celular: somenteDigitos(novoAluno.celular) || null,
         logradouro: novoAluno.logradouro.trim() || null,
         numero_endereco: novoAluno.numeroEnd.trim() || null,
         bairro: novoAluno.bairro.trim() || null,
@@ -1946,7 +1969,7 @@ const SecretariaMatriculasPage: FC = () => {
       // 3) Cria registro em public.alunos
       const alunoPayload: Partial<AlunoRow> = {
         user_id: authUserId,
-        nis: novoAluno.nis.trim() || null,
+        nis: somenteDigitos(novoAluno.nis) || null,
         nome_mae: novoAluno.nomeMae.trim() || 'Não informado',
         nome_pai: novoAluno.nomePai.trim() || null,
         usa_transporte_escolar: novoAluno.usaTransporte,
@@ -2048,9 +2071,9 @@ const SecretariaMatriculasPage: FC = () => {
       nome: matricula.alunoNome ?? '',
       email: matricula.alunoEmail ?? '',
       dataNasc: matricula.dataNascimento ?? '',
-      cpf: matricula.cpf ?? '',
-      celular: matricula.celular ?? '',
-      nis: matricula.alunoNis ?? '',
+      cpf: formatarCPFInput(matricula.cpf ?? ''),
+      celular: formatarTelefoneInput(matricula.celular ?? ''),
+      nis: formatarNISInput(matricula.alunoNis ?? ''),
       nomeMae: matricula.alunoNomeMae ?? '',
       nomePai: matricula.alunoNomePai ?? '',
       logradouro: matricula.logradouro ?? '',
@@ -2163,8 +2186,8 @@ const SecretariaMatriculasPage: FC = () => {
         // Observação: "email" em UsuarioRow é string (não-null). Em update usamos "undefined" para não alterar.
         email: editAluno.email.trim() || undefined,
         data_nascimento: editAluno.dataNasc || null,
-        cpf: editAluno.cpf.trim() || null,
-        celular: editAluno.celular.trim() || null,
+        cpf: somenteDigitos(editAluno.cpf) || null,
+        celular: somenteDigitos(editAluno.celular) || null,
         logradouro: editAluno.logradouro.trim() || null,
         numero_endereco: editAluno.numeroEnd.trim() || null,
         bairro: editAluno.bairro.trim() || null,
@@ -2187,7 +2210,7 @@ const SecretariaMatriculasPage: FC = () => {
 
       // 2) Atualiza public.alunos
       const alunoUpdate: Partial<AlunoRow> = {
-        nis: editAluno.nis.trim() || null,
+        nis: somenteDigitos(editAluno.nis) || null,
         nome_mae: editAluno.nomeMae.trim() || 'Não informado',
         nome_pai: editAluno.nomePai.trim() || null,
         usa_transporte_escolar: editAluno.usaTransporte,
@@ -2954,7 +2977,7 @@ const SecretariaMatriculasPage: FC = () => {
                   size="small"
                   label="CPF (opcional)"
                   value={novoAluno.cpf}
-                  onChange={(e) => setNovoAluno((p) => ({ ...p, cpf: e.target.value }))}
+                  onChange={(e) => setNovoAluno((p) => ({ ...p, cpf: formatarCPFInput(e.target.value) }))}
                   disabled={salvandoNova}
                   helperText="Se informado, será usado como senha inicial."
                 />
@@ -2976,7 +2999,7 @@ const SecretariaMatriculasPage: FC = () => {
                   size="small"
                   label="Celular"
                   value={novoAluno.celular}
-                  onChange={(e) => setNovoAluno((p) => ({ ...p, celular: e.target.value }))}
+                  onChange={(e) => setNovoAluno((p) => ({ ...p, celular: formatarTelefoneInput(e.target.value) }))}
                   disabled={salvandoNova}
                 />
                 <TextField
@@ -2984,7 +3007,7 @@ const SecretariaMatriculasPage: FC = () => {
                   size="small"
                   label="NIS (opcional)"
                   value={novoAluno.nis}
-                  onChange={(e) => setNovoAluno((p) => ({ ...p, nis: e.target.value }))}
+                  onChange={(e) => setNovoAluno((p) => ({ ...p, nis: formatarNISInput(e.target.value) }))}
                   disabled={salvandoNova}
                 />
               </Stack>
@@ -3286,7 +3309,7 @@ const SecretariaMatriculasPage: FC = () => {
                   size="small"
                   label="CPF (tabela usuários)"
                   value={editAluno.cpf}
-                  onChange={(e) => setEditAluno((p) => ({ ...p, cpf: e.target.value }))}
+                  onChange={(e) => setEditAluno((p) => ({ ...p, cpf: formatarCPFInput(e.target.value) }))}
                   disabled={salvandoEdicao || excluindoMatricula}
                 />
               </Stack>
@@ -3307,7 +3330,7 @@ const SecretariaMatriculasPage: FC = () => {
                   size="small"
                   label="Celular"
                   value={editAluno.celular}
-                  onChange={(e) => setEditAluno((p) => ({ ...p, celular: e.target.value }))}
+                  onChange={(e) => setEditAluno((p) => ({ ...p, celular: formatarTelefoneInput(e.target.value) }))}
                   disabled={salvandoEdicao || excluindoMatricula}
                 />
                 <TextField
@@ -3315,7 +3338,7 @@ const SecretariaMatriculasPage: FC = () => {
                   size="small"
                   label="NIS (tabela alunos)"
                   value={editAluno.nis}
-                  onChange={(e) => setEditAluno((p) => ({ ...p, nis: e.target.value }))}
+                  onChange={(e) => setEditAluno((p) => ({ ...p, nis: formatarNISInput(e.target.value) }))}
                   disabled={salvandoEdicao || excluindoMatricula}
                 />
               </Stack>

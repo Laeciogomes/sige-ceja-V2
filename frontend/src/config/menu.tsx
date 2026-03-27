@@ -14,6 +14,7 @@ import ListAltIcon from '@mui/icons-material/ListAlt'
 import CategoryIcon from '@mui/icons-material/Category'
 import HistoryEduIcon from '@mui/icons-material/HistoryEdu'
 import AccessTimeFilledIcon from '@mui/icons-material/AccessTimeFilled'
+import EventAvailableIcon from '@mui/icons-material/EventAvailable'
 
 import type { PapelUsuario } from '../contextos/AuthContext'
 
@@ -34,25 +35,29 @@ export type ItemMenuConfig = {
   mostrarPonto?: boolean
 }
 
-/**
- * Menus por contexto de painel.
- * IMPORTANTE: O primeiro item de cada lista é tratado como o "Dashboard" principal
- * na BarraLateral e ganha destaque visual separado.
- */
 export const menusPorContexto: Record<ContextoPainel, ItemMenuConfig[]> = {
-  /**
-   * ADMIN
-   */
   ADMIN: [
-    // 1. Dashboard (Topo)
     {
       id: 'admin-dashboard',
       rotulo: 'Visão Geral',
       caminho: '/admin',
       icone: <DashboardIcon />,
     },
+    {
+      id: 'admin-ponto',
+      rotulo: 'Ponto digital',
+      caminho: '/ponto',
+      icone: <AccessTimeFilledIcon />,
+      grupo: 'Ponto digital',
+    },
+    {
+      id: 'admin-ponto-gestao',
+      rotulo: 'Gestão do ponto',
+      caminho: '/secretaria/ponto',
+      icone: <EventAvailableIcon />,
+      grupo: 'Ponto digital',
+    },
 
-    // --- SECRETARIA: ADMINISTRATIVO ---
     {
       id: 'admin-sec-usuarios',
       rotulo: 'Usuários',
@@ -95,8 +100,6 @@ export const menusPorContexto: Record<ContextoPainel, ItemMenuConfig[]> = {
       icone: <DescriptionIcon />,
       grupo: 'Administrativo',
     },
-
-    // --- SECRETARIA: ACADÊMICO ---
     {
       id: 'admin-sec-matriculas',
       rotulo: 'Matrículas',
@@ -104,8 +107,6 @@ export const menusPorContexto: Record<ContextoPainel, ItemMenuConfig[]> = {
       icone: <AssignmentIndIcon />,
       grupo: 'Acadêmico',
     },
-
-    // --- SECRETARIA: RELATÓRIOS ---
     {
       id: 'admin-sec-relatorios-fichas',
       rotulo: 'Relatórios e fichas',
@@ -121,7 +122,6 @@ export const menusPorContexto: Record<ContextoPainel, ItemMenuConfig[]> = {
       grupo: 'Relatórios',
     },
 
-    // --- PEDAGÓGICO ---
     {
       id: 'admin-ped-atendimentos',
       rotulo: 'Atendimentos',
@@ -135,6 +135,7 @@ export const menusPorContexto: Record<ContextoPainel, ItemMenuConfig[]> = {
       caminho: '/coordenacao/acompanhamento',
       icone: <AssessmentIcon />,
       grupo: 'Pedagógico',
+      mostrarPonto: true,
     },
     {
       id: 'admin-ped-sasp',
@@ -144,7 +145,6 @@ export const menusPorContexto: Record<ContextoPainel, ItemMenuConfig[]> = {
       grupo: 'Pedagógico',
     },
 
-    // --- VISÃO ALUNO ---
     {
       id: 'admin-aluno-matriculas',
       rotulo: 'Matrículas (Aluno)',
@@ -161,15 +161,26 @@ export const menusPorContexto: Record<ContextoPainel, ItemMenuConfig[]> = {
     },
   ],
 
-  /**
-   * SECRETARIA
-   */
   SECRETARIA: [
     {
       id: 'sec-dashboard',
       rotulo: 'Dashboard',
       caminho: '/secretaria',
       icone: <DashboardIcon />,
+    },
+    {
+      id: 'sec-ponto',
+      rotulo: 'Ponto digital',
+      caminho: '/ponto',
+      icone: <AccessTimeFilledIcon />,
+      grupo: 'Ponto digital',
+    },
+    {
+      id: 'sec-ponto-gestao',
+      rotulo: 'Gestão do ponto',
+      caminho: '/secretaria/ponto',
+      icone: <EventAvailableIcon />,
+      grupo: 'Ponto digital',
     },
     {
       id: 'sec-usuarios',
@@ -236,15 +247,19 @@ export const menusPorContexto: Record<ContextoPainel, ItemMenuConfig[]> = {
     },
   ],
 
-  /**
-   * PROFESSOR
-   */
   PROFESSOR: [
     {
       id: 'prof-dashboard',
       rotulo: 'Dashboard',
       caminho: '/professores',
       icone: <DashboardIcon />,
+    },
+    {
+      id: 'prof-ponto',
+      rotulo: 'Ponto digital',
+      caminho: '/ponto',
+      icone: <AccessTimeFilledIcon />,
+      grupo: 'Ponto digital',
     },
     {
       id: 'prof-atendimentos',
@@ -259,25 +274,30 @@ export const menusPorContexto: Record<ContextoPainel, ItemMenuConfig[]> = {
       caminho: '/professores/acompanhamento',
       icone: <AssessmentIcon />,
       grupo: 'Pedagógico',
-    },
-    {
-      id: 'prof-ponto',
-      rotulo: 'Bater ponto',
-      caminho: '/professores/ponto',
-      icone: <AccessTimeFilledIcon />,
-      grupo: 'Pedagógico',
+      mostrarPonto: true,
     },
   ],
 
-  /**
-   * COORDENAÇÃO
-   */
   COORDENACAO: [
     {
       id: 'coord-dashboard',
       rotulo: 'Dashboard',
       caminho: '/coordenacao',
       icone: <DashboardIcon />,
+    },
+    {
+      id: 'coord-ponto',
+      rotulo: 'Ponto digital',
+      caminho: '/ponto',
+      icone: <AccessTimeFilledIcon />,
+      grupo: 'Ponto digital',
+    },
+    {
+      id: 'coord-ponto-gestao',
+      rotulo: 'Gestão do ponto',
+      caminho: '/secretaria/ponto',
+      icone: <EventAvailableIcon />,
+      grupo: 'Ponto digital',
     },
     {
       id: 'coord-usuarios',
@@ -355,18 +375,30 @@ export const menusPorContexto: Record<ContextoPainel, ItemMenuConfig[]> = {
       caminho: '/coordenacao/acompanhamento',
       icone: <AssessmentIcon />,
       grupo: 'Pedagógico',
+      mostrarPonto: true,
     },
   ],
 
-  /**
-   * DIREÇÃO
-   */
   DIRECAO: [
     {
       id: 'dir-dashboard',
       rotulo: 'Dashboard',
       caminho: '/direcao',
       icone: <DashboardIcon />,
+    },
+    {
+      id: 'dir-ponto',
+      rotulo: 'Ponto digital',
+      caminho: '/ponto',
+      icone: <AccessTimeFilledIcon />,
+      grupo: 'Ponto digital',
+    },
+    {
+      id: 'dir-ponto-gestao',
+      rotulo: 'Gestão do ponto',
+      caminho: '/secretaria/ponto',
+      icone: <EventAvailableIcon />,
+      grupo: 'Ponto digital',
     },
     {
       id: 'dir-usuarios',
@@ -444,12 +476,10 @@ export const menusPorContexto: Record<ContextoPainel, ItemMenuConfig[]> = {
       caminho: '/direcao/acompanhamento',
       icone: <AssessmentIcon />,
       grupo: 'Pedagógico',
+      mostrarPonto: true,
     },
   ],
 
-  /**
-   * ALUNO
-   */
   ALUNO: [
     {
       id: 'aluno-dashboard',
@@ -474,9 +504,6 @@ export const menusPorContexto: Record<ContextoPainel, ItemMenuConfig[]> = {
   ],
 }
 
-/**
- * Lógica para descobrir qual painel está ativo com base na rota e papel.
- */
 export const obterContextoPainel = (
   papel: PapelUsuario | undefined,
   pathname: string,
