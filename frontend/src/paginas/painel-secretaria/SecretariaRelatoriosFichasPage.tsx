@@ -41,9 +41,15 @@ import {
 } from './relatorios-fichas/analytics'
 
 type UsuarioJoin = {
+  id?: string | null
   name?: string | null
   email?: string | null
   foto_url?: string | null
+  cpf?: string | null
+}
+
+type MatriculaJoin = {
+  numero_inscricao?: string | null
 }
 
 type AlunoOpcao = {
@@ -51,6 +57,8 @@ type AlunoOpcao = {
   nome: string
   email?: string | null
   foto_url?: string | null
+  cpf?: string | null
+  numero_inscricao?: string | null
 }
 
 type DisciplinaRow = {
@@ -101,41 +109,112 @@ const SecretariaRelatoriosFichasPage: React.FC = () => {
       return
     }
 
+    const somenteDigitos = valor.replace(/\D/g, '')
+    const buscaNumerica = somenteDigitos.length >= 2
+    const cpfFormatado =
+      somenteDigitos.length === 11
+        ? somenteDigitos.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4')
+        : null
+
     setBuscandoAluno(true)
     try {
-      const isId = /^\d+$/.test(valor)
-      const base = supabase
+      const mapa = new Map<number, AlunoOpcao>()
+
+      const adicionarOpcao = (item: any) => {
+        const usuario = first(item?.usuarios) as UsuarioJoin | null
+        const matricula = first(item?.matriculas) as MatriculaJoin | null
+        const idAluno = Number(item?.id_aluno ?? 0)
+        if (!idAluno) return
+
+        mapa.set(idAluno, {
+          id_aluno: idAluno,
+          nome: String(usuario?.name ?? `Aluno ${idAluno}`),
+          email: usuario?.email ?? null,
+          foto_url: usuario?.foto_url ?? null,
+          cpf: usuario?.cpf ?? null,
+          numero_inscricao: matricula?.numero_inscricao ?? null,
+        })
+      }
+
+      const { data: alunosPorNome, error: erroNome } = await supabase
         .from('alunos')
         .select(
           `
           id_aluno,
           usuarios!inner(
+            id,
             name,
             email,
-            foto_url
+            foto_url,
+            cpf
+          ),
+          matriculas(
+            numero_inscricao
           )
         `,
         )
-        .limit(25)
+        .ilike('usuarios.name', `%${valor}%`)
         .order('id_aluno', { ascending: false })
+        .limit(25)
 
-      const { data, error: queryError } = isId
-        ? await base.eq('id_aluno', Number(valor))
-        : await base.ilike('usuarios.name', `%${valor}%`)
+      if (erroNome) throw erroNome
+      ;(alunosPorNome ?? []).forEach(adicionarOpcao)
 
-      if (queryError) throw queryError
+      if (buscaNumerica) {
+        const filtrosCpf = cpfFormatado
+          ? `usuarios.cpf.ilike.%${somenteDigitos}%,usuarios.cpf.ilike.%${cpfFormatado}%`
+          : `usuarios.cpf.ilike.%${somenteDigitos}%`
 
-      const opcoes: AlunoOpcao[] = (data ?? []).map((item: any) => {
-        const usuario = first(item?.usuarios) as UsuarioJoin | null
-        return {
-          id_aluno: Number(item.id_aluno),
-          nome: String(usuario?.name ?? `Aluno ${item.id_aluno}`),
-          email: usuario?.email ?? null,
-          foto_url: usuario?.foto_url ?? null,
-        }
-      })
+        const { data: alunosPorCpf, error: erroCpf } = await supabase
+          .from('alunos')
+          .select(
+            `
+            id_aluno,
+            usuarios!inner(
+              id,
+              name,
+              email,
+              foto_url,
+              cpf
+            ),
+            matriculas(
+              numero_inscricao
+            )
+          `,
+          )
+          .or(filtrosCpf)
+          .order('id_aluno', { ascending: false })
+          .limit(25)
 
-      setOpcoesAluno(opcoes)
+        if (erroCpf) throw erroCpf
+        ;(alunosPorCpf ?? []).forEach(adicionarOpcao)
+
+        const { data: alunosPorMatricula, error: erroMatricula } = await supabase
+          .from('alunos')
+          .select(
+            `
+            id_aluno,
+            usuarios!inner(
+              id,
+              name,
+              email,
+              foto_url,
+              cpf
+            ),
+            matriculas!inner(
+              numero_inscricao
+            )
+          `,
+          )
+          .ilike('matriculas.numero_inscricao', `%${somenteDigitos}%`)
+          .order('id_aluno', { ascending: false })
+          .limit(25)
+
+        if (erroMatricula) throw erroMatricula
+        ;(alunosPorMatricula ?? []).forEach(adicionarOpcao)
+      }
+
+      setOpcoesAluno(Array.from(mapa.values()).slice(0, 25))
     } catch (searchError) {
       console.error(searchError)
       setOpcoesAluno([])
@@ -380,7 +459,13 @@ const SecretariaRelatoriosFichasPage: React.FC = () => {
             onChange={(_event, novoValor) => setAlunoSelecionado(novoValor)}
             inputValue={buscaAluno}
             onInputChange={(_event, valor) => setBuscaAluno(valor)}
-            getOptionLabel={(opcao) => `${opcao.nome} (ID: ${opcao.id_aluno})`}
+            getOptionLabel={(opcao) => {
+              const extras = [
+                opcao.numero_inscricao ? `RA ${opcao.numero_inscricao}` : null,
+                opcao.cpf ? `CPF ${opcao.cpf}` : null,
+              ].filter(Boolean)
+              return extras.length > 0 ? `${opcao.nome} • ${extras.join(' • ')}` : `${opcao.nome} (ID: ${opcao.id_aluno})`
+            }}
             isOptionEqualToValue={(opcao, valor) => opcao.id_aluno === valor.id_aluno}
             noOptionsText={
               buscaAluno.trim().length < 2 ? 'Digite pelo menos 2 caracteres...' : 'Nenhum aluno encontrado'
@@ -390,7 +475,7 @@ const SecretariaRelatoriosFichasPage: React.FC = () => {
                 {...params}
                 size="small"
                 label="Aluno"
-                placeholder="Ex.: Maria ou 123"
+                placeholder="Ex.: Maria, 123456 ou 000.000.000-00"
                 InputProps={{
                   ...params.InputProps,
                   endAdornment: (
@@ -448,6 +533,8 @@ const SecretariaRelatoriosFichasPage: React.FC = () => {
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
                   ID do aluno: {alunoSelecionado.id_aluno}
+                  {alunoSelecionado.numero_inscricao ? ` • RA ${alunoSelecionado.numero_inscricao}` : ''}
+                  {alunoSelecionado.cpf ? ` • CPF ${alunoSelecionado.cpf}` : ''}
                 </Typography>
                 {alunoSelecionado.email ? (
                   <Typography variant="body2" color="text.secondary" sx={{ overflowWrap: 'anywhere' }}>
