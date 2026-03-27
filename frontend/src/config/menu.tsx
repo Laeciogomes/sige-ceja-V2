@@ -30,6 +30,7 @@ export type ItemMenuConfig = {
   caminho: string
   icone: React.ReactElement
   grupo?: string // Usado para os cabeçalhos de seção
+  mostrarPonto?: boolean
 }
 
 /**
@@ -133,6 +134,7 @@ export const menusPorContexto: Record<ContextoPainel, ItemMenuConfig[]> = {
       caminho: '/coordenacao/acompanhamento',
       icone: <AssessmentIcon />,
       grupo: 'Pedagógico',
+      mostrarPonto: true,
     },
     {
       id: 'admin-ped-sasp',
@@ -257,6 +259,7 @@ export const menusPorContexto: Record<ContextoPainel, ItemMenuConfig[]> = {
       caminho: '/professores/acompanhamento',
       icone: <AssessmentIcon />,
       grupo: 'Pedagógico',
+      mostrarPonto: true,
     },
   ],
 
@@ -346,6 +349,7 @@ export const menusPorContexto: Record<ContextoPainel, ItemMenuConfig[]> = {
       caminho: '/coordenacao/acompanhamento',
       icone: <AssessmentIcon />,
       grupo: 'Pedagógico',
+      mostrarPonto: true,
     },
   ],
 
@@ -435,6 +439,7 @@ export const menusPorContexto: Record<ContextoPainel, ItemMenuConfig[]> = {
       caminho: '/direcao/acompanhamento',
       icone: <AssessmentIcon />,
       grupo: 'Pedagógico',
+      mostrarPonto: true,
     },
   ],
 

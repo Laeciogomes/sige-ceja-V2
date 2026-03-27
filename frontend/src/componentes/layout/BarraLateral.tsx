@@ -1,6 +1,7 @@
 // src/componentes/layout/BarraLateral.tsx
 import React, { useMemo } from 'react'
 import {
+  Box,
   List,
   ListItemButton,
   ListItemIcon,
@@ -230,16 +231,54 @@ const ItemBarraLateral: React.FC<ItemProps> = React.memo(
         selected={ativo}
         onClick={handleClick}
         role="menuitem"
-        aria-label={`${item.rotulo} - ${ativo ? 'ativo' : 'navegar para'}`}
+        aria-label={`${item.rotulo}${item.mostrarPonto ? ' - novo' : ''} - ${ativo ? 'ativo' : 'navegar para'}`}
         sx={listItemButtonStyles}
         disableRipple={false}
       >
-        <ListItemIcon sx={iconStyle}>{item.icone}</ListItemIcon>
+        <ListItemIcon sx={iconStyle}>
+          <Box sx={{ position: 'relative', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+            {item.icone}
+            {!aberta && item.mostrarPonto && (
+              <Box
+                component="span"
+                sx={{
+                  position: 'absolute',
+                  top: -2,
+                  right: -4,
+                  width: 8,
+                  height: 8,
+                  borderRadius: '50%',
+                  bgcolor: '#F7941D',
+                  boxShadow: `0 0 0 2px ${theme.palette.background.paper}`,
+                }}
+              />
+            )}
+          </Box>
+        </ListItemIcon>
 
         {aberta && (
           <ListItemText
-            primary={item.rotulo}
+            primary={(
+              <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', gap: 1 }}>
+                <Box component="span">{item.rotulo}</Box>
+                {item.mostrarPonto && (
+                  <Box
+                    component="span"
+                    sx={{
+                      display: 'inline-block',
+                      width: 8,
+                      height: 8,
+                      borderRadius: '50%',
+                      bgcolor: '#F7941D',
+                      boxShadow: `0 0 0 2px ${alpha('#F7941D', 0.18)}`,
+                      flexShrink: 0,
+                    }}
+                  />
+                )}
+              </Box>
+            )}
             primaryTypographyProps={{
+              component: 'div',
               style: styles.listItemText(ativo, isDashboard),
             }}
             sx={{
