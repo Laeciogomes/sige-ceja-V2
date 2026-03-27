@@ -13,6 +13,7 @@ import AssignmentIndIcon from '@mui/icons-material/AssignmentInd'
 import ListAltIcon from '@mui/icons-material/ListAlt'
 import CategoryIcon from '@mui/icons-material/Category'
 import HistoryEduIcon from '@mui/icons-material/HistoryEdu'
+import AccessTimeIcon from '@mui/icons-material/AccessTime'
 
 import type { PapelUsuario } from '../contextos/AuthContext'
 
@@ -251,6 +252,13 @@ export const menusPorContexto: Record<ContextoPainel, ItemMenuConfig[]> = {
       rotulo: 'Meus Atendimentos',
       caminho: '/professores/atendimentos',
       icone: <MeetingRoomIcon />,
+      grupo: 'Pedagógico',
+    },
+    {
+      id: 'prof-bater-ponto',
+      rotulo: 'Bater ponto',
+      caminho: '/professores/ponto',
+      icone: <AccessTimeIcon />,
       grupo: 'Pedagógico',
     },
     {

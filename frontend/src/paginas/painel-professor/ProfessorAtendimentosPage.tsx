@@ -1174,41 +1174,66 @@ export default function ProfessorAtendimentosPage() {
         }
 
         const adicionarOpcoesPorMatriculas = async (matriculasRows: any[]) => {
-          const alunosRaw = (matriculasRows ?? []).map((m: any) => first(m?.alunos)).filter(Boolean)
-          const userIds = Array.from(
+          const idsAluno = Array.from(
             new Set(
-              alunosRaw
-                .map((a: any) => String(a?.user_id ?? '').trim())
-                .filter(Boolean)
+              (matriculasRows ?? [])
+                .map((m: any) => Number(m?.id_aluno ?? 0))
+                .filter((id: number) => Number.isFinite(id) && id > 0)
             )
           )
 
+          const alunosPorId = new Map<number, any>()
           const usuariosPorId = new Map<string, any>()
-          if (userIds.length > 0) {
-            const { data: usuariosData, error: errUsuarios } = await supabase
-              .from('usuarios')
-              .select('id, name, email, foto_url, cpf, data_nascimento')
-              .in('id', userIds)
 
-            if (errUsuarios) throw errUsuarios
+          if (idsAluno.length > 0) {
+            const { data: alunosData, error: errAlunosDiretos } = await supabase
+              .from('alunos')
+              .select('id_aluno, user_id, nis, possui_necessidade_especial, possui_beneficio_governo')
+              .in('id_aluno', idsAluno)
 
-            ;(usuariosData ?? []).forEach((u: any) => {
-              const id = String(u?.id ?? '').trim()
-              if (!id) return
-              usuariosPorId.set(id, u)
+            if (errAlunosDiretos) throw errAlunosDiretos
+
+            ;(alunosData ?? []).forEach((a: any) => {
+              const idAluno = Number(a?.id_aluno ?? 0)
+              if (!idAluno) return
+              alunosPorId.set(idAluno, a)
             })
+
+            const userIds = Array.from(
+              new Set(
+                (alunosData ?? [])
+                  .map((a: any) => String(a?.user_id ?? '').trim())
+                  .filter(Boolean)
+              )
+            )
+
+            if (userIds.length > 0) {
+              const { data: usuariosData, error: errUsuarios } = await supabase
+                .from('usuarios')
+                .select('id, name, email, foto_url, cpf, data_nascimento')
+                .in('id', userIds)
+
+              if (errUsuarios) throw errUsuarios
+
+              ;(usuariosData ?? []).forEach((u: any) => {
+                const id = String(u?.id ?? '').trim()
+                if (!id) return
+                usuariosPorId.set(id, u)
+              })
+            }
           }
 
           ;(matriculasRows ?? []).forEach((m: any) => {
-            const aluno = first(m?.alunos) as any
+            const idAluno = Number(m?.id_aluno ?? 0)
+            const aluno = alunosPorId.get(idAluno)
             const usuarioAluno = usuariosPorId.get(String(aluno?.user_id ?? ''))
-            const idMat = Number(m?.id_matricula)
+            const idMat = Number(m?.id_matricula ?? 0)
 
-            if (!idMat || !aluno?.id_aluno) return
+            if (!idMat || !idAluno) return
 
             optsMap.set(idMat, {
-              id_aluno: Number(m?.id_aluno ?? aluno?.id_aluno),
-              nome: usuarioAluno?.name ?? `Aluno #${m?.id_aluno ?? aluno?.id_aluno}`,
+              id_aluno: idAluno,
+              nome: usuarioAluno?.name ?? `Aluno #${idAluno}`,
               email: usuarioAluno?.email ?? null,
               foto_url: usuarioAluno?.foto_url ?? null,
               cpf: usuarioAluno?.cpf ?? null,
@@ -1227,9 +1252,8 @@ export default function ProfessorAtendimentosPage() {
           const { data: usuariosPorNome, error: errUsuariosNome } = await supabase
             .from('usuarios')
             .select('id, name, email, foto_url, cpf, data_nascimento')
-            .eq('id_tipo_usuario', 5)
             .ilike('name', `%${t}%`)
-            .limit(40)
+            .limit(80)
 
           if (errUsuariosNome) throw errUsuariosNome
 
@@ -1240,9 +1264,8 @@ export default function ProfessorAtendimentosPage() {
             const { data: usuariosFallback, error: errFallback } = await supabase
               .from('usuarios')
               .select('id, name, email, foto_url, cpf, data_nascimento')
-              .eq('id_tipo_usuario', 5)
               .order('name', { ascending: true })
-              .limit(500)
+              .limit(1200)
 
             if (errFallback) throw errFallback
 
@@ -1266,25 +1289,9 @@ export default function ProfessorAtendimentosPage() {
           if (termosRA.length > 0) {
             let qRA = supabase
               .from('matriculas')
-              .select(
-                `
-                id_matricula,
-                id_aluno,
-                numero_inscricao,
-                ano_letivo,
-                data_matricula,
-                id_nivel_ensino,
-                alunos!inner (
-                  id_aluno,
-                  user_id,
-                  nis,
-                  possui_necessidade_especial,
-                  possui_beneficio_governo
-                )
-              `
-              )
+              .select('id_matricula, id_aluno, numero_inscricao, ano_letivo, data_matricula, id_nivel_ensino')
               .order('ano_letivo', { ascending: false })
-              .limit(40)
+              .limit(80)
 
             qRA =
               termosRA.length === 1
@@ -1301,25 +1308,9 @@ export default function ProfessorAtendimentosPage() {
             if (matsEncontradas.length === 0 && digitos.length >= 2) {
               let qRAFallback = supabase
                 .from('matriculas')
-                .select(
-                  `
-                  id_matricula,
-                  id_aluno,
-                  numero_inscricao,
-                  ano_letivo,
-                  data_matricula,
-                  id_nivel_ensino,
-                  alunos!inner (
-                    id_aluno,
-                    user_id,
-                    nis,
-                    possui_necessidade_especial,
-                    possui_beneficio_governo
-                  )
-                `
-                )
+                .select('id_matricula, id_aluno, numero_inscricao, ano_letivo, data_matricula, id_nivel_ensino')
                 .order('ano_letivo', { ascending: false })
-                .limit(1200)
+                .limit(3000)
 
               if (nivelFiltroEnsino !== 'todos') qRAFallback = qRAFallback.eq('id_nivel_ensino', nivelFiltroEnsino)
 
@@ -1347,8 +1338,7 @@ export default function ProfessorAtendimentosPage() {
             let qCPF = supabase
               .from('usuarios')
               .select('id, name, email, foto_url, cpf, data_nascimento')
-              .eq('id_tipo_usuario', 5)
-              .limit(40)
+              .limit(80)
 
             qCPF =
               termosCPF.length === 1
@@ -1359,6 +1349,81 @@ export default function ProfessorAtendimentosPage() {
             if (errCPF) throw errCPF
 
             await carregarAlunosPorUsuarios((usuariosCPF ?? []) as any[])
+          }
+        }
+
+        if (optsMap.size === 0) {
+          let qTudo = supabase
+            .from('matriculas')
+            .select('id_matricula, id_aluno, numero_inscricao, ano_letivo, data_matricula, id_nivel_ensino')
+            .order('ano_letivo', { ascending: false })
+            .order('data_matricula', { ascending: false })
+            .limit(4000)
+
+          if (nivelFiltroEnsino !== 'todos') qTudo = qTudo.eq('id_nivel_ensino', nivelFiltroEnsino)
+
+          const { data: todasMatriculas, error: errTudo } = await qTudo
+          if (errTudo) throw errTudo
+
+          const listaTudo = (todasMatriculas ?? []) as any[]
+          const listaFiltrada = buscaNumerica
+            ? listaTudo.filter((m: any) => extrairDigitos(String(m?.numero_inscricao ?? '')).includes(digitos))
+            : listaTudo
+
+          await adicionarOpcoesPorMatriculas(listaFiltrada.slice(0, 80))
+
+          if (optsMap.size === 0 && !buscaNumerica) {
+            const idsAlunoFallback = Array.from(
+              new Set(
+                listaTudo
+                  .map((m: any) => Number(m?.id_aluno ?? 0))
+                  .filter((id: number) => Number.isFinite(id) && id > 0)
+              )
+            )
+
+            if (idsAlunoFallback.length > 0) {
+              const { data: alunosFallback, error: errAlunosFallback } = await supabase
+                .from('alunos')
+                .select('id_aluno, user_id')
+                .in('id_aluno', idsAlunoFallback)
+
+              if (errAlunosFallback) throw errAlunosFallback
+
+              const userIdsFallback = Array.from(
+                new Set(
+                  (alunosFallback ?? [])
+                    .map((a: any) => String(a?.user_id ?? '').trim())
+                    .filter(Boolean)
+                )
+              )
+
+              if (userIdsFallback.length > 0) {
+                const { data: usuariosFallback, error: errUsuariosFallback } = await supabase
+                  .from('usuarios')
+                  .select('id, name, email, foto_url, cpf, data_nascimento')
+                  .in('id', userIdsFallback)
+
+                if (errUsuariosFallback) throw errUsuariosFallback
+
+                const termoNormalizado = normalizarTexto(t)
+                const userIdsCompativeis = new Set(
+                  (usuariosFallback ?? [])
+                    .filter((u: any) => normalizarTexto(String(u?.name ?? '')).includes(termoNormalizado))
+                    .map((u: any) => String(u?.id ?? '').trim())
+                    .filter(Boolean)
+                )
+
+                const alunosCompativeis = new Set(
+                  (alunosFallback ?? [])
+                    .filter((a: any) => userIdsCompativeis.has(String(a?.user_id ?? '').trim()))
+                    .map((a: any) => Number(a?.id_aluno ?? 0))
+                    .filter((id: number) => Number.isFinite(id) && id > 0)
+                )
+
+                const matsCompativeis = listaTudo.filter((m: any) => alunosCompativeis.has(Number(m?.id_aluno ?? 0))).slice(0, 80)
+                await adicionarOpcoesPorMatriculas(matsCompativeis)
+              }
+            }
           }
         }
 

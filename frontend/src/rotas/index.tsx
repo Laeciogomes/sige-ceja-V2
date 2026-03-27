@@ -1,19 +1,22 @@
 import React from 'react'
-import { Navigate, Route, Routes } from 'react-router-dom'
+import { Routes, Route, Navigate } from 'react-router-dom'
 
 import { RootLayout } from '../layouts/RootLayout'
 import { LoginPage } from '../paginas/Autenticacao/LoginPage'
 import { NovaSenhaPage } from '../paginas/Autenticacao/NovaSenhaPage'
 
+// Dashboard principal (admin)
 import { DashboardPage } from '../paginas/painel-administracao/DashboardPage'
-import { PaginaSimples } from '../paginas/PaginaSimples'
-import PerfilPage from '../paginas/Perfil/PerfilPage'
-import ConfiguracoesPage from '../paginas/Configuracoes/ConfiguracoesPage'
 
+import { PaginaSimples } from '../paginas/PaginaSimples'
 import AlunoMatriculasPage from '../paginas/painel-aluno/AlunoMatriculasPage'
 import AlunoProgressoPage from '../paginas/painel-aluno/AlunoProgressoPage'
-import AlunoInicioPage from '../paginas/painel-aluno/AlunoInicioPage'
+import PerfilPage from '../paginas/Perfil/PerfilPage'
+import ConfiguracoesPage from '../paginas/Configuracoes/ConfiguracoesPage'
+import { useAuth } from '../contextos/AuthContext'
+import { RotaPorPapel } from '../componentes/navegacao/RotaPorPapel'
 
+// Páginas da Secretaria
 import SecretariaLayout from '../paginas/painel-secretaria/SecretariaLayout'
 import SecretariaUsuariosPage from '../paginas/painel-secretaria/SecretariaUsuariosPage'
 import SecretariaTurmasPage from '../paginas/painel-secretaria/SecretariaTurmasPage'
@@ -25,22 +28,22 @@ import SecretariaProtocolosPage from '../paginas/painel-secretaria/SecretariaPro
 import SecretariaTurmaAlunosPage from '../paginas/painel-secretaria/SecretariaTurmaAlunosPage'
 import SecretariaRelatoriosFichasPage from '../paginas/painel-secretaria/SecretariaRelatoriosFichasPage'
 import SecretariaHistoricoPage from '../paginas/painel-secretaria/SecretariaHistoricoPage'
-import SecretariaPontoMensalPage from '../paginas/painel-secretaria/SecretariaPontoMensalPage'
 
+// Professor
 import ProfessorAtendimentosPage from '../paginas/painel-professor/ProfessorAtendimentosPage'
 import AcompanhamentoPage from '../paginas/painel-professor/AcompanhamentoPage'
-import FichaAcompanhamentoPage from '../paginas/painel-professor/FichaAcompanhamentoPage'
+import ProfessorPontoPage from '../paginas/painel-professor/ProfessorPontoPage'
 
+// SASP (Coordenação/Direção)
 import SaspPage from '../paginas/painel-coordenacao/SaspPage'
 
-import PontoFuncionarioPage from '../paginas/ponto/PontoFuncionarioPage'
-
-import { useAuth } from '../contextos/AuthContext'
-import { RotaPorPapel } from '../componentes/navegacao/RotaPorPapel'
+// ✅ Ficha (rota igual ao ZIP: /fichas/:id_progresso)
+import FichaAcompanhamentoPage from '../paginas/painel-professor/FichaAcompanhamentoPage'
 
 export const AppRoutes: React.FC = () => {
+  // Inclui "carregando" para evitar redirecionar enquanto a sessão está sendo restaurada
   const { usuario, carregando } = useAuth() as {
-    usuario: { papel?: string } | null
+    usuario: any
     carregando?: boolean
   }
 
@@ -52,24 +55,34 @@ export const AppRoutes: React.FC = () => {
 
   return (
     <Routes>
+      {/* LOGIN */}
       <Route
         path="/login"
         element={autenticado ? <Navigate to="/" replace /> : <LoginPage />}
       />
 
+      {/* ROTA PÚBLICA PARA REDEFINIÇÃO DE SENHA (link do e-mail do Supabase) */}
       <Route path="/nova-senha" element={<NovaSenhaPage />} />
 
+      {/* ROTAS PROTEGIDAS */}
       <Route
         path="/"
         element={autenticado ? <RootLayout /> : <Navigate to="/login" replace />}
       >
+        {/* Dashboard geral */}
         <Route index element={<DashboardPage />} />
 
+        {/* SECRETARIA */}
         <Route
           path="secretaria"
           element={
             <RotaPorPapel
-              papeisPermitidos={['SECRETARIA', 'ADMIN', 'COORDENACAO', 'DIRETOR']}
+              papeisPermitidos={[
+                'SECRETARIA',
+                'ADMIN',
+                'COORDENACAO',
+                'DIRETOR',
+              ]}
             >
               <SecretariaLayout />
             </RotaPorPapel>
@@ -95,34 +108,9 @@ export const AppRoutes: React.FC = () => {
             element={<SecretariaRelatoriosFichasPage />}
           />
           <Route path="historico" element={<SecretariaHistoricoPage />} />
-          <Route
-            path="ponto-mensal"
-            element={
-              <RotaPorPapel papeisPermitidos={['SECRETARIA', 'DIRETOR', 'ADMIN']}>
-                <SecretariaPontoMensalPage />
-              </RotaPorPapel>
-            }
-          />
         </Route>
 
-        <Route
-          path="ponto"
-          element={
-            <RotaPorPapel
-              papeisPermitidos={[
-                'PROFESSOR',
-                'SECRETARIA',
-                'COORDENACAO',
-                'DIRETOR',
-                'ADMIN',
-                'AVALIADOR',
-              ]}
-            >
-              <PontoFuncionarioPage />
-            </RotaPorPapel>
-          }
-        />
-
+        {/* PROFESSORES */}
         <Route
           path="professores"
           element={
@@ -151,6 +139,16 @@ export const AppRoutes: React.FC = () => {
         />
 
         <Route
+          path="professores/ponto"
+          element={
+            <RotaPorPapel papeisPermitidos={['PROFESSOR', 'ADMIN']}>
+              <ProfessorPontoPage />
+            </RotaPorPapel>
+          }
+        />
+
+        {/* ✅ FICHA (igual ZIP) */}
+        <Route
           path="fichas/:id_progresso"
           element={
             <RotaPorPapel
@@ -167,11 +165,12 @@ export const AppRoutes: React.FC = () => {
           }
         />
 
+        {/* COORDENAÇÃO */}
         <Route
           path="coordenacao"
           element={
             <RotaPorPapel papeisPermitidos={['COORDENACAO', 'DIRETOR', 'ADMIN']}>
-              <DashboardPage />
+              <PaginaSimples titulo="Painel da Coordenação" />
             </RotaPorPapel>
           }
         />
@@ -192,11 +191,12 @@ export const AppRoutes: React.FC = () => {
           }
         />
 
+        {/* DIREÇÃO */}
         <Route
           path="direcao"
           element={
             <RotaPorPapel papeisPermitidos={['DIRETOR', 'ADMIN']}>
-              <DashboardPage />
+              <PaginaSimples titulo="Painel da Direção" />
             </RotaPorPapel>
           }
         />
@@ -217,11 +217,12 @@ export const AppRoutes: React.FC = () => {
           }
         />
 
+        {/* ALUNOS */}
         <Route
           path="alunos"
           element={
             <RotaPorPapel papeisPermitidos={['ALUNO', 'ADMIN']}>
-              <AlunoInicioPage />
+              <Navigate to="/alunos/matriculas" replace />
             </RotaPorPapel>
           }
         />
@@ -242,19 +243,25 @@ export const AppRoutes: React.FC = () => {
           }
         />
 
+        {/* PERFIL E CONFIG */}
         <Route path="perfil" element={<PerfilPage />} />
         <Route path="config" element={<ConfiguracoesPage />} />
+
+        {/* CORINGA */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
 
+      {/* CORINGA FORA */}
       <Route
         path="*"
         element={
-          autenticado ? <Navigate to="/" replace /> : <Navigate to="/login" replace />
+          autenticado ? (
+            <Navigate to="/" replace />
+          ) : (
+            <Navigate to="/login" replace />
+          )
         }
       />
     </Routes>
   )
 }
-
-export default AppRoutes
