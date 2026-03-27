@@ -994,7 +994,10 @@ export default function ProfessorAtendimentosPage() {
 
   // ======= regras matricula/progresso =======
   const obterIdStatusMatriculaAtiva = useCallback((): number | null => {
-    const ativa = statusMatriculas.find((s) => normalizarTexto(s.nome).includes('ativa'))
+    const ativa = statusMatriculas.find((s) => {
+      const nome = normalizarTexto(s.nome)
+      return nome.includes('ativa') || nome.includes('ativo')
+    })
     return ativa ? Number(ativa.id_status_matricula) : null
   }, [statusMatriculas])
 
@@ -1091,9 +1094,11 @@ export default function ProfessorAtendimentosPage() {
         const digitos = extrairDigitos(t)
         const buscaNumerica = isBuscaNumerica(t)
         const ativaId = obterIdStatusMatriculaAtiva()
-        const opcoesMap = new Map<number, AlunoBuscaOption>()
-
         const nivelSelecionado = nivelFiltroEnsino === 'todos' ? null : Number(nivelFiltroEnsino)
+        const opcoesMap = new Map<number, AlunoBuscaOption>()
+        const alunosPorId = new Map<number, any>()
+        const usuariosPorId = new Map<string, any>()
+        const matriculasPorAluno = new Map<number, any[]>()
 
         const registrarOpcao = (payload: {
           id_aluno: number
@@ -1114,6 +1119,11 @@ export default function ProfessorAtendimentosPage() {
           const idMatricula = Number(payload.id_matricula)
           if (!Number.isFinite(idMatricula) || idMatricula <= 0) return
           if (nivelSelecionado != null && Number(payload.id_nivel_ensino ?? 0) !== nivelSelecionado) return
+          if (ativaId != null) {
+            const mats = matriculasPorAluno.get(Number(payload.id_aluno)) ?? []
+            const matAtual = mats.find((m) => Number(m.id_matricula) === idMatricula)
+            if (matAtual && Number(matAtual.id_status_matricula ?? 0) !== ativaId) return
+          }
 
           opcoesMap.set(idMatricula, {
             id_aluno: Number(payload.id_aluno),
@@ -1131,210 +1141,233 @@ export default function ProfessorAtendimentosPage() {
           })
         }
 
-        if (!buscaNumerica) {
-          let query = supabase
-            .from('alunos')
-            .select(
-              `
-                id_aluno,
-                user_id,
-                nis,
-                possui_necessidade_especial,
-                possui_beneficio_governo,
-                usuarios!inner ( id, name, email, cpf, foto_url, data_nascimento ),
-                matriculas ( id_matricula, numero_inscricao, ano_letivo, data_matricula, id_nivel_ensino, id_status_matricula )
-              `,
-            )
-            .ilike('usuarios.name', `%${t}%`)
-            .limit(40)
+        const adicionarMatricula = (mat: any) => {
+          const alunoId = Number(mat?.id_aluno ?? 0)
+          const idMatricula = Number(mat?.id_matricula ?? 0)
+          if (!alunoId || !idMatricula) return
+          const lista = matriculasPorAluno.get(alunoId) ?? []
+          if (!lista.some((item) => Number(item?.id_matricula ?? 0) === idMatricula)) {
+            lista.push({
+              id_matricula: idMatricula,
+              id_aluno: alunoId,
+              numero_inscricao: mat?.numero_inscricao ?? null,
+              ano_letivo: mat?.ano_letivo != null ? Number(mat.ano_letivo) : null,
+              data_matricula: mat?.data_matricula ?? null,
+              id_nivel_ensino: mat?.id_nivel_ensino != null ? Number(mat.id_nivel_ensino) : null,
+              id_status_matricula: mat?.id_status_matricula != null ? Number(mat.id_status_matricula) : null,
+            })
+            matriculasPorAluno.set(alunoId, lista)
+          }
+        }
 
-          const { data, error } = await query
-          if (error) throw error
+        const ordenarMatriculas = (lista: any[]) =>
+          [...lista].sort((x, y) => {
+            const ativaX = ativaId != null && Number(x?.id_status_matricula ?? 0) === ativaId ? 1 : 0
+            const ativaY = ativaId != null && Number(y?.id_status_matricula ?? 0) === ativaId ? 1 : 0
+            if (ativaY !== ativaX) return ativaY - ativaX
+            if (Number(y?.ano_letivo ?? 0) !== Number(x?.ano_letivo ?? 0)) {
+              return Number(y?.ano_letivo ?? 0) - Number(x?.ano_letivo ?? 0)
+            }
+            return new Date(String(y?.data_matricula ?? '1900-01-01')).getTime() - new Date(String(x?.data_matricula ?? '1900-01-01')).getTime()
+          })
 
-          ;(data ?? []).forEach((a: any) => {
-            const u = first(a?.usuarios) as any
-            const mats = ((a?.matriculas ?? []) as any[])
-              .filter((m) => (ativaId ? Number(m?.id_status_matricula ?? 0) === ativaId : true))
+        const materializarOpcoes = (alunoIds: number[]) => {
+          alunoIds.forEach((alunoId) => {
+            const aluno = alunosPorId.get(Number(alunoId))
+            if (!aluno) return
+            const usuario = usuariosPorId.get(String(aluno.user_id ?? ''))
+            const mats = ordenarMatriculas(matriculasPorAluno.get(Number(alunoId)) ?? [])
               .filter((m) => (nivelSelecionado != null ? Number(m?.id_nivel_ensino ?? 0) === nivelSelecionado : true))
-              .sort((x, y) => {
-                if (Number(y?.ano_letivo ?? 0) !== Number(x?.ano_letivo ?? 0)) {
-                  return Number(y?.ano_letivo ?? 0) - Number(x?.ano_letivo ?? 0)
-                }
-                return new Date(String(y?.data_matricula ?? '1900-01-01')).getTime() - new Date(String(x?.data_matricula ?? '1900-01-01')).getTime()
-              })
+              .filter((m) => (ativaId != null ? Number(m?.id_status_matricula ?? 0) === ativaId : true))
 
             mats.forEach((m) => {
               registrarOpcao({
-                id_aluno: Number(a.id_aluno),
-                nome: u?.name ?? `Aluno #${a.id_aluno}`,
-                email: u?.email ?? null,
-                foto_url: u?.foto_url ?? null,
-                cpf: u?.cpf ?? null,
-                data_nascimento: u?.data_nascimento ?? null,
-                nis: a?.nis ?? null,
-                possui_necessidade_especial: a?.possui_necessidade_especial ?? null,
-                possui_beneficio_governo: a?.possui_beneficio_governo ?? null,
+                id_aluno: Number(aluno.id_aluno),
+                nome: usuario?.name ?? `Aluno #${aluno.id_aluno}`,
+                email: usuario?.email ?? null,
+                foto_url: usuario?.foto_url ?? null,
+                cpf: usuario?.cpf ?? null,
+                data_nascimento: usuario?.data_nascimento ?? null,
+                nis: aluno?.nis ?? null,
+                possui_necessidade_especial: aluno?.possui_necessidade_especial ?? null,
+                possui_beneficio_governo: aluno?.possui_beneficio_governo ?? null,
                 id_matricula: Number(m.id_matricula),
                 numero_inscricao: m?.numero_inscricao ?? null,
-                id_nivel_ensino: m?.id_nivel_ensino != null ? Number(m.id_nivel_ensino) : null,
-                ano_letivo: m?.ano_letivo != null ? Number(m.ano_letivo) : null,
+                id_nivel_ensino: m?.id_nivel_ensino ?? null,
+                ano_letivo: m?.ano_letivo ?? null,
                 data_matricula: m?.data_matricula ?? null,
               })
             })
           })
         }
 
+        if (!buscaNumerica) {
+          const { data: usuariosPorNome, error: errUsuarios } = await supabase
+            .from('usuarios')
+            .select('id, name, email, cpf, foto_url, data_nascimento')
+            .ilike('name', `%${t}%`)
+            .limit(40)
+          if (errUsuarios) throw errUsuarios
+
+          const userIds = ((usuariosPorNome ?? []) as any[])
+            .map((u) => String(u.id ?? ''))
+            .filter(Boolean)
+
+          ;(usuariosPorNome ?? []).forEach((u: any) => {
+            usuariosPorId.set(String(u.id), u)
+          })
+
+          if (userIds.length > 0) {
+            const { data: alunosData, error: errAlunos } = await supabase
+              .from('alunos')
+              .select('id_aluno, user_id, nis, possui_necessidade_especial, possui_beneficio_governo')
+              .in('user_id', userIds)
+            if (errAlunos) throw errAlunos
+
+            const alunoIds = ((alunosData ?? []) as any[])
+              .map((a) => Number(a.id_aluno))
+              .filter((v) => Number.isFinite(v) && v > 0)
+
+            ;(alunosData ?? []).forEach((a: any) => {
+              alunosPorId.set(Number(a.id_aluno), a)
+            })
+
+            if (alunoIds.length > 0) {
+              let qMats = supabase
+                .from('matriculas')
+                .select('id_matricula, id_aluno, numero_inscricao, ano_letivo, data_matricula, id_nivel_ensino, id_status_matricula')
+                .in('id_aluno', alunoIds)
+                .order('ano_letivo', { ascending: false })
+                .order('data_matricula', { ascending: false })
+                .limit(300)
+
+              if (nivelSelecionado != null) qMats = qMats.eq('id_nivel_ensino', nivelSelecionado)
+              if (ativaId != null) qMats = qMats.eq('id_status_matricula', ativaId)
+
+              const { data: matsData, error: errMats } = await qMats
+              if (errMats) throw errMats
+
+              ;(matsData ?? []).forEach(adicionarMatricula)
+              materializarOpcoes(alunoIds)
+            }
+          }
+        }
+
         if (buscaNumerica) {
           const termosRA = Array.from(new Set([digitos, t].map((v) => String(v ?? '').trim()).filter((v) => v.length >= 2)))
 
-          let q = supabase
+          let qMats = supabase
             .from('matriculas')
-            .select(
-              `
-                id_matricula,
-                id_aluno,
-                numero_inscricao,
-                ano_letivo,
-                data_matricula,
-                id_nivel_ensino,
-                id_status_matricula,
-                alunos!inner (
-                  id_aluno,
-                  user_id,
-                  nis,
-                  possui_necessidade_especial,
-                  possui_beneficio_governo,
-                  usuarios!inner ( id, name, email, cpf, foto_url, data_nascimento )
-                )
-              `,
-            )
-            .limit(60)
+            .select('id_matricula, id_aluno, numero_inscricao, ano_letivo, data_matricula, id_nivel_ensino, id_status_matricula')
             .order('ano_letivo', { ascending: false })
             .order('data_matricula', { ascending: false })
+            .limit(120)
 
-          if (termosRA.length === 1) {
-            q = q.ilike('numero_inscricao', `%${termosRA[0]}%`)
-          } else {
-            q = q.or(termosRA.map((valor) => `numero_inscricao.ilike.%${valor}%`).join(','))
-          }
+          if (nivelSelecionado != null) qMats = qMats.eq('id_nivel_ensino', nivelSelecionado)
+          if (ativaId != null) qMats = qMats.eq('id_status_matricula', ativaId)
+          qMats = termosRA.length === 1
+            ? qMats.ilike('numero_inscricao', `%${termosRA[0]}%`)
+            : qMats.or(termosRA.map((valor) => `numero_inscricao.ilike.%${valor}%`).join(','))
 
-          if (nivelSelecionado != null) q = q.eq('id_nivel_ensino', nivelSelecionado)
+          const { data: matsData, error: errMats } = await qMats
+          if (errMats) throw errMats
 
-          const { data, error } = await q
-          if (error) throw error
-
-          let matsEncontradas = (data ?? []) as any[]
+          let matsEncontradas = (matsData ?? []) as any[]
 
           if (matsEncontradas.length === 0 && digitos.length >= 2) {
             let qFallback = supabase
               .from('matriculas')
-              .select(
-                `
-                  id_matricula,
-                  id_aluno,
-                  numero_inscricao,
-                  ano_letivo,
-                  data_matricula,
-                  id_nivel_ensino,
-                  id_status_matricula,
-                  alunos!inner (
-                    id_aluno,
-                    user_id,
-                    nis,
-                    possui_necessidade_especial,
-                    possui_beneficio_governo,
-                    usuarios!inner ( id, name, email, cpf, foto_url, data_nascimento )
-                  )
-                `,
-              )
+              .select('id_matricula, id_aluno, numero_inscricao, ano_letivo, data_matricula, id_nivel_ensino, id_status_matricula')
               .order('ano_letivo', { ascending: false })
               .order('data_matricula', { ascending: false })
-              .limit(1500)
+              .limit(2000)
 
             if (nivelSelecionado != null) qFallback = qFallback.eq('id_nivel_ensino', nivelSelecionado)
+            if (ativaId != null) qFallback = qFallback.eq('id_status_matricula', ativaId)
 
             const { data: matsFallback, error: errFallback } = await qFallback
             if (errFallback) throw errFallback
 
             matsEncontradas = ((matsFallback ?? []) as any[])
-              .filter((m: any) => extrairDigitos(String(m?.numero_inscricao ?? '')).includes(digitos))
-              .slice(0, 60)
+              .filter((m) => extrairDigitos(String(m?.numero_inscricao ?? '')).includes(digitos))
+              .slice(0, 120)
           }
 
-          matsEncontradas.forEach((m: any) => {
-            if (ativaId && Number(m?.id_status_matricula ?? 0) !== ativaId) return
-            const aluno = first(m?.alunos) as any
-            const u = first(aluno?.usuarios) as any
-            registrarOpcao({
-              id_aluno: Number(m.id_aluno ?? aluno?.id_aluno),
-              nome: u?.name ?? `Aluno #${m.id_aluno ?? aluno?.id_aluno}`,
-              email: u?.email ?? null,
-              foto_url: u?.foto_url ?? null,
-              cpf: u?.cpf ?? null,
-              data_nascimento: u?.data_nascimento ?? null,
-              nis: aluno?.nis ?? null,
-              possui_necessidade_especial: aluno?.possui_necessidade_especial ?? null,
-              possui_beneficio_governo: aluno?.possui_beneficio_governo ?? null,
-              id_matricula: Number(m.id_matricula),
-              numero_inscricao: m?.numero_inscricao ?? null,
-              id_nivel_ensino: m?.id_nivel_ensino != null ? Number(m.id_nivel_ensino) : null,
-              ano_letivo: m?.ano_letivo != null ? Number(m.ano_letivo) : null,
-              data_matricula: m?.data_matricula ?? null,
+          ;(matsEncontradas ?? []).forEach(adicionarMatricula)
+
+          const alunoIds = Array.from(new Set((matsEncontradas ?? []).map((m: any) => Number(m?.id_aluno ?? 0)).filter((v) => Number.isFinite(v) && v > 0)))
+
+          if (alunoIds.length > 0) {
+            const { data: alunosData, error: errAlunos } = await supabase
+              .from('alunos')
+              .select('id_aluno, user_id, nis, possui_necessidade_especial, possui_beneficio_governo')
+              .in('id_aluno', alunoIds)
+            if (errAlunos) throw errAlunos
+
+            ;(alunosData ?? []).forEach((a: any) => {
+              alunosPorId.set(Number(a.id_aluno), a)
             })
-          })
+
+            const userIds = Array.from(new Set((alunosData ?? []).map((a: any) => String(a?.user_id ?? '')).filter(Boolean)))
+            if (userIds.length > 0) {
+              const { data: usuariosData, error: errUsuarios } = await supabase
+                .from('usuarios')
+                .select('id, name, email, cpf, foto_url, data_nascimento')
+                .in('id', userIds)
+              if (errUsuarios) throw errUsuarios
+
+              ;(usuariosData ?? []).forEach((u: any) => {
+                usuariosPorId.set(String(u.id), u)
+              })
+            }
+
+            materializarOpcoes(alunoIds)
+          }
 
           if (digitos.length >= 11) {
             const cpfFmt = formatarCPF(digitos)
-            const { data: dataCPF, error: errCPF } = await supabase
-              .from('alunos')
-              .select(
-                `
-                  id_aluno,
-                  user_id,
-                  nis,
-                  possui_necessidade_especial,
-                  possui_beneficio_governo,
-                  usuarios!inner ( id, name, email, cpf, foto_url, data_nascimento ),
-                  matriculas ( id_matricula, numero_inscricao, ano_letivo, data_matricula, id_nivel_ensino, id_status_matricula )
-                `,
-              )
-              .or([`cpf.ilike.%${digitos}%`, `cpf.ilike.%${cpfFmt}%`].join(','), { foreignTable: 'usuarios' })
+            const { data: usuariosCpf, error: errUsuariosCpf } = await supabase
+              .from('usuarios')
+              .select('id, name, email, cpf, foto_url, data_nascimento')
+              .or(`cpf.ilike.%${digitos}%,cpf.ilike.%${cpfFmt}%`)
               .limit(40)
+            if (errUsuariosCpf) throw errUsuariosCpf
 
-            if (errCPF) throw errCPF
+            const userIdsCpf = ((usuariosCpf ?? []) as any[]).map((u) => String(u.id ?? '')).filter(Boolean)
+            ;(usuariosCpf ?? []).forEach((u: any) => usuariosPorId.set(String(u.id), u))
 
-            ;(dataCPF ?? []).forEach((a: any) => {
-              const u = first(a?.usuarios) as any
-              const mats = ((a?.matriculas ?? []) as any[])
-                .filter((m) => (ativaId ? Number(m?.id_status_matricula ?? 0) === ativaId : true))
-                .filter((m) => (nivelSelecionado != null ? Number(m?.id_nivel_ensino ?? 0) === nivelSelecionado : true))
-                .sort((x, y) => {
-                  if (Number(y?.ano_letivo ?? 0) !== Number(x?.ano_letivo ?? 0)) {
-                    return Number(y?.ano_letivo ?? 0) - Number(x?.ano_letivo ?? 0)
-                  }
-                  return new Date(String(y?.data_matricula ?? '1900-01-01')).getTime() - new Date(String(x?.data_matricula ?? '1900-01-01')).getTime()
-                })
+            if (userIdsCpf.length > 0) {
+              const { data: alunosCpf, error: errAlunosCpf } = await supabase
+                .from('alunos')
+                .select('id_aluno, user_id, nis, possui_necessidade_especial, possui_beneficio_governo')
+                .in('user_id', userIdsCpf)
+              if (errAlunosCpf) throw errAlunosCpf
 
-              mats.forEach((m) => {
-                if (m?.id_matricula == null || opcoesMap.has(Number(m.id_matricula))) return
-                registrarOpcao({
-                  id_aluno: Number(a.id_aluno),
-                  nome: u?.name ?? `Aluno #${a.id_aluno}`,
-                  email: u?.email ?? null,
-                  foto_url: u?.foto_url ?? null,
-                  cpf: u?.cpf ?? null,
-                  data_nascimento: u?.data_nascimento ?? null,
-                  nis: a?.nis ?? null,
-                  possui_necessidade_especial: a?.possui_necessidade_especial ?? null,
-                  possui_beneficio_governo: a?.possui_beneficio_governo ?? null,
-                  id_matricula: Number(m.id_matricula),
-                  numero_inscricao: m?.numero_inscricao ?? null,
-                  id_nivel_ensino: m?.id_nivel_ensino != null ? Number(m.id_nivel_ensino) : null,
-                  ano_letivo: m?.ano_letivo != null ? Number(m.ano_letivo) : null,
-                  data_matricula: m?.data_matricula ?? null,
-                })
-              })
-            })
+              const alunoIdsCpf = ((alunosCpf ?? []) as any[])
+                .map((a) => Number(a.id_aluno))
+                .filter((v) => Number.isFinite(v) && v > 0)
+
+              ;(alunosCpf ?? []).forEach((a: any) => alunosPorId.set(Number(a.id_aluno), a))
+
+              if (alunoIdsCpf.length > 0) {
+                let qMatsCpf = supabase
+                  .from('matriculas')
+                  .select('id_matricula, id_aluno, numero_inscricao, ano_letivo, data_matricula, id_nivel_ensino, id_status_matricula')
+                  .in('id_aluno', alunoIdsCpf)
+                  .order('ano_letivo', { ascending: false })
+                  .order('data_matricula', { ascending: false })
+                  .limit(300)
+
+                if (nivelSelecionado != null) qMatsCpf = qMatsCpf.eq('id_nivel_ensino', nivelSelecionado)
+                if (ativaId != null) qMatsCpf = qMatsCpf.eq('id_status_matricula', ativaId)
+
+                const { data: matsCpf, error: errMatsCpf } = await qMatsCpf
+                if (errMatsCpf) throw errMatsCpf
+
+                ;(matsCpf ?? []).forEach(adicionarMatricula)
+                materializarOpcoes(alunoIdsCpf)
+              }
+            }
           }
         }
 
