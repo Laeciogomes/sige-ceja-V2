@@ -13,7 +13,7 @@ import AssignmentIndIcon from '@mui/icons-material/AssignmentInd'
 import ListAltIcon from '@mui/icons-material/ListAlt'
 import CategoryIcon from '@mui/icons-material/Category'
 import HistoryEduIcon from '@mui/icons-material/HistoryEdu'
-import AccessTimeIcon from '@mui/icons-material/AccessTime'
+import AccessTimeFilledIcon from '@mui/icons-material/AccessTimeFilled'
 
 import type { PapelUsuario } from '../contextos/AuthContext'
 
@@ -30,7 +30,7 @@ export type ItemMenuConfig = {
   rotulo: string
   caminho: string
   icone: React.ReactElement
-  grupo?: string // Usado para os cabeçalhos de seção
+  grupo?: string
   mostrarPonto?: boolean
 }
 
@@ -135,7 +135,6 @@ export const menusPorContexto: Record<ContextoPainel, ItemMenuConfig[]> = {
       caminho: '/coordenacao/acompanhamento',
       icone: <AssessmentIcon />,
       grupo: 'Pedagógico',
-      mostrarPonto: true,
     },
     {
       id: 'admin-ped-sasp',
@@ -255,19 +254,18 @@ export const menusPorContexto: Record<ContextoPainel, ItemMenuConfig[]> = {
       grupo: 'Pedagógico',
     },
     {
-      id: 'prof-bater-ponto',
-      rotulo: 'Bater ponto',
-      caminho: '/professores/ponto',
-      icone: <AccessTimeIcon />,
-      grupo: 'Pedagógico',
-    },
-    {
       id: 'prof-acompanhamento',
       rotulo: 'Acompanhamento',
       caminho: '/professores/acompanhamento',
       icone: <AssessmentIcon />,
       grupo: 'Pedagógico',
-      mostrarPonto: true,
+    },
+    {
+      id: 'prof-ponto',
+      rotulo: 'Bater ponto',
+      caminho: '/professores/ponto',
+      icone: <AccessTimeFilledIcon />,
+      grupo: 'Pedagógico',
     },
   ],
 
@@ -357,7 +355,6 @@ export const menusPorContexto: Record<ContextoPainel, ItemMenuConfig[]> = {
       caminho: '/coordenacao/acompanhamento',
       icone: <AssessmentIcon />,
       grupo: 'Pedagógico',
-      mostrarPonto: true,
     },
   ],
 
@@ -447,7 +444,6 @@ export const menusPorContexto: Record<ContextoPainel, ItemMenuConfig[]> = {
       caminho: '/direcao/acompanhamento',
       icone: <AssessmentIcon />,
       grupo: 'Pedagógico',
-      mostrarPonto: true,
     },
   ],
 
